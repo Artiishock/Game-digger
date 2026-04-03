@@ -153,7 +153,18 @@ export const useGameStore = create<GameStore>((set) => ({
   setCurrency: (currency) => set({ currency }),
   setSessionID:(sessionID)=> set({ sessionID }),
 
-  setEvents: (events, roundID) => set({ events, roundID }),
+  setEvents: (events, roundID) => {
+    // Вычисляем multiplierBefore для каждого события на клиенте.
+    // Реальный RGS это поле не присылает — восстанавливаем из цепочки снапшотов.
+    // demo.ts тоже присылает его, но перезапись не вредит (значения совпадут).
+    let prev = 1.0
+    const enriched = events.map(ev => {
+      const withBefore = { ...ev, multiplierBefore: prev }
+      prev = ev.multiplierSnap
+      return withBefore
+    })
+    set({ events: enriched, roundID })
+  },
   setLastWin: (lastWin)  => set({ lastWin }),
   setSpeed:   (speed)    => set({ speed }),
 

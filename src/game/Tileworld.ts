@@ -2,8 +2,8 @@ import * as PIXI from 'pixi.js'
 import { LavaSimulation, CELL_PX } from './LavaSimulation'
 
 export const TILE = 120
-export const CHUNK_W = 16
-export const CHUNK_H = 10
+export const CHUNK_W = 6
+export const CHUNK_H = 4
 
 const CPW = CHUNK_W * TILE
 const CPH = CHUNK_H * TILE
@@ -216,6 +216,7 @@ function baseTile(tileRow: number, _totalRows: number, rng: () => number): T {
 
 function drawTile(g: PIXI.Graphics, type: T, px: number, py: number, tileSeed: number) {
   if (type === T.AIR) return
+  // LAVA и MAGMA тайлы рендерим как тёмный камень — реальная лава через LavaSimulation
   if (type === T.LAVA || type === T.MAGMA) type = T.DEEP
   const [fill, shadow] = COL[type] ?? [0x555555, 0x333333]
   const rng = lcg(tileSeed)
@@ -228,6 +229,7 @@ function drawTile(g: PIXI.Graphics, type: T, px: number, py: number, tileSeed: n
   if (type === T.GRASS) {
     g.beginFill(0x5a8a30, 0.35); g.drawRect(px, py+TILE-8, TILE, 8); g.endFill()
   }
+  // LAVA/MAGMA эллипсы убраны — рендерятся через LavaSimulation
   if (type === T.GOLD_ORE) {
     for (let i=0;i<5;i++) {
       g.beginFill(0xFFD700,0.8); g.drawCircle(px+3+rng()*(TILE-6), py+3+rng()*(TILE-6), 2.5+rng()*2); g.endFill()
@@ -271,6 +273,8 @@ function drawTile(g: PIXI.Graphics, type: T, px: number, py: number, tileSeed: n
   g.lineStyle(0.5,0x000000,0.07); g.drawRect(px,py,TILE,TILE); g.lineStyle(0)
 }
 
+
+// ── Рисует капсулу между двумя точками с разными радиусами ───────────────────
 function drawCapsule(
   g: PIXI.Graphics,
   ax: number, ay: number, ra: number,
@@ -285,10 +289,12 @@ function drawCapsule(
   }
   const STEPS = 10
   const verts: number[] = []
+  // Дуга вокруг A (180°)
   for (let i = 0; i <= STEPS; i++) {
     const angle = Math.atan2(dy, dx) + Math.PI / 2 + (Math.PI / STEPS) * i
     verts.push(ax + Math.cos(angle) * ra, ay + Math.sin(angle) * ra)
   }
+  // Дуга вокруг B (180°)
   for (let i = 0; i <= STEPS; i++) {
     const angle = Math.atan2(dy, dx) - Math.PI / 2 + (Math.PI / STEPS) * i
     verts.push(bx + Math.cos(angle) * rb, by + Math.sin(angle) * rb)
@@ -326,8 +332,9 @@ export class TileWorld {
 
   lavaSimulation: LavaSimulation | null = null
 
-  // Глобальный светлый фон — бесконечный прямоугольник
-  private bgLight: PIXI.Graphics = new PIXI.Graphics()
+  private bgLight:  PIXI.Graphics = new PIXI.Graphics()
+  private _bgLightAdded = false
+  private bgMinX = 99999; private bgMaxX = -99999
 
   static grassTex:  PIXI.Texture | null = null
   static groundTex: PIXI.Texture | null = null
@@ -347,15 +354,16 @@ export class TileWorld {
     this.seed      = seed
     this.totalRows = Number.MAX_SAFE_INTEGER
 
-    // Светлый фон — один огромный прямоугольник, не нужно обновлять
+    // Светлый фон — бесконечный, без маски
     this.bgLight.beginFill(0x845D46)
-      .drawRect(-500000, -500000, 1000000, 1000000)
+      .drawRect(-500000, 0, 1000000, 1000000)
       .endFill()
     container.addChild(this.bgLight)
   }
 
-  // Оставляем пустым — маски теперь только на чанках
-  initMasks() {}
+  initMasks() {
+    // per-chunk darkMask инициализируется в _buildChunk
+  }
 
   showBg() { this.bgLight.visible = true  }
   hideBg()  { this.bgLight.visible = false }
@@ -365,8 +373,7 @@ export class TileWorld {
   scratchAt(sx: number, sy: number, camX: number, camY: number) {
     if (!this.renderer) return
     const wx = sx + camX, wy = sy + camY
-    const R    = 70   // основной радиус туннеля
-    const R_bg = 65   // чуть меньше — тёмный ободок остаётся
+    const R = 70, R_bg = R - 5
 
     const colMin = Math.floor((wx-R)/CPW), colMax = Math.floor((wx+R)/CPW)
     const rowMin = Math.floor((wy-R)/CPH), rowMax = Math.floor((wy+R)/CPH)
@@ -377,17 +384,17 @@ export class TileWorld {
         const chunk = this.chunks.get(`${col}_${row}`)
         if (!chunk) continue
         const lx = wx - col*CPW, ly = wy - row*CPH
-
-        // Стираем тайлы (чёрный круг в maskRT → тайлы скрываются)
         this.brush.clear()
         this.brush.beginFill(0x000000).drawCircle(lx, ly, R).endFill()
         this.renderer.render(this.brush, { renderTexture: (chunk as any).maskRT, clear: false })
 
-        // Скрываем darkBg в центре (чёрный) → виден bgLight
-        const db = new PIXI.Graphics()
-        db.beginFill(0x000000).drawCircle(lx, ly, R_bg).endFill()
-        this.renderer.render(db, { renderTexture: (chunk as any).darkMaskRT, clear: false })
-        db.destroy()
+        // Тёмный фон чанка — рисуем чёрный круг → darkBg скрывается → виден bgLight
+        if ((chunk as any).darkMaskRT) {
+          const db = new PIXI.Graphics()
+          db.beginFill(0x000000).drawCircle(lx, ly, R_bg).endFill()
+          this.renderer.render(db, { renderTexture: (chunk as any).darkMaskRT, clear: false })
+          db.destroy()
+        }
 
         if ((chunk as any).lavaRT) {
           const wb = new PIXI.Graphics()
@@ -396,23 +403,25 @@ export class TileWorld {
           wb.destroy()
         }
 
+        // Открываем ячейки лавы только если туннель пересекает пещеру
         if (this.lavaSimulation) {
           this.lavaSimulation.openAreaIfNearLava(wx, wy, R)
         }
 
         if (this.lastPt) {
           const plx = this.lastPt.x - col*CPW, ply = this.lastPt.y - row*CPH
-          // Линия тайлов
           this.line.clear()
           this.line.lineStyle(R*2, 0x000000)
           this.line.moveTo(plx, ply).lineTo(lx, ly)
           this.renderer.render(this.line, { renderTexture: (chunk as any).maskRT, clear: false })
-          // Линия тёмного фона
-          const dl = new PIXI.Graphics()
-          dl.lineStyle(R_bg*2, 0x000000)
-          dl.moveTo(plx, ply).lineTo(lx, ly)
-          this.renderer.render(dl, { renderTexture: (chunk as any).darkMaskRT, clear: false })
-          dl.destroy()
+
+          if ((chunk as any).darkMaskRT) {
+            const dl = new PIXI.Graphics()
+            dl.lineStyle(R_bg*2, 0x000000)
+            dl.moveTo(plx, ply).lineTo(lx, ly)
+            this.renderer.render(dl, { renderTexture: (chunk as any).darkMaskRT, clear: false })
+            dl.destroy()
+          }
         }
       }
     }
@@ -433,8 +442,8 @@ export class TileWorld {
     let x = 0, y = 0
     let angle = rng() * Math.PI * 2
     const steps   = 28 + Math.floor(rng() * 42)
-    const baseR   = 60 + rng() * 40    // 90–150px
-    const stepLen = 15 + rng() * 20    // 30–70px
+    const baseR   = 28 + rng() * 22
+    const stepLen = 6 + rng() * 9
 
     for (let i = 0; i < steps; i++) {
       angle += (rng() - 0.5) * 1.2
@@ -477,16 +486,11 @@ export class TileWorld {
         if (!chunk) continue
         const offX = col * CPW, offY = row * CPH
         const lavaContainer = chunk.gfx.children[0] as PIXI.Container
-        this._applyCavePathToChunk(
-          cave, col, row,
-          (chunk as any).maskRT,
-          (chunk as any).darkMaskRT,
-          (chunk as any).lavaRT,
-          lavaContainer, offX, offY
-        )
+        this._applyCavePathToChunk(cave, col, row, (chunk as any).maskRT, (chunk as any).darkMaskRT, (chunk as any).lavaRT, lavaContainer, offX, offY)
         count++
       }
     }
+
     return count
   }
 
@@ -506,7 +510,7 @@ export class TileWorld {
   // ── Update ─────────────────────────────────────────────────────────────────
 
   update(camX: number, camY: number, screenW: number, screenH: number) {
-    const buf    = CPW * 4
+    const buf    = CPW*4  // больший буфер — чанки строятся заранее
     const colMin = Math.floor((camX-buf)/CPW)
     const colMax = Math.ceil((camX+screenW+buf)/CPW)
     const rowMin = Math.max(0, Math.floor((camY-buf)/CPH))
@@ -531,13 +535,14 @@ export class TileWorld {
         if(!this.chunks.has(key)) this._buildChunk(col,row)
       }
 
+    this._extendBg(colMin, colMax, rowMin, rowMax)
+
     const cull=6
     for(const[key,chunk]of this.chunks){
       if(chunk.col<colMin-cull||chunk.col>colMax+cull||
          chunk.row<rowMin-cull||chunk.row>rowMax+cull){
         this.container.removeChild(chunk.gfx)
         chunk.gfx.destroy({children:true})
-        // ✅ FIX: destroy all three RenderTextures to prevent GPU memory leak → WebGL context lost
         ;(chunk as any).maskRT?.destroy(true)
         ;(chunk as any).darkMaskRT?.destroy(true)
         ;(chunk as any).lavaRT?.destroy(true)
@@ -546,49 +551,21 @@ export class TileWorld {
     }
   }
 
+  private _extendBg(_colMin:number, _colMax:number, _rowMin:number, _rowMax:number) {
+    // bgLight — бесконечный прямоугольник, _extendBg больше не нужен
+  }
+
   invalidateOverrides() {
     this.overridesBuilt=false
     this._ovColMin=this._ovColMax=this._ovRowMin=this._ovRowMax=0
   }
 
   private _buildChunk(col: number, row: number) {
+    const key  = `${col}_${row}`
     const offX = col*CPW, offY = row*CPH
 
-    // ── maskRT: белый=тайлы видны, чёрный=скрыты (скратч рисует чёрный) ────
-    const maskRT  = PIXI.RenderTexture.create({width:CPW, height:CPH})
-    const maskSpr = new PIXI.Sprite(maskRT)
-    maskSpr.renderable = false
-
-    // ── darkMaskRT: чёрный=тёмный фон виден, белый=скрыт (скратч рисует белый)
-    const darkMaskRT  = PIXI.RenderTexture.create({width:CPW, height:CPH})
-    const darkMaskSpr = new PIXI.Sprite(darkMaskRT)
-    darkMaskSpr.renderable = false
-
-    // ── lavaRT ──────────────────────────────────────────────────────────────
-    const lavaRT      = PIXI.RenderTexture.create({width:CPW, height:CPH})
-    const lavaMaskSpr = new PIXI.Sprite(lavaRT)
-    lavaMaskSpr.renderable = false
-
-    if (this.renderer) {
-      const wh = new PIXI.Graphics().beginFill(0xffffff).drawRect(0,0,CPW,CPH).endFill()
-      this.renderer.render(wh, {renderTexture:maskRT, clear:true})
-      // darkMaskRT стартует БЕЛЫМ — darkBg виден везде (тёмный ободок)
-      // скратч рисует ЧЁРНЫЙ → darkBg скрывается → виден bgLight в центре
-      this.renderer.render(wh, {renderTexture:darkMaskRT, clear:true})
-      wh.destroy()
-
-      const bl = new PIXI.Graphics().beginFill(0x000000).drawRect(0,0,CPW,CPH).endFill()
-      this.renderer.render(bl, {renderTexture:lavaRT, clear:true})
-      bl.destroy()
-    }
-
-    // Тёмный фон чанка — показывается когда тайлы стёрты
-    const darkBg = new PIXI.Graphics()
-    darkBg.beginFill(0x4E312B).drawRect(0, 0, CPW, CPH).endFill()
-    darkBg.mask = darkMaskSpr
-
-    // Контент чанка (текстура земли / тайлы)
     const content = new PIXI.Container()
+
     if (TileWorld.groundTex) {
       const spr = new PIXI.TilingSprite(TileWorld.groundTex, CPW, CPH)
       spr.tileScale.set(TILE/TileWorld.groundTex.width, TILE/TileWorld.groundTex.height)
@@ -598,12 +575,39 @@ export class TileWorld {
       fb.beginFill(0x5a2d14).drawRect(0,0,CPW,CPH).endFill()
       content.addChild(fb)
     }
+
     if (row===0 && TileWorld.grassTex) {
       const spr = new PIXI.TilingSprite(TileWorld.grassTex, CPW, TILE)
       spr.tileScale.set(TILE/TileWorld.grassTex.width, TILE/TileWorld.grassTex.height)
       content.addChild(spr)
     }
-    content.mask = maskSpr
+
+    const maskRT  = PIXI.RenderTexture.create({width:CPW, height:CPH})
+    const maskSpr = new PIXI.Sprite(maskRT)
+    maskSpr.renderable = false
+
+    const darkMaskRT  = PIXI.RenderTexture.create({width:CPW, height:CPH})
+    const darkMaskSpr = new PIXI.Sprite(darkMaskRT)
+    darkMaskSpr.renderable = false
+
+    const lavaRT      = PIXI.RenderTexture.create({width:CPW, height:CPH})
+    const lavaMaskSpr = new PIXI.Sprite(lavaRT)
+    lavaMaskSpr.renderable = false
+
+    if (this.renderer) {
+      const wh = new PIXI.Graphics().beginFill(0xffffff).drawRect(0,0,CPW,CPH).endFill()
+      this.renderer.render(wh, {renderTexture:maskRT, clear:true})
+      this.renderer.render(wh, {renderTexture:darkMaskRT, clear:true})
+      wh.destroy()
+      const bl = new PIXI.Graphics().beginFill(0x000000).drawRect(0,0,CPW,CPH).endFill()
+      this.renderer.render(bl, {renderTexture:lavaRT, clear:true})
+      bl.destroy()
+    }
+
+    // Тёмный фон чанка (0x4E312B) — виден везде, скрывается в туннеле/пещере
+    const darkBg = new PIXI.Graphics()
+    darkBg.beginFill(0x4E312B).drawRect(0, 0, CPW, CPH).endFill()
+    darkBg.mask = darkMaskSpr
 
     const lavaContainer = new PIXI.Container()
     lavaContainer.mask  = lavaMaskSpr
@@ -612,25 +616,26 @@ export class TileWorld {
       this._applyCavePathToChunk(cave, col, row, maskRT, darkMaskRT, lavaRT, lavaContainer, offX, offY)
     }
 
-    // Порядок слоёв внутри чанка:
+    content.mask = maskSpr
+
     const container = new PIXI.Container()
     container.x = offX; container.y = offY
-    container.addChild(darkBg)         // 1. тёмный фон (самый нижний)
-    container.addChild(darkMaskSpr)    // 2. маска тёмного фона
-    container.addChild(lavaContainer)  // 3. лава (над тёмным фоном, под тайлами)
-    container.addChild(lavaMaskSpr)    // 4. маска лавы
-    container.addChild(content)        // 5. тайлы (самый верхний)
-    container.addChild(maskSpr)        // 6. маска тайлов
+    container.addChild(lavaContainer)
+    container.addChild(darkBg)
+    container.addChild(darkMaskSpr)
+    container.addChild(content)
+    container.addChild(maskSpr)
+    container.addChild(lavaMaskSpr)
 
     this.container.addChild(container)
-    this.chunks.set(`${col}_${row}`, {gfx:container, col, row, ...{maskRT, darkMaskRT, lavaRT}} as any)
+    this.chunks.set(key, {gfx:container, col, row, ...{maskRT, darkMaskRT, lavaRT}} as any)
   }
 
   private _applyCavePathToChunk(
     cave: CavePath,
     col: number, row: number,
     maskRT: PIXI.RenderTexture,
-    darkMaskRT: PIXI.RenderTexture,
+    darkMaskRT: PIXI.RenderTexture | null,
     lavaRT: PIXI.RenderTexture,
     lavaContainer: PIXI.Container,
     offX: number, offY: number
@@ -641,6 +646,7 @@ export class TileWorld {
     g.clear()
     let hasContent = false
 
+    // ── Рисуем настоящими капсулами (полигон по контуру) ────────────────────
     if (cave.points.length === 1) {
       const p  = cave.points[0]
       const lx = p.x - offX, ly = p.y - offY
@@ -650,46 +656,50 @@ export class TileWorld {
       }
     } else {
       for (let i = 0; i < cave.points.length - 1; i++) {
-        const a   = cave.points[i], b = cave.points[i + 1]
+        const a   = cave.points[i]
+        const b   = cave.points[i + 1]
         const lax = a.x - offX, lay = a.y - offY
         const lbx = b.x - offX, lby = b.y - offY
+
+        // Пропускаем если капсула полностью вне чанка
         const minX = Math.min(lax, lbx) - Math.max(a.r, b.r)
         const maxX = Math.max(lax, lbx) + Math.max(a.r, b.r)
         const minY = Math.min(lay, lby) - Math.max(a.r, b.r)
         const maxY = Math.max(lay, lby) + Math.max(a.r, b.r)
         if (maxX < 0 || minX > CPW || maxY < 0 || minY > CPH) continue
+
         hasContent = true
+        // Настоящая капсула — плавный контур без артефактов на стыках
         drawCapsule(g, lax, lay, a.r, lbx, lby, b.r, 0x000000)
       }
     }
+
     if (!hasContent) return
 
-    // Стираем тайлы
     this.renderer.render(g, { renderTexture: maskRT, clear: false })
 
-    // Скрываем darkBg в пещере (чёрный) → виден bgLight в центре
-    const gDark = new PIXI.Graphics()
-    if (cave.points.length === 1) {
-      const p = cave.points[0]
-      const r = Math.max(0, p.r - 10)
-      gDark.beginFill(0x000000).drawCircle(p.x - offX, p.y - offY, r).endFill()
-    } else {
-      for (let i = 0; i < cave.points.length - 1; i++) {
-        const a = cave.points[i], b = cave.points[i + 1]
-        const lax = a.x - offX, lay = a.y - offY
-        const lbx = b.x - offX, lby = b.y - offY
-        const minX = Math.min(lax, lbx) - Math.max(a.r, b.r)
-        const maxX = Math.max(lax, lbx) + Math.max(a.r, b.r)
-        const minY = Math.min(lay, lby) - Math.max(a.r, b.r)
-        const maxY = Math.max(lay, lby) + Math.max(a.r, b.r)
-        if (maxX < 0 || minX > CPW || maxY < 0 || minY > CPH) continue
-        drawCapsule(gDark, lax, lay, Math.max(0,a.r-10), lbx, lby, Math.max(0,b.r-10), 0x000000)
+    // Стираем тёмный фон пещеры (чёрный → darkBg скрывается → виден bgLight)
+    if (darkMaskRT) {
+      const gDark = new PIXI.Graphics()
+      if (cave.points.length === 1) {
+        const p = cave.points[0]
+        gDark.beginFill(0x000000).drawCircle(p.x - offX, p.y - offY, Math.max(0, p.r - 10)).endFill()
+      } else {
+        for (let i = 0; i < cave.points.length - 1; i++) {
+          const a = cave.points[i], b = cave.points[i + 1]
+          const lax = a.x - offX, lay = a.y - offY
+          const lbx = b.x - offX, lby = b.y - offY
+          const minX = Math.min(lax,lbx)-Math.max(a.r,b.r), maxX = Math.max(lax,lbx)+Math.max(a.r,b.r)
+          const minY = Math.min(lay,lby)-Math.max(a.r,b.r), maxY = Math.max(lay,lby)+Math.max(a.r,b.r)
+          if (maxX < 0 || minX > CPW || maxY < 0 || minY > CPH) continue
+          drawCapsule(gDark, lax, lay, Math.max(0,a.r-10), lbx, lby, Math.max(0,b.r-10), 0x000000)
+        }
       }
+      this.renderer.render(gDark, { renderTexture: darkMaskRT, clear: false })
+      gDark.destroy()
     }
-    this.renderer.render(gDark, { renderTexture: darkMaskRT, clear: false })
-    gDark.destroy()
 
-    // lavaRT — белый = лава может течь
+    // Белая маска для lavaRT — те же капсулы
     const gWhite = new PIXI.Graphics()
     if (cave.points.length === 1) {
       const p = cave.points[0]
@@ -711,7 +721,7 @@ export class TileWorld {
     gWhite.destroy()
 
     if (this.lavaSimulation) {
-      this.lavaSimulation.addLavaSource(cave.points, 0.5)
+      this.lavaSimulation.addLavaSource(cave.points, Math.random() * 0.6)
     }
   }
 
@@ -722,7 +732,6 @@ export class TileWorld {
   destroy() {
     for(const c of this.chunks.values()){
       c.gfx.destroy({children:true})
-      // ✅ FIX: destroy all three RenderTextures to prevent GPU memory leak → WebGL context lost
       ;(c as any).maskRT?.destroy(true)
       ;(c as any).darkMaskRT?.destroy(true)
       ;(c as any).lavaRT?.destroy(true)

@@ -1,0 +1,51 @@
+{
+  "_comment": "Конфиг бонусов Deep Rush. Все значения применяются к накопленной сумме (в единицах базовой ставки).",
+
+  "round": {
+    "_comment": "eventsMin/Max — количество значимых событий за раунд (не считая HOME/LAVA)",
+    "eventsMin": 12,
+    "eventsMax": 20,
+    "winChance": 0.65,
+    "multiplierCap": 50.0
+  },
+
+  "weights": {
+    "_comment": "Вероятности выпадения. Сумма = 1.0",
+    "COIN":    0.40,
+    "DIAMOND": 0.15,
+    "GOLD":    0.15,
+    "BOMB":    0.15,
+    "STONE":   0.15
+  },
+
+  "COIN": {
+    "_comment": "Монета: прибавляет фиксированное значение к накопленной сумме (в единицах ставки)",
+    "addMin": 0.5,
+    "addMax": 1.5
+  },
+
+  "DIAMOND": {
+    "_comment": "Бриллиант: умножает накопленную сумму на один из факторов",
+    "factors": [2.0, 3.0, 5.0]
+  },
+
+  "GOLD": {
+    "_comment": "Золото: накопленное += ratePerSec * секунды анимации. Пример: 3с × 3/с = +9",
+    "durationMsMin": 1000,
+    "durationMsMax": 5000,
+    "ratePerSec": 3.0
+  },
+
+  "STONE": {
+    "_comment": "Камень: накопленное *= (1 - penaltyPerSec * секунды). Пример: 5с × 5%/с = -25%",
+    "durationMsMin": 1000,
+    "durationMsMax": 5000,
+    "penaltyPerSec": 0.05
+  },
+
+  "BOMB": {
+    "_comment": "Бомба: делит накопленную сумму пополам",
+    "divisor": 2.0,
+    "multiplierFloor": 0.5
+  }
+}

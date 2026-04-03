@@ -4,7 +4,7 @@ import { useGameStore } from '../store/gameStore'
 import type { RoundEvent, EventType } from '../rgs/client'
 import { TileWorld, TILE } from './Tileworld'
 import { LavaSimulation } from './LavaSimulation'
-import { SpineAnimator, CHAR_ANIM, getSpineItemSize } from './SpineAnimator'
+import { SpineAnimator, CHAR_ANIM, ROCK_ANIM, GOLD_ANIM, BREAK_ACTION_DURATION, getSpineItemSize } from './SpineAnimator'
 import type { Spine } from 'pixi-spine'
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
@@ -40,6 +40,8 @@ class SpineCharacter {
   chunkParent: PIXI.Container | null = null
   private _spine: _Spine | null = null
   private _dirts: { g: PIXI.Graphics; vx: number; vy: number; life: number }[] = []
+  private _digging = false
+  private _tornadoState: 'none' | 'show' | 'idle' = 'none'
 
   constructor() {
     this.root = new PIXI.Container()
@@ -61,12 +63,45 @@ class SpineCharacter {
   /** Переключить режим — idle (поверхность) или running (туннель) */
   setIdleMode(idle: boolean) {
     if (this._spine) this._spine.y = idle ? CHAR_Y_IDLE : CHAR_Y_RUN
+    if (idle) {
+      // Возврат в начальное состояние — сбрасываем торнадо
+      this._digging = false
+      this._tornadoState = 'none'
+      SpineAnimator.setAnimation(this._spine, CHAR_ANIM.idle, true)
+    }
   }
 
   update(dt: number, _spd: number, digging: boolean) {
     if (this._spine) {
       this._spine.y = digging ? CHAR_Y_RUN : CHAR_Y_IDLE
-      SpineAnimator.setAnimation(this._spine, digging ? CHAR_ANIM.action : CHAR_ANIM.idle)
+
+      if (!digging) {
+        // До старта — character_idle, loop
+        if (this._digging) {
+          // Только что вернулись из копания — сброс
+          this._digging = false
+          this._tornadoState = 'none'
+        }
+        SpineAnimator.setAnimation(this._spine, CHAR_ANIM.idle, true)
+      } else {
+        if (!this._digging) {
+          // Первый кадр копания — запускаем tornado_show (одноразово)
+          this._digging = true
+          this._tornadoState = 'show'
+          SpineAnimator.setAnimation(this._spine, CHAR_ANIM.tornadoShow, false)
+        } else if (this._tornadoState === 'show') {
+          // Проверяем закончилась ли tornado_show
+          const track = (this._spine.state as any).tracks?.[0]
+          const animName = track?.animation?.name ?? ''
+          const finished = animName !== CHAR_ANIM.tornadoShow ||
+            (track && track.trackTime >= track.animation.duration)
+          if (finished) {
+            this._tornadoState = 'idle'
+            SpineAnimator.setAnimation(this._spine, CHAR_ANIM.tornadoIdle, true)
+          }
+        }
+        // tornadoState === 'idle' — ничего не меняем, уже крутится
+      }
     }
     // Частицы грязи при копании
     if (digging && Math.random() < 0.04) this._dirt()
@@ -109,6 +144,7 @@ interface SpawnedObj {
   terminal: boolean
   width:    number
   height:   number
+  rgsEvent: RoundEvent | null   // привязанное RGS-событие (null для случайных объектов)
 }
 
 // ─── ObjectSpawner ────────────────────────────────────────────────────────────
@@ -147,12 +183,15 @@ class ObjectSpawner {
     this.getPickupSize=getPickupSize; this.getHomeSize=getHomeSize; this.getLavaSize=getLavaSize
   }
 
+  private _lastPpm = 1
+
   setRgsEvents(events:RoundEvent[], ppm:number){
     this.rgsEvents = events
-    events.forEach((ev,i)=>{
-      if(ev.type==='HOME'||ev.type==='LAVA') return
+    this._lastPpm = ppm
+    events.forEach((ev)=>{
       const worldY = this.surfY + ev.depth*ppm
-      this._spawnAt(ev.type, worldY, false)
+      const isTerminal = ev.type==='HOME' || ev.type==='LAVA'
+      this._spawnAt(ev.type, worldY, isTerminal, ev)
     })
   }
 
@@ -161,25 +200,24 @@ class ObjectSpawner {
     let y = this.spawnedUpToY || charY
     while(y < genUpTo){
       y += SPAWN_INTERVAL
-      const r = this._rng(y)
-      if(r < 0.65){
-        const type = this._pickType(y, this._rng(y^0xABC))
-        this._spawnAt(type, y, false)
-        // Иногда спавним дополнительный объект сбоку
-        if(this._rng(y^0xBEEF) < 0.35) {
-          this._spawnAt(this._pickType(y+1, this._rng(y^0xF00D)), y + SPAWN_INTERVAL * 0.5, false)
+      // Не спавним случайные объекты вблизи RGS-событий
+      const nearRgs = this.rgsEvents.some(ev => {
+        const evY = this.surfY + ev.depth * this._lastPpm
+        return Math.abs(evY - y) < SPAWN_INTERVAL * 2
+      })
+      if(!nearRgs){
+        const r = this._rng(y)
+        if(r < 0.65){
+          this._spawnAt('COIN', y, false)
+          if(this._rng(y^0xBEEF) < 0.35) {
+            this._spawnAt('COIN', y + SPAWN_INTERVAL * 0.5, false)
+          }
         }
       }
     }
     this.spawnedUpToY = Math.max(this.spawnedUpToY, y)
 
-    if(!this.nextTerminalY) this.nextTerminalY = charY + TERMINAL_EVERY
-    if(charY + aheadPx >= this.nextTerminalY){
-      const won = this._rng(this.nextTerminalY^0xDEAD) < 0.6
-      const type: EventType = won ? 'HOME' : 'LAVA'
-      this._spawnAt(type, this.nextTerminalY, true)
-      this.nextTerminalY += TERMINAL_EVERY
-    }
+    // Терминальные события (HOME/LAVA) берутся только из RGS — спавнер их не генерирует
 
     this.objects = this.objects.filter(o=>{
       if(o.collected) return false
@@ -193,7 +231,7 @@ class ObjectSpawner {
     })
   }
 
-  private _spawnAt(type:EventType, worldY:number, terminal:boolean){
+  private _spawnAt(type:EventType, worldY:number, terminal:boolean, rgsEvent:RoundEvent|null=null){
     const xOff = (this._rng(worldY^0x1234) - 0.5) * TILE * 40
     const worldX = Math.round(xOff/TILE)*TILE
 
@@ -217,7 +255,7 @@ class ObjectSpawner {
         gfx.addChild(spineInst)
         size = getSpineItemSize(type)
         this.layer.addChild(gfx)
-        this.objects.push({type,gfx,spine:spineInst,worldX,worldY,collected:false,terminal,width:size.w,height:size.h})
+        this.objects.push({type,gfx,spine:spineInst,worldX,worldY,collected:false,terminal,width:size.w,height:size.h,rgsEvent})
         return
       }
       this.drawPickup(gfx, type)
@@ -226,18 +264,13 @@ class ObjectSpawner {
       size = { w: pickupSize.w * 0.55, h: pickupSize.h * 0.55 }
     }
     this.layer.addChild(gfx)
-    this.objects.push({type,gfx,spine:null,worldX,worldY,collected:false,terminal,width:size.w,height:size.h})
+    this.objects.push({type,gfx,spine:null,worldX,worldY,collected:false,terminal,width:size.w,height:size.h,rgsEvent})
   }
 
-  private _pickType(y:number, r:number): EventType {
-    const depth = y / (TILE*10)
-    const bombChance = Math.min(0.3, 0.05 + depth*0.01)
-    const stoneChance = Math.min(0.2, 0.03 + depth*0.008)
-    if(r < 0.35)              return 'COIN'
-    if(r < 0.35+bombChance)   return 'BOMB'
-    if(r < 0.55+stoneChance)  return 'STONE'
-    if(r < 0.70)              return 'GOLD'
-    return 'DIAMOND'
+  private _pickType(_y:number, _r:number): EventType {
+    // Только COIN — безопасный визуальный наполнитель.
+    // BOMB/STONE/GOLD/DIAMOND только из RGS (setRgsEvents) — иначе путаница типов.
+    return 'COIN'
   }
 
   private _rng(y:number): number {
@@ -310,7 +343,6 @@ export class GameRenderer {
   private multiplier=1; private depth=0; private distance=0
   private particles:Particle[]=[]
   private ppm=TILE*2
-  private rgsQueue:RoundEvent[]=[]
 
   private _waypoints:number[]=[]
   private _waypointIdx=0
@@ -335,6 +367,8 @@ export class GameRenderer {
   // Активный объект во время брейка (показываем action-анимацию)
   private _breakSpine: import('pixi-spine').Spine | null = null;
   private _breakGfx:   PIXI.Graphics | null = null;
+  // Стадия брейка: 0=idle(не начат), 1=state1, 2=state2, 3=action
+  private _breakStage = 0;
 
   // Кэш текстур
   private _textures: Map<string, PIXI.Texture> = new Map()
@@ -482,7 +516,6 @@ export class GameRenderer {
     this.running=false;this.idleActive=false;this._ended=false
     this.multiplier=1;this.depth=0;this.distance=0
     this.particles=[]
-    this.rgsQueue=[...events]
     this.stoneBreakActive = false;
     this.stoneBreakRemainingTime = 0;
     this.stoneBreakTotalDuration = 0;
@@ -491,6 +524,7 @@ export class GameRenderer {
     this.goldBreakRemainingTime = 0;
     this.goldBreakTotalDuration = 0;
     this.goldBreakStartMultiplier = 0;
+    this._breakStage = 0;
     this._destroyBreakObj();
 
     if(this.tileWorld){this.tileWorld.destroy();this.tileWorld=null}
@@ -689,14 +723,31 @@ export class GameRenderer {
     if (this.stoneBreakActive) {
       this.stoneBreakRemainingTime -= dt
       // Визуально плавно снижаем множитель до финального значения из RGS
-      const progress = 1 - Math.max(0, this.stoneBreakRemainingTime / this.stoneBreakTotalDuration)
-      const targetMult = this.multiplier  // уже установлен из RGS в _onCollect
+      const progress = this.stoneBreakTotalDuration > 0 ? 1 - Math.max(0, this.stoneBreakRemainingTime / this.stoneBreakTotalDuration) : 1
+      const targetMult = isNaN(this.multiplier) ? this.stoneBreakStartMultiplier : this.multiplier
       const displayMult = this.stoneBreakStartMultiplier + (targetMult - this.stoneBreakStartMultiplier) * progress
-      store.updateStats({ multiplier: Math.round(displayMult * 100) / 100 })
+      const safeMult = isNaN(displayMult) ? this.stoneBreakStartMultiplier : displayMult
+      store.updateStats({ multiplier: Math.round(safeMult * 100) / 100 })
+
+      // Переключение стадий анимации:
+      // T = stoneBreakTotalDuration, action фиксирован = BREAK_ACTION_DURATION
+      // state1: от T до (T+action)/2, state2: до action, action: последние 1 сек
+      if (this._breakSpine) {
+        const elapsed = this.stoneBreakTotalDuration - this.stoneBreakRemainingTime
+        const stageTime = (this.stoneBreakTotalDuration - BREAK_ACTION_DURATION) / 2
+        if (this.stoneBreakRemainingTime <= BREAK_ACTION_DURATION && this._breakStage < 3) {
+          this._breakStage = 3
+          SpineAnimator.setAnimation(this._breakSpine, ROCK_ANIM.action, false)
+        } else if (elapsed >= stageTime && this._breakStage < 2) {
+          this._breakStage = 2
+          SpineAnimator.setAnimation(this._breakSpine, ROCK_ANIM.state2, true)
+        }
+      }
 
       if (this.stoneBreakRemainingTime <= 0) {
         this.stoneBreakActive = false
         store.updateStats({ multiplier: Math.round(this.multiplier * 100) / 100 })
+        this._breakStage = 0
         this._destroyBreakObj()
         canMove = true
       } else {
@@ -708,14 +759,31 @@ export class GameRenderer {
     if (this.goldBreakActive) {
       this.goldBreakRemainingTime -= dt
       const progress = Math.max(0, 1 - this.goldBreakRemainingTime / Math.max(this.goldBreakTotalDuration, 0.01))
-      const displayMult = this.goldBreakStartMultiplier + (this.multiplier - this.goldBreakStartMultiplier) * progress
+      const goldTarget = isNaN(this.multiplier) ? this.goldBreakStartMultiplier : this.multiplier
+      const displayMult = this.goldBreakStartMultiplier + (goldTarget - this.goldBreakStartMultiplier) * progress
       if (Math.random() < 0.3) {
         this._burst(this.charX, this.charY, C.gold, 3)
       }
-      store.updateStats({ multiplier: Math.round(displayMult * 100) / 100 })
+      const safeGoldMult = isNaN(displayMult) ? this.goldBreakStartMultiplier : displayMult
+      store.updateStats({ multiplier: Math.round(safeGoldMult * 100) / 100 })
+
+      // Переключение стадий анимации золота
+      if (this._breakSpine) {
+        const elapsed = this.goldBreakTotalDuration - this.goldBreakRemainingTime
+        const stageTime = (this.goldBreakTotalDuration - BREAK_ACTION_DURATION) / 2
+        if (this.goldBreakRemainingTime <= BREAK_ACTION_DURATION && this._breakStage < 3) {
+          this._breakStage = 3
+          SpineAnimator.setAnimation(this._breakSpine, GOLD_ANIM.action, false)
+        } else if (elapsed >= stageTime && this._breakStage < 2) {
+          this._breakStage = 2
+          SpineAnimator.setAnimation(this._breakSpine, GOLD_ANIM.state3, true)
+        }
+      }
+
       if (this.goldBreakRemainingTime <= 0) {
         this.goldBreakActive = false
         store.updateStats({ multiplier: Math.round(this.multiplier * 100) / 100 })
+        this._breakStage = 0
         this._destroyBreakObj()
         canMove = true
       } else {
@@ -782,13 +850,21 @@ export class GameRenderer {
 
     this.miner.update(dt,spd,true)
 
-    store.updateStats({
-      depth:    Math.max(0,Math.round(this.depth*10)/10),
-      distance: Math.round(this.distance*10)/10,
-      multiplier:Math.round(this.multiplier*100)/100,
-    })
+    // Во время break-анимаций множитель уже обновляется плавно выше — не перезаписывать
+    if (this.stoneBreakActive || this.goldBreakActive) {
+      store.updateStats({
+        depth:    Math.max(0,Math.round(this.depth*10)/10),
+        distance: Math.round(this.distance*10)/10,
+      })
+    } else {
+      store.updateStats({
+        depth:    Math.max(0,Math.round(this.depth*10)/10),
+        distance: Math.round(this.distance*10)/10,
+        multiplier:Math.round(this.multiplier*100)/100,
+      })
+    }
 
-    if(this.spawner && !this._ended && !this.stoneBreakActive){
+    if(this.spawner && !this._ended && !this.stoneBreakActive && !this.goldBreakActive){
       this.spawner.checkCollisions(this.charX,this.charY,(obj)=>{
         this._onCollect(obj)
       })
@@ -809,24 +885,77 @@ export class GameRenderer {
 
   // ─── Сбор объекта ─────────────────────────────────────────────────────────
 
-  private _onCollect(obj:SpawnedObj){
-    const type=obj.type
+  // ─── Лог предметов ───────────────────────────────────────────────────────────
+  private _logCollect(type: string, before: number, after: number, durationMs?: number): void {
+    const b = before.toFixed(2)
+    const a = after.toFixed(2)
+    const diff = after - before
+    const sign = diff >= 0 ? '+' : ''
+    const diffStr = `${sign}${diff.toFixed(2)}`
 
+    let detail = ''
+    if (type === 'STONE' && durationMs != null) {
+      const secs = (durationMs / 1000).toFixed(1)
+      // Показываем реальный % потери от начального значения
+      const lostPct = before > 0 ? ((before - after) / before * 100).toFixed(1) : '0.0'
+      detail = ` | ${secs}s → -${lostPct}% от суммы`
+    } else if (type === 'GOLD' && durationMs != null) {
+      const secs = (durationMs / 1000).toFixed(1)
+      // Показываем реальный прирост в единицах ставки
+      detail = ` | ${secs}s → ${diffStr} к сумме`
+    } else if (type === 'DIAMOND') {
+      const factor = before > 0 ? (after / before).toFixed(2) : '?'
+      detail = ` | ×${factor}`
+    } else if (type === 'BOMB') {
+      detail = ` | ÷2`
+    } else if (type === 'COIN') {
+      detail = ` | ${diffStr} к сумме`
+    } else if (type === 'LAVA') {
+      detail = ` | поражение — всё сгорает`
+    } else if (type === 'HOME') {
+      detail = ` | победа — выплата ×${a}`
+    }
+
+    const colors: Record<string, string> = {
+      COIN:'#FFD700', GOLD:'#FFB830', DIAMOND:'#4ECDC4',
+      BOMB:'#FF6B35', STONE:'#AAAAAA', HOME:'#7CFC00', LAVA:'#FF4500'
+    }
+    const col = colors[type] ?? '#fff'
+    console.log(
+      `%c[${type.padEnd(7)}]%c  до: ×${b}  →  после: ×${a}  (${diffStr})${detail}`,
+      `color: ${col}; font-weight: bold`,
+      'color: inherit'
+    )
+  }
+
+  private _onCollect(obj:SpawnedObj){
+    const type = obj.type
+    const ev   = obj.rgsEvent  // RoundEvent привязан при спавне, null для случайных объектов
+
+    // Случайные объекты (ev=null) — только визуальный наполнитель, множитель не меняют
+    if (!ev) {
+      this._burst(obj.worldX, obj.worldY, C.particleColors[type] ?? C.coin, 6)
+      this._animCollect(obj.gfx, obj.spine)
+      return
+    }
+
+    // RGS-объект: before/after берём прямо из события.
+    // this.multiplier синхронизируем с ev.multiplierBefore — иначе при подборе
+    // не по порядку this.multiplier расходится с цепочкой снапшотов.
+    this.multiplier = ev.multiplierBefore
+    const before = ev.multiplierBefore
+    const after  = ev.multiplierSnap
     if (type === 'STONE') {
-      this.stoneBreakActive = true
-      this.stoneBreakStartMultiplier = this.multiplier
-      // Используем durationMs из RGS если есть, иначе случайное
-      const rgsIdx = this.rgsQueue.findIndex(e => e.type === 'STONE')
-      let duration = 2 + Math.random() * 3
-      if (rgsIdx >= 0) {
-        const ev = this.rgsQueue.splice(rgsIdx, 1)[0]
-        if (ev.durationMs) duration = ev.durationMs / 1000
-        this.multiplier = ev.multiplierSnap  // применяем итоговый множитель из RGS
-      }
-      this.stoneBreakTotalDuration = duration
-      this.stoneBreakRemainingTime = duration
+      const duration = ev?.durationMs ? ev.durationMs / 1000 : 3 + Math.random() * 2
+      this.stoneBreakActive       = true
+      this.stoneBreakStartMultiplier = before
+      this.multiplier             = after
+      this.stoneBreakTotalDuration   = duration
+      this.stoneBreakRemainingTime   = duration
+      this._breakStage = 1
+      this._logCollect('STONE', before, after, duration * 1000)
       if (obj.spine) {
-        SpineAnimator.setAnimationSyncedTo(obj.spine, 'rock/rock_action', duration)
+        SpineAnimator.setAnimation(obj.spine, ROCK_ANIM.state1, true)
         this._breakSpine = obj.spine
         this._breakGfx   = obj.gfx
       } else {
@@ -836,23 +965,18 @@ export class GameRenderer {
       return
     }
 
-    // Золотой самородок — останавливаемся и получаем ×3/сек пока бурим
     if (type === 'GOLD') {
-      this.goldBreakActive = true
-      this.goldBreakStartMultiplier = this.multiplier  // сохраняем ДО перезаписи из RGS
-      // Используем durationMs из RGS если есть, иначе случайное
-      const rgsIdx = this.rgsQueue.findIndex(e => e.type === 'GOLD')
-      let duration = 1.5 + Math.random() * 2.5
-      if (rgsIdx >= 0) {
-        const ev = this.rgsQueue.splice(rgsIdx, 1)[0]
-        if (ev.durationMs) duration = ev.durationMs / 1000
-        this.multiplier = ev.multiplierSnap  // итоговый множитель уже посчитан RGS
-      }
-      this.goldBreakRemainingTime = duration
-      this.goldBreakTotalDuration = duration
+      const duration = ev?.durationMs ? ev.durationMs / 1000 : 3 + Math.random() * 2
+      this.goldBreakActive           = true
+      this.goldBreakStartMultiplier  = before
+      this.multiplier                = after
+      this.goldBreakRemainingTime    = duration
+      this.goldBreakTotalDuration    = duration
+      this._breakStage = 1
+      this._logCollect('GOLD', before, after, duration * 1000)
       this._burst(obj.worldX, obj.worldY, C.gold, 12)
       if (obj.spine) {
-        SpineAnimator.setAnimationSyncedTo(obj.spine, 'gold/gold_action', duration)
+        SpineAnimator.setAnimation(obj.spine, GOLD_ANIM.state2, true)
         this._breakSpine = obj.spine
         this._breakGfx   = obj.gfx
       } else {
@@ -862,13 +986,8 @@ export class GameRenderer {
       return
     }
 
-    const rgsMatch=this.rgsQueue.findIndex(e=>e.type===type)
-    if(rgsMatch>=0){
-      const ev=this.rgsQueue.splice(rgsMatch,1)[0]
-      if(type!=='HOME'&&type!=='LAVA') this.multiplier=ev.multiplierSnap
-    }else{
-      this.multiplier=this._applyEffect(type,this.multiplier)
-    }
+    if (type !== 'HOME' && type !== 'LAVA') this.multiplier = after
+    this._logCollect(type, before, after)
     useGameStore.getState().updateStats({multiplier:Math.round(this.multiplier*100)/100})
 
     this._burst(obj.worldX,obj.worldY,C.particleColors[type],type==='HOME'?24:12)
@@ -896,12 +1015,13 @@ export class GameRenderer {
   }
 
   private _applyEffect(type:EventType, m:number):number{
+    // Фолбэк когда нет совпадения в rgsQueue (не должно происходить в нормальной игре)
     switch(type){
-      case 'COIN':    return m + 0.1+Math.random()*0.4
-      case 'GOLD':    return m  // обрабатывается через goldBreak
-      case 'DIAMOND': return m * (1.5+Math.random()*1.5)
-      case 'BOMB':    return Math.max(0.1, m/2)
-      case 'STONE':   return m
+      case 'COIN':    return m + 0.5 + Math.random()          // +0.5..+1.5 к сумме
+      case 'DIAMOND': return m * [2, 3, 5][Math.floor(Math.random()*3)]  // *2, *3 или *5
+      case 'BOMB':    return Math.max(0.5, m / 2)             // делим пополам, мин 0.5
+      case 'GOLD':    return m                                 // управляется goldBreak
+      case 'STONE':   return m                                 // управляется stoneBreak
       default:        return m
     }
   }
@@ -939,6 +1059,7 @@ export class GameRenderer {
     this.objectsLayer.x=-this.camX; this.objectsLayer.y=-this.camY
     this.minerLayer.x=-this.camX;   this.minerLayer.y=-this.camY
     this.stoneBreakActive = false
+    this.goldBreakActive = false
     this._destroyBreakObj()
   }
 

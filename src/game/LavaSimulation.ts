@@ -5,8 +5,8 @@ export const CELL_PX = 40
 const SIM_CELL     = CELL_PX / 2   // 20px
 const MAX_AMOUNT   = 1.0
 const MIN_FLOW     = 0.04
-const FLOW_SPEED   = 0.6
-const GRAVITY_BIAS = 0.95
+const FLOW_SPEED   = 0.45
+const GRAVITY_BIAS = 0.85
 
 const METABALL_FRAG = `
 precision mediump float;
@@ -68,10 +68,9 @@ export class LavaSimulation {
     this._threshFilter       = new PIXI.Filter(undefined, METABALL_FRAG, { uTime: 0.0 })
     this._inner.filters      = [this._blurFilter, this._threshFilter]
 
-    // _caveMaskGfx рисует форму всех пещер — используется как маска чтобы лава не вылезала за их пределы
-    this._caveMaskGfx = new PIXI.Graphics()
-    this.container.addChild(this._caveMaskGfx)
-    this.container.mask = this._caveMaskGfx
+    // _caveMaskGfx больше не нужен как маска — threshold шейдер сам обрезает
+    // Лава ограничена через cells которые регистрируются только внутри пещер
+    this._caveMaskGfx = new PIXI.Graphics()  // оставляем для совместимости методов
     this.container.addChild(this._inner)
 
     // Вариант A: TilingSprite поверх metaballs через MULTIPLY + маска из blobGfx
@@ -217,9 +216,6 @@ export class LavaSimulation {
       this._registerCircleCells(last.x, last.y, last.r, caveKeys)
     }
 
-    // Заполняем пробелы между ячейками для связности сетки
-    this._fillGaps(caveKeys)
-
     if (caveKeys.size === 0) return
 
     // Группируем по строкам
@@ -231,13 +227,12 @@ export class LavaSimulation {
     }
 
     // Собираем все ячейки отсортированные снизу вверх
-    // Заполняем нижние fillFraction от общего количества лавой
+    // Сортируем по gy возрастанию (верхние первые) — лава стечёт вниз сама через физику
     const allCells: [number, number][] = []
     for (const [gy, gxList] of byRow) {
       for (const gx of gxList) allCells.push([gx, gy])
     }
-    // Сортируем по gy убыванию (нижние первые)
-    allCells.sort((a, b) => b[1] - a[1])
+    allCells.sort((a, b) => a[1] - b[1])
 
     const fillCount = Math.max(1, Math.ceil(allCells.length * fillFraction))
     for (let i = 0; i < fillCount; i++) {
@@ -248,9 +243,15 @@ export class LavaSimulation {
       this.dirty.add(key)
     }
 
-    // Достаточно шагов чтобы лава успела стечь вниз и заполнить дно пещеры
-    this._warmUp(200)
-    // НЕ удаляем пустые ячейки пещеры — они нужны для течения лавы вниз
+    this._warmUp(60)
+
+    // Удаляем пустые ячейки этой пещеры — они могут создать мосты между пещерами
+    for (const key of caveKeys) {
+      const cell = this.cells.get(key)
+      if (cell && cell.amount < 0.01) {
+        this.cells.delete(key)
+      }
+    }
   }
 
   // ── Регистрация ячеек по кругу ────────────────────────────────────────────
@@ -512,9 +513,12 @@ export class LavaSimulation {
   }
 
   destroy() {
-    this.container.mask = null
     this._blurFilter.destroy()
     this._threshFilter.destroy()
+    this._texMaskGfx.destroy()
+    this._caveMaskGfx.destroy()
+    this.blobGfx.destroy()
+    if (this._tilingSprite) { this._tilingSprite.destroy(); this._tilingSprite = null }
     this.container.destroy({ children: true })
     this.glowGfx.destroy()
     this.cells.clear()

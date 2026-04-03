@@ -64,11 +64,12 @@ export interface RgsConfig {
 export type EventType = 'COIN' | 'GOLD' | 'DIAMOND' | 'BOMB' | 'STONE' | 'LAVA' | 'HOME'
 
 export interface RoundEvent {
-  type:           EventType
-  depth:          number   // metres from surface
-  distance:       number   // path distance metres
-  multiplierSnap: number   // multiplier value AFTER this event
-  durationMs?:    number   // GOLD / STONE: time to destroy
+  type:             EventType
+  depth:            number   // metres from surface
+  distance:         number   // path distance metres
+  multiplierBefore: number   // multiplier BEFORE this event — вычисляется в gameStore.setEvents, RGS не присылает
+  multiplierSnap:   number   // multiplier AFTER this event — приходит от RGS
+  durationMs?:      number   // GOLD / STONE: time to destroy
 }
 
 export interface RgsRound {
