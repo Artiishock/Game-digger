@@ -4,7 +4,7 @@ import { useGameStore } from '../store/gameStore'
 import type { RoundEvent, EventType } from '../rgs/client'
 import { TileWorld, TILE } from './Tileworld'
 import { LavaSimulation } from './LavaSimulation'
-import { SpineAnimator, CHAR_ANIM, getSpineItemSize } from './SpineAnimator'
+import { SpineAnimator, CHAR_ANIM, ROCK_ANIM, GOLD_ANIM, BREAK_ACTION_DURATION, getSpineItemSize } from './SpineAnimator'
 import type { Spine } from 'pixi-spine'
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
@@ -40,6 +40,8 @@ class SpineCharacter {
   chunkParent: PIXI.Container | null = null
   private _spine: _Spine | null = null
   private _dirts: { g: PIXI.Graphics; vx: number; vy: number; life: number }[] = []
+  private _digging = false
+  private _tornadoState: 'none' | 'show' | 'idle' = 'none'
 
   constructor() {
     this.root = new PIXI.Container()
@@ -61,12 +63,45 @@ class SpineCharacter {
   /** Переключить режим — idle (поверхность) или running (туннель) */
   setIdleMode(idle: boolean) {
     if (this._spine) this._spine.y = idle ? CHAR_Y_IDLE : CHAR_Y_RUN
+    if (idle) {
+      // Возврат в начальное состояние — сбрасываем торнадо
+      this._digging = false
+      this._tornadoState = 'none'
+      SpineAnimator.setAnimation(this._spine, CHAR_ANIM.idle, true)
+    }
   }
 
   update(dt: number, _spd: number, digging: boolean) {
     if (this._spine) {
       this._spine.y = digging ? CHAR_Y_RUN : CHAR_Y_IDLE
-      SpineAnimator.setAnimation(this._spine, digging ? CHAR_ANIM.action : CHAR_ANIM.idle)
+
+      if (!digging) {
+        // До старта — character_idle, loop
+        if (this._digging) {
+          // Только что вернулись из копания — сброс
+          this._digging = false
+          this._tornadoState = 'none'
+        }
+        SpineAnimator.setAnimation(this._spine, CHAR_ANIM.idle, true)
+      } else {
+        if (!this._digging) {
+          // Первый кадр копания — запускаем tornado_show (одноразово)
+          this._digging = true
+          this._tornadoState = 'show'
+          SpineAnimator.setAnimation(this._spine, CHAR_ANIM.tornadoShow, false)
+        } else if (this._tornadoState === 'show') {
+          // Проверяем закончилась ли tornado_show
+          const track = (this._spine.state as any).tracks?.[0]
+          const animName = track?.animation?.name ?? ''
+          const finished = animName !== CHAR_ANIM.tornadoShow ||
+            (track && track.trackTime >= track.animation.duration)
+          if (finished) {
+            this._tornadoState = 'idle'
+            SpineAnimator.setAnimation(this._spine, CHAR_ANIM.tornadoIdle, true)
+          }
+        }
+        // tornadoState === 'idle' — ничего не меняем, уже крутится
+      }
     }
     // Частицы грязи при копании
     if (digging && Math.random() < 0.04) this._dirt()
@@ -335,6 +370,8 @@ export class GameRenderer {
   // Активный объект во время брейка (показываем action-анимацию)
   private _breakSpine: import('pixi-spine').Spine | null = null;
   private _breakGfx:   PIXI.Graphics | null = null;
+  // Стадия брейка: 0=idle(не начат), 1=state1, 2=state2, 3=action
+  private _breakStage = 0;
 
   // Кэш текстур
   private _textures: Map<string, PIXI.Texture> = new Map()
@@ -491,6 +528,7 @@ export class GameRenderer {
     this.goldBreakRemainingTime = 0;
     this.goldBreakTotalDuration = 0;
     this.goldBreakStartMultiplier = 0;
+    this._breakStage = 0;
     this._destroyBreakObj();
 
     if(this.tileWorld){this.tileWorld.destroy();this.tileWorld=null}
@@ -694,9 +732,25 @@ export class GameRenderer {
       const displayMult = this.stoneBreakStartMultiplier + (targetMult - this.stoneBreakStartMultiplier) * progress
       store.updateStats({ multiplier: Math.round(displayMult * 100) / 100 })
 
+      // Переключение стадий анимации:
+      // T = stoneBreakTotalDuration, action фиксирован = BREAK_ACTION_DURATION
+      // state1: от T до (T+action)/2, state2: до action, action: последние 1 сек
+      if (this._breakSpine) {
+        const elapsed = this.stoneBreakTotalDuration - this.stoneBreakRemainingTime
+        const stageTime = (this.stoneBreakTotalDuration - BREAK_ACTION_DURATION) / 2
+        if (this.stoneBreakRemainingTime <= BREAK_ACTION_DURATION && this._breakStage < 3) {
+          this._breakStage = 3
+          SpineAnimator.setAnimation(this._breakSpine, ROCK_ANIM.action, false)
+        } else if (elapsed >= stageTime && this._breakStage < 2) {
+          this._breakStage = 2
+          SpineAnimator.setAnimation(this._breakSpine, ROCK_ANIM.state2, true)
+        }
+      }
+
       if (this.stoneBreakRemainingTime <= 0) {
         this.stoneBreakActive = false
         store.updateStats({ multiplier: Math.round(this.multiplier * 100) / 100 })
+        this._breakStage = 0
         this._destroyBreakObj()
         canMove = true
       } else {
@@ -713,9 +767,24 @@ export class GameRenderer {
         this._burst(this.charX, this.charY, C.gold, 3)
       }
       store.updateStats({ multiplier: Math.round(displayMult * 100) / 100 })
+
+      // Переключение стадий анимации золота
+      if (this._breakSpine) {
+        const elapsed = this.goldBreakTotalDuration - this.goldBreakRemainingTime
+        const stageTime = (this.goldBreakTotalDuration - BREAK_ACTION_DURATION) / 2
+        if (this.goldBreakRemainingTime <= BREAK_ACTION_DURATION && this._breakStage < 3) {
+          this._breakStage = 3
+          SpineAnimator.setAnimation(this._breakSpine, GOLD_ANIM.action, false)
+        } else if (elapsed >= stageTime && this._breakStage < 2) {
+          this._breakStage = 2
+          SpineAnimator.setAnimation(this._breakSpine, GOLD_ANIM.state3, true)
+        }
+      }
+
       if (this.goldBreakRemainingTime <= 0) {
         this.goldBreakActive = false
         store.updateStats({ multiplier: Math.round(this.multiplier * 100) / 100 })
+        this._breakStage = 0
         this._destroyBreakObj()
         canMove = true
       } else {
@@ -815,18 +884,19 @@ export class GameRenderer {
     if (type === 'STONE') {
       this.stoneBreakActive = true
       this.stoneBreakStartMultiplier = this.multiplier
-      // Используем durationMs из RGS если есть, иначе случайное
       const rgsIdx = this.rgsQueue.findIndex(e => e.type === 'STONE')
-      let duration = 2 + Math.random() * 3
+      let duration = 3 + Math.random() * 2  // 3–5 сек
       if (rgsIdx >= 0) {
         const ev = this.rgsQueue.splice(rgsIdx, 1)[0]
         if (ev.durationMs) duration = ev.durationMs / 1000
-        this.multiplier = ev.multiplierSnap  // применяем итоговый множитель из RGS
+        this.multiplier = ev.multiplierSnap
       }
       this.stoneBreakTotalDuration = duration
       this.stoneBreakRemainingTime = duration
+      this._breakStage = 1
       if (obj.spine) {
-        SpineAnimator.setAnimationSyncedTo(obj.spine, 'rock/rock_action', duration)
+        // Стартуем с state1 (первые трещины), loop: true
+        SpineAnimator.setAnimation(obj.spine, ROCK_ANIM.state1, true)
         this._breakSpine = obj.spine
         this._breakGfx   = obj.gfx
       } else {
@@ -839,20 +909,21 @@ export class GameRenderer {
     // Золотой самородок — останавливаемся и получаем ×3/сек пока бурим
     if (type === 'GOLD') {
       this.goldBreakActive = true
-      this.goldBreakStartMultiplier = this.multiplier  // сохраняем ДО перезаписи из RGS
-      // Используем durationMs из RGS если есть, иначе случайное
+      this.goldBreakStartMultiplier = this.multiplier
       const rgsIdx = this.rgsQueue.findIndex(e => e.type === 'GOLD')
-      let duration = 1.5 + Math.random() * 2.5
+      let duration = 3 + Math.random() * 2  // 3–5 сек
       if (rgsIdx >= 0) {
         const ev = this.rgsQueue.splice(rgsIdx, 1)[0]
         if (ev.durationMs) duration = ev.durationMs / 1000
-        this.multiplier = ev.multiplierSnap  // итоговый множитель уже посчитан RGS
+        this.multiplier = ev.multiplierSnap
       }
       this.goldBreakRemainingTime = duration
       this.goldBreakTotalDuration = duration
+      this._breakStage = 1
       this._burst(obj.worldX, obj.worldY, C.gold, 12)
       if (obj.spine) {
-        SpineAnimator.setAnimationSyncedTo(obj.spine, 'gold/gold_action', duration)
+        // Стартуем с state2 (первые трещины у золота), loop: true
+        SpineAnimator.setAnimation(obj.spine, GOLD_ANIM.state2, true)
         this._breakSpine = obj.spine
         this._breakGfx   = obj.gfx
       } else {
