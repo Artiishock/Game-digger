@@ -289,6 +289,10 @@ export class SpineAnimator {
         // Фазы "фронт"/"обратная": JSON управляет coin_front/coin_back, ребро скрыть
         if (slotL) slotL.attachment = null
         if (slotR) slotR.attachment = null
+        // Сбрасываем alpha слотов монеты: Spine-таймлайн может записывать color.a < 1
+        // что приводит к визуальной полупрозрачности монеты — форсируем 1.0
+        if (slotFront) slotFront.color.a = 1.0
+        if (slotBack)  slotBack.color.a  = 1.0
       }
 
     } catch (e) {

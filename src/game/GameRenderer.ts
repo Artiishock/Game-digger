@@ -6,6 +6,7 @@ import { TileWorld, TILE } from './Tileworld'
 import { LavaSimulation } from './LavaSimulation'
 import { SpineAnimator, CHAR_ANIM, ROCK_ANIM, GOLD_ANIM, BREAK_ACTION_DURATION, getSpineItemSize } from './SpineAnimator'
 import type { Spine } from 'pixi-spine'
+import { GameConfig } from './GameConfig'
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
 
@@ -23,9 +24,9 @@ const C = {
   } as Record<EventType,number>,
 }
 
-const CHAR_SPEED = 130
-const IDLE_SPEED = 70
-const COLL_R  = TILE * 0.5
+const CHAR_SPEED = GameConfig.movement.charSpeed
+const IDLE_SPEED = GameConfig.movement.idleSpeed
+const COLL_R  = TILE * GameConfig.collision.radiusTiles
 
 // ─── SpineCharacter ───────────────────────────────────────────────────────────
 // Заменяет прежний MinerCharacter. Интерфейс тот же: root, update(), destroy().
@@ -148,14 +149,11 @@ interface SpawnedObj {
 
 // ─── ObjectSpawner ────────────────────────────────────────────────────────────
 
-const SPAWN_INTERVAL  = TILE * 3
-const TERMINAL_EVERY  = TILE * 60
-
+const SPAWN_INTERVAL  = TILE * GameConfig.spawn.intervalTiles
 class ObjectSpawner {
   private layer:     PIXI.Container
   private objects:   SpawnedObj[] = []
   private spawnedUpToY = 0
-  private nextTerminalY = 0
   private seed:      number
   private drawPickup: (g:PIXI.Graphics, type:EventType) => void
   private drawHome:   (g:PIXI.Graphics, cx:number, cy:number) => void
@@ -184,10 +182,10 @@ class ObjectSpawner {
 
   setRgsEvents(events:RoundEvent[], ppm:number){
     this.rgsEvents = events
-    events.forEach((ev,i)=>{
-      if(ev.type==='HOME'||ev.type==='LAVA') return
-      const worldY = this.surfY + ev.depth*ppm
-      this._spawnAt(ev.type, worldY, false)
+    events.forEach((ev)=>{
+      const worldY  = this.surfY + ev.depth * ppm
+      const isTerminal = ev.type === 'HOME' || ev.type === 'LAVA'
+      this._spawnAt(ev.type, worldY, isTerminal)
     })
   }
 
@@ -197,24 +195,17 @@ class ObjectSpawner {
     while(y < genUpTo){
       y += SPAWN_INTERVAL
       const r = this._rng(y)
-      if(r < 0.65){
+      if(r < GameConfig.spawn.spawnChance){
         const type = this._pickType(y, this._rng(y^0xABC))
         this._spawnAt(type, y, false)
         // Иногда спавним дополнительный объект сбоку
-        if(this._rng(y^0xBEEF) < 0.35) {
+        if(this._rng(y^0xBEEF) < GameConfig.spawn.doubleChance) {
           this._spawnAt(this._pickType(y+1, this._rng(y^0xF00D)), y + SPAWN_INTERVAL * 0.5, false)
         }
       }
     }
     this.spawnedUpToY = Math.max(this.spawnedUpToY, y)
-
-    if(!this.nextTerminalY) this.nextTerminalY = charY + TERMINAL_EVERY
-    if(charY + aheadPx >= this.nextTerminalY){
-      const won = this._rng(this.nextTerminalY^0xDEAD) < 0.6
-      const type: EventType = won ? 'HOME' : 'LAVA'
-      this._spawnAt(type, this.nextTerminalY, true)
-      this.nextTerminalY += TERMINAL_EVERY
-    }
+    // Терминальные события (HOME/LAVA) берутся только из RGS — случайная генерация удалена
 
     this.objects = this.objects.filter(o=>{
       if(o.collected) return false
@@ -266,12 +257,13 @@ class ObjectSpawner {
 
   private _pickType(y:number, r:number): EventType {
     const depth = y / (TILE*10)
-    const bombChance = Math.min(0.3, 0.05 + depth*0.01)
-    const stoneChance = Math.min(0.2, 0.03 + depth*0.008)
-    if(r < 0.35)              return 'COIN'
-    if(r < 0.35+bombChance)   return 'BOMB'
-    if(r < 0.55+stoneChance)  return 'STONE'
-    if(r < 0.70)              return 'GOLD'
+    const { types } = GameConfig.spawn
+    const bombChance  = Math.min(types.bombMax,  types.bombBase  + depth * types.bombDepthScale)
+    const stoneChance = Math.min(types.stoneMax, types.stoneBase + depth * types.stoneDepthScale)
+    if(r < types.coinBase)                           return 'COIN'
+    if(r < types.coinBase + bombChance)              return 'BOMB'
+    if(r < types.coinBase + bombChance + stoneChance)return 'STONE'
+    if(r < types.goldThreshold)                      return 'GOLD'
     return 'DIAMOND'
   }
 
@@ -308,7 +300,6 @@ class ObjectSpawner {
     this.objects.forEach(o=>{ SpineAnimator.remove(o.spine); if(o.gfx.parent) o.gfx.parent.removeChild(o.gfx); o.gfx.destroy() })
     this.objects=[]
     this.spawnedUpToY=0
-    this.nextTerminalY=0
   }
 }
 
@@ -346,6 +337,7 @@ export class GameRenderer {
   private particles:Particle[]=[]
   private ppm=TILE*2
   private rgsQueue:RoundEvent[]=[]
+  private rgsEvents:RoundEvent[]=[]   // оригинальный список — нужен для вычисления дельты
 
   private _waypoints:number[]=[]
   private _waypointIdx=0
@@ -520,6 +512,7 @@ export class GameRenderer {
     this.multiplier=1;this.depth=0;this.distance=0
     this.particles=[]
     this.rgsQueue=[...events]
+    this.rgsEvents=events
     this.stoneBreakActive = false;
     this.stoneBreakRemainingTime = 0;
     this.stoneBreakTotalDuration = 0;
@@ -796,10 +789,10 @@ export class GameRenderer {
       // Плавно меняем скорость к целевому значению
       this._speedChangeTimer -= dt
       if (this._speedChangeTimer <= 0) {
-        this._speedTarget = 0.55 + Math.random() * 0.9   // 0.55x … 1.45x
-        this._speedChangeTimer = 1.2 + Math.random() * 2.5
+        this._speedTarget = GameConfig.movement.speedMultMin + Math.random() * (GameConfig.movement.speedMultMax - GameConfig.movement.speedMultMin)
+        this._speedChangeTimer = GameConfig.movement.speedChangeMin + Math.random() * (GameConfig.movement.speedChangeMax - GameConfig.movement.speedChangeMin)
       }
-      this._speedMult += (this._speedTarget - this._speedMult) * dt * 1.8
+      this._speedMult += (this._speedTarget - this._speedMult) * dt * GameConfig.movement.speedLerpFactor
 
       move = CHAR_SPEED * spd * this._speedMult * dt
       this.charY += move
@@ -863,10 +856,18 @@ export class GameRenderer {
       })
     }
 
-    if(!this._ended&&this.lavaSimulation&&this.lavaSimulation.touchesPoint(this.charX,this.charY)){
+    // Проверяем лаву только после минимального погружения (TILE*5 ≈ первые метры)
+    // чтобы исключить ложное срабатывание в самом начале раунда
+    const minDepthForLava = this.surfY + TILE * GameConfig.lava.minDepthTiles
+    if(!this._ended&&!this.stoneBreakActive&&!this.goldBreakActive&&this.charY>minDepthForLava&&this.lavaSimulation&&this.lavaSimulation.touchesPoint(this.charX,this.charY)){
       this._ended=true
       this.running=false
       this._burst(this.charX,this.charY,C.lava,20)
+      // Потребляем LAVA-ивент из rgsQueue — исход тот же (поражение),
+      // просто физическая лава догнала раньше чем SpawnedObj терминал
+      const lavaIdx = this.rgsQueue.findIndex(e => e.type === 'LAVA')
+      if (lavaIdx >= 0) this.rgsQueue.splice(lavaIdx, 1)
+      this._logTerminal('simulation', 'LAVA')
       setTimeout(()=>{
         gameEngine.onRoundComplete(0,false)
         this._returnToIdle()
@@ -878,19 +879,83 @@ export class GameRenderer {
 
   // ─── Сбор объекта ─────────────────────────────────────────────────────────
 
+  // ─── Лог сбора предмета ───────────────────────────────────────────────────
+
+  private _logCollect(type: EventType, before: number, after: number, durationSec?: number): void {
+    const tag    = type.padEnd(7)
+    const bStr   = `×${before.toFixed(2)}`
+    const aStr   = `×${after.toFixed(2)}`
+    const delta  = after - before
+    const dStr   = (delta >= 0 ? '+' : '') + delta.toFixed(2)
+    let effect: string
+    switch (type) {
+      case 'BOMB':    effect = `÷${(before / Math.max(after, 0.001)).toFixed(1)}`; break
+      case 'DIAMOND': effect = `×${(after / Math.max(before, 0.001)).toFixed(2)}`; break
+      case 'GOLD': {
+        const secs = durationSec ?? 0
+        const gain = after - before
+        effect = `${secs.toFixed(1)}s → +${gain.toFixed(2)} к мульт`
+        break
+      }
+      case 'STONE': {
+        const secs = durationSec ?? 0
+        const pct  = before > 0 ? ((before - after) / before * 100) : 0
+        const sign = pct >= 0 ? '-' : '+'
+        effect = `${secs.toFixed(1)}s → ${sign}${Math.abs(pct).toFixed(1)}% от мульт`
+        break
+      }
+      case 'COIN':    effect = `+${delta.toFixed(2)}`; break
+      case 'HOME':    effect = 'WIN ✓'; break
+      case 'LAVA':    effect = 'LOSE ✗'; break
+      default:        effect = dStr
+    }
+    console.log(`[${tag}]  до: ${bStr.padStart(6)}  →  после: ${aStr.padStart(6)}  (${dStr}) | ${effect}`)
+  }
+
+  private _logTerminal(source: 'object' | 'simulation', type: 'HOME' | 'LAVA'): void {
+    console.log(`--- КОНЕЦ РАУНДА [${type}] источник=${source} mult=×${this.multiplier.toFixed(2)} ---`)
+    if (this.rgsQueue.length > 0) {
+      console.warn(
+        `[WARN] В rgsQueue остались необработанные события (${this.rgsQueue.length}):`,
+        this.rgsQueue.map(e => `${e.type}(depth=${e.depth})`).join(', ')
+      )
+      const staleLava = this.rgsQueue.filter(e => e.type === 'LAVA')
+      const staleItems = this.rgsQueue.filter(e => e.type !== 'HOME' && e.type !== 'LAVA')
+      if (staleLava.length > 0) {
+        console.error(
+          `[STALE LAVA] Найдено ${staleLava.length} LAVA-ивент(ов) в очереди! depth=${staleLava.map(e=>e.depth).join(',')}`,
+          '— это "старая лава" которая не была обработана как объект'
+        )
+      }
+      if (staleItems.length > 0) {
+        console.warn(`[SKIP] Пропущены предметы: ${staleItems.map(e=>e.type).join(', ')}`)
+      }
+    }
+  }
+
   private _onCollect(obj:SpawnedObj){
     const type=obj.type
 
     if (type === 'STONE') {
       this.stoneBreakActive = true
       this.stoneBreakStartMultiplier = this.multiplier
+      const multBefore = this.multiplier
       const rgsIdx = this.rgsQueue.findIndex(e => e.type === 'STONE')
-      let duration = 3 + Math.random() * 2  // 3–5 сек
+      let duration = GameConfig.items.STONE.durationMin + Math.random() * (GameConfig.items.STONE.durationMax - GameConfig.items.STONE.durationMin)
       if (rgsIdx >= 0) {
         const ev = this.rgsQueue.splice(rgsIdx, 1)[0]
         if (ev.durationMs) duration = ev.durationMs / 1000
-        this.multiplier = ev.multiplierSnap
+        // Relative-эффект: ratio snap/prevSnap применяем к текущему multiplier
+        const evIdx    = this.rgsEvents.indexOf(ev)
+        const prevSnap = evIdx > 0 ? this.rgsEvents[evIdx - 1].multiplierSnap : 1.0
+        const ratio    = ev.multiplierSnap / Math.max(prevSnap, 0.001)
+        this.multiplier = Math.max(GameConfig.multiplier.floor, this.multiplier * ratio)
+      } else {
+        // Нет RGS-события — применяем локальный эффект из GameConfig
+        const secs = duration
+        this.multiplier = Math.max(GameConfig.multiplier.floor, this.multiplier * Math.pow(1 - GameConfig.items.STONE.lossPerSec, secs))
       }
+      this._logCollect('STONE', multBefore, this.multiplier, duration)
       this.stoneBreakTotalDuration = duration
       this.stoneBreakRemainingTime = duration
       this._breakStage = 1
@@ -910,13 +975,22 @@ export class GameRenderer {
     if (type === 'GOLD') {
       this.goldBreakActive = true
       this.goldBreakStartMultiplier = this.multiplier
+      const multBefore = this.multiplier
       const rgsIdx = this.rgsQueue.findIndex(e => e.type === 'GOLD')
-      let duration = 3 + Math.random() * 2  // 3–5 сек
+      let duration = GameConfig.items.GOLD.durationMin + Math.random() * (GameConfig.items.GOLD.durationMax - GameConfig.items.GOLD.durationMin)
       if (rgsIdx >= 0) {
         const ev = this.rgsQueue.splice(rgsIdx, 1)[0]
         if (ev.durationMs) duration = ev.durationMs / 1000
-        this.multiplier = ev.multiplierSnap
+        // Relative-эффект: delta snap-prevSnap — аддитивный прирост
+        const evIdx    = this.rgsEvents.indexOf(ev)
+        const prevSnap = evIdx > 0 ? this.rgsEvents[evIdx - 1].multiplierSnap : 1.0
+        const delta    = ev.multiplierSnap - prevSnap
+        this.multiplier = Math.max(GameConfig.multiplier.floor, this.multiplier + delta)
+      } else {
+        // Нет RGS-события — применяем локальный эффект из GameConfig
+        this.multiplier = this.multiplier + GameConfig.items.GOLD.gainPerSec * duration
       }
+      this._logCollect('GOLD', multBefore, this.multiplier, duration)
       this.goldBreakRemainingTime = duration
       this.goldBreakTotalDuration = duration
       this._breakStage = 1
@@ -933,13 +1007,31 @@ export class GameRenderer {
       return
     }
 
+    const multBefore = this.multiplier
     const rgsMatch=this.rgsQueue.findIndex(e=>e.type===type)
     if(rgsMatch>=0){
       const ev=this.rgsQueue.splice(rgsMatch,1)[0]
-      if(type!=='HOME'&&type!=='LAVA') this.multiplier=ev.multiplierSnap
+      if(type!=='HOME'&&type!=='LAVA'){
+        // multiplierSnap — абсолютное значение для конкретного порядка событий.
+        // Игрок может собирать предметы в другом порядке, поэтому используем
+        // относительный эффект: отношение snap этого события к snap предыдущего.
+        const evIdx    = this.rgsEvents.indexOf(ev)
+        const prevSnap = evIdx > 0 ? this.rgsEvents[evIdx - 1].multiplierSnap : 1.0
+        const curSnap  = ev.multiplierSnap
+        if(type === 'COIN'){
+          // Монета — аддитивный эффект
+          const delta = curSnap - prevSnap
+          this.multiplier = Math.max(GameConfig.multiplier.floor, this.multiplier + delta)
+        } else {
+          // DIAMOND, BOMB — мультипликативный эффект
+          const ratio = curSnap / Math.max(prevSnap, 0.001)
+          this.multiplier = Math.max(GameConfig.multiplier.floor, this.multiplier * ratio)
+        }
+      }
     }else{
       this.multiplier=this._applyEffect(type,this.multiplier)
     }
+    this._logCollect(type, multBefore, this.multiplier)
     useGameStore.getState().updateStats({multiplier:Math.round(this.multiplier*100)/100})
 
     this._burst(obj.worldX,obj.worldY,C.particleColors[type],type==='HOME'?24:12)
@@ -949,6 +1041,7 @@ export class GameRenderer {
       this.running=false
       obj.gfx.visible=false
       const won=type==='HOME'
+      this._logTerminal('object', won ? 'HOME' : 'LAVA')
       setTimeout(()=>{
         gameEngine.onRoundComplete(won?this.multiplier:0,won)
         this._returnToIdle()
@@ -967,11 +1060,12 @@ export class GameRenderer {
   }
 
   private _applyEffect(type:EventType, m:number):number{
+    const { floor } = GameConfig.multiplier
     switch(type){
-      case 'COIN':    return m + 0.1+Math.random()*0.4
+      case 'COIN':    return m + GameConfig.items.COIN.addMin + Math.random() * (GameConfig.items.COIN.addMax - GameConfig.items.COIN.addMin)
       case 'GOLD':    return m  // обрабатывается через goldBreak
-      case 'DIAMOND': return m * (1.5+Math.random()*1.5)
-      case 'BOMB':    return Math.max(0.1, m/2)
+      case 'DIAMOND': return m * (GameConfig.items.DIAMOND.multMin + Math.random() * (GameConfig.items.DIAMOND.multMax - GameConfig.items.DIAMOND.multMin))
+      case 'BOMB':    return Math.max(floor, m / GameConfig.items.BOMB.divisor)
       case 'STONE':   return m
       default:        return m
     }
