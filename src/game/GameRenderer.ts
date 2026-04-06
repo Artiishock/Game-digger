@@ -156,6 +156,7 @@ class ObjectSpawner {
   private spawnedUpToY     = 0
   private homeSpawnedUpToY = 0   // отдельный трекер только для HOME
   private seed:      number
+
   private drawPickup: (g:PIXI.Graphics, type:EventType) => void
   private drawHome:   (g:PIXI.Graphics, cx:number, cy:number) => void
   private drawLava:   (g:PIXI.Graphics, cx:number, cy:number) => void
@@ -235,23 +236,69 @@ class ObjectSpawner {
     })
   }
 
+  // ── Защита от наслоения: проверка реальных хитбоксов ─────────────────────
+
+  /**
+   * Вычислить размер объекта ДО его создания, чтобы проверить коллизию.
+   * Возвращает {w, h} в тех же единицах что SpawnedObj.width/height.
+   */
+  private _sizeForType(type: EventType): { w: number; h: number } {
+    if (type === 'HOME') {
+      return this.getHomeSize()
+    }
+    if (type === 'LAVA') return this.getLavaSize()
+    // Spine-объекты используют getSpineItemSize; при отсутствии — fallback
+    const spine = getSpineItemSize(type)
+    if (spine.w > 0) return spine
+    const px = this.getPickupSize(type)
+    return { w: px.w * 0.55, h: px.h * 0.55 }
+  }
+
+  /**
+   * Проверяет: будет ли новый объект (cx, cy, w, h) перекрываться
+   * с любым уже существующим объектом из this.objects?
+   * Для HOME/LAVA использует зону exclusion — TILE*4 вокруг центра.
+   * Для обычных объектов — AABB с небольшим отступом padding.
+   */
+  private _hasOverlap(cx: number, cy: number, w: number, h: number, isTerminal: boolean): boolean {
+    const PAD = TILE * 0.3   // минимальный зазор между хитбоксами
+    const hw = w / 2 + PAD, hh = h / 2 + PAD
+
+    for (const o of this.objects) {
+      // Для терминальных объектов (HOME/LAVA) — круговая зона exclusion
+      if (o.terminal || isTerminal) {
+        const r = TILE * 4
+        const dx = cx - o.worldX, dy = cy - o.worldY
+        if (Math.sqrt(dx*dx + dy*dy) < r) return true
+        continue
+      }
+      // Обычные объекты — AABB
+      const ow = o.width / 2 + PAD, oh = o.height / 2 + PAD
+      if (
+        Math.abs(cx - o.worldX) < hw + ow - PAD &&
+        Math.abs(cy - o.worldY) < hh + oh - PAD
+      ) return true
+    }
+    return false
+  }
+
   private _spawnAt(type:EventType, worldY:number, terminal:boolean){
     const xOff = (this._rng(worldY^0x1234) - 0.5) * TILE * 40
     const worldX = Math.round(xOff/TILE)*TILE
 
+    // ── Проверка хитбоксов: пропустить если позиция уже занята ───────────────
+    const size = this._sizeForType(type)
+    if (this._hasOverlap(worldX, worldY, size.w, size.h, terminal)) return
+
     const gfx = new PIXI.Graphics()
-    let size = {w: TILE * 1.8, h: TILE * 1.8}
 
     if(type==='HOME') {
       this.drawHome(gfx, worldX, worldY)
       gfx.x = worldX; gfx.y = worldY
-      const homeSize = this.getHomeSize()
-      size = { w: homeSize.w * 0.6, h: homeSize.h * 0.6 }
     }
     else if(type==='LAVA') {
       this.drawLava(gfx, worldX, worldY)
       gfx.x = worldX; gfx.y = worldY
-      size = this.getLavaSize()
     }
     else {
       // Пробуем Spine-анимацию; при неудаче — старая графика
@@ -259,15 +306,12 @@ class ObjectSpawner {
       if (spineInst) {
         gfx.x = worldX; gfx.y = worldY
         gfx.addChild(spineInst)
-        size = getSpineItemSize(type)
         this.layer.addChild(gfx)
         this.objects.push({type,gfx,spine:spineInst,worldX,worldY,collected:false,terminal,width:size.w,height:size.h})
         return
       }
       this.drawPickup(gfx, type)
       gfx.x=worldX; gfx.y=worldY
-      const pickupSize = this.getPickupSize(type)
-      size = { w: pickupSize.w * 0.55, h: pickupSize.h * 0.55 }
     }
     this.layer.addChild(gfx)
     this.objects.push({type,gfx,spine:null,worldX,worldY,collected:false,terminal,width:size.w,height:size.h})
@@ -290,6 +334,9 @@ class ObjectSpawner {
     s = Math.imul(1664525,s)+1013904223>>>0
     return s/0x100000000
   }
+
+  /** Доступ к списку объектов для внешней проверки отталкивания */
+  getObjects(): readonly SpawnedObj[] { return this.objects }
 
   checkCollisions(
     charX:number, charY:number,
@@ -319,6 +366,7 @@ class ObjectSpawner {
     this.objects=[]
     this.spawnedUpToY=0
     this.homeSpawnedUpToY=0
+
   }
 }
 
@@ -368,6 +416,9 @@ export class GameRenderer {
   // Velocity — физическая инерция персонажа
   private _velY = 0               // текущая скорость по Y (px/sec)
   private _velX = 0               // текущая скорость по X (px/sec)
+  // Отталкивание — Set объектов которые уже оттолкнули персонажа в этом раунде
+  private _repulseTimer    = 0   // секунд осталось заморозки X после отталкивания
+  private _repulseDir      = 1   // направление последнего отталкивания (+1 / -1)
 
   // Stone breaking
   private stoneBreakActive = false;
@@ -574,6 +625,8 @@ export class GameRenderer {
     this._waypointIdx=0
     this._speedMult = 1.0; this._speedTarget = 1.0; this._speedChangeTimer = 0
     this._velY = 0; this._velX = 0
+    this._repulseTimer = 0
+    this._repulseDir   = 1
 
     this.charX=0;this.charY=this.surfY
     this.camX=this.charX-this.W/2;this.camY=this.idleCamY
@@ -700,12 +753,7 @@ export class GameRenderer {
   }
 
   private _getHomeSize(): {w:number, h:number} {
-    const tex = this._textures.get('home')
-    if (tex) {
-      const scale = 0.3
-      return { w: Math.min(tex.width * scale, 40), h: Math.min(tex.height * scale, 40) }
-    }
-    return { w: 40, h: 40 }
+    return { w: GameConfig.items.HOME.hitW, h: GameConfig.items.HOME.hitH }
   }
 
   private _getLavaSize(): {w:number, h:number} {
@@ -785,6 +833,7 @@ export class GameRenderer {
         store.updateStats({ multiplier: Math.round(this.multiplier * 100) / 100 })
         this._breakStage = 0
         this._destroyBreakObj()
+        this._applyRepulseDeferred('STONE')
         canMove = true
       } else {
         canMove = false
@@ -831,6 +880,7 @@ export class GameRenderer {
         store.updateStats({ multiplier: Math.round(this.multiplier * 100) / 100 })
         this._breakStage = 0
         this._destroyBreakObj()
+        this._applyRepulseDeferred('GOLD')
         canMove = true
       } else {
         canMove = false
@@ -860,18 +910,26 @@ export class GameRenderer {
       }
 
       // Velocity X — инерция при смене направления
-      const X_SPEED=CHAR_SPEED*0.85*spd
-      if(this._waypointIdx<this._waypoints.length){
-        const tx=this._waypoints[this._waypointIdx]
-        const dx=tx-this.charX
-        if(Math.abs(dx)>2){
-          const targetVX = Math.sign(dx) * X_SPEED
-          this._velX += (targetVX - this._velX) * Math.min(dt * 8, 1)
-          this.charX += this._velX * dt
-        }else{
-          this.charX=tx
-          this._velX=0
-          this._waypointIdx++
+      // Если активна заморозка после отталкивания — X от вейпоинта не обновляем,
+      // персонаж скользит только по инерции импульса (_velX затухает самостоятельно)
+      this._repulseTimer -= dt
+      if (this._repulseTimer > 0) {
+        this._velX += (0 - this._velX) * Math.min(dt * 3, 1)  // плавное затухание
+        this.charX += this._velX * dt
+      } else {
+        const X_SPEED=CHAR_SPEED*0.85*spd
+        if(this._waypointIdx<this._waypoints.length){
+          const tx=this._waypoints[this._waypointIdx]
+          const dx=tx-this.charX
+          if(Math.abs(dx)>2){
+            const targetVX = Math.sign(dx) * X_SPEED
+            this._velX += (targetVX - this._velX) * Math.min(dt * 8, 1)
+            this.charX += this._velX * dt
+          }else{
+            this.charX=tx
+            this._velX=0
+            this._waypointIdx++
+          }
         }
       }
     } else {
@@ -1038,6 +1096,7 @@ export class GameRenderer {
         SpineAnimator.remove(obj.spine)
         obj.gfx.destroy()
       }
+      this._applyRepulse(obj, true)  // запоминаем направление, импульс — после разрушения
       return
     }
 
@@ -1076,6 +1135,7 @@ export class GameRenderer {
         SpineAnimator.remove(obj.spine)
         obj.gfx.destroy()
       }
+      this._applyRepulse(obj, true)  // запоминаем направление, импульс — после разрушения
       return
     }
 
@@ -1107,6 +1167,7 @@ export class GameRenderer {
     useGameStore.getState().updateStats({multiplier:Math.round(this.multiplier*100)/100})
 
     this._burst(obj.worldX,obj.worldY,C.particleColors[type],type==='HOME'?24:12)
+    this._applyRepulse(obj)
 
     if(obj.terminal){
       this._ended=true
@@ -1129,6 +1190,32 @@ export class GameRenderer {
     }else{
       this._animCollect(obj.gfx, obj.spine)
     }
+  }
+
+  /**
+   * Вычисляет и запоминает направление подхода к объекту.
+   * Вызывается в момент коллизии (сбора).
+   * Для STONE/GOLD — только запоминает направление, импульс применяется позже.
+   * Для остальных — сразу применяет импульс.
+   */
+  private _applyRepulse(obj: SpawnedObj, deferred = false): void {
+    const cfg = GameConfig.repulsion[obj.type]
+    if (!cfg || cfg.strength <= 0) return
+    const dx = this.charX - obj.worldX
+    const dir = dx !== 0 ? Math.sign(dx) : (Math.random() < 0.5 ? 1 : -1)
+    this._repulseDir = dir   // запоминаем направление всегда
+    if (!deferred) {
+      this._velX = dir * cfg.strength
+      this._repulseTimer = Math.max(this._repulseTimer, cfg.freezeDurSec)
+    }
+  }
+
+  /** Применяет отложенный импульс (вызывается по завершении брейка) */
+  private _applyRepulseDeferred(type: string): void {
+    const cfg = GameConfig.repulsion[type]
+    if (!cfg || cfg.strength <= 0) return
+    this._velX = this._repulseDir * cfg.strength
+    this._repulseTimer = Math.max(this._repulseTimer, cfg.freezeDurSec)
   }
 
   private _destroyBreakObj(){
