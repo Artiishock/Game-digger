@@ -766,10 +766,14 @@ export class GameRenderer {
     const dt=Math.min(delta/60, 0.1)  // cap 100ms — безопасно при лагге вкладки
     const store=useGameStore.getState()
     const spd=store.speed
+    // gameDt — масштабированное время: вся игровая логика использует его,
+    // чтобы spd=2 ускорял буквально всё (движение, анимации, таймеры, частицы).
+    // Камера тоже использует gameDt — при высокой скорости она должна быть отзывчивее.
+    const gameDt = dt * spd
 
     if(this.idleActive){
       if(this.tunnelActive) this._hideTunnel()
-      this.idleX+=this.idleDir*IDLE_SPEED*dt
+      this.idleX+=this.idleDir*IDLE_SPEED*dt   // idle не масштабируем — кнопка недоступна
       this._bounceT-=dt
       if(this._bounceT<=0){this._bounceT=3+Math.random()*4;this.idleDir*=-1}
       this.miner.root.scale.x=this.idleDir
@@ -796,8 +800,8 @@ export class GameRenderer {
     let canMove=true
 
     if (this.stoneBreakActive) {
-      this.stoneBreakRemainingTime -= dt
-      this.stoneBreakTickTimer     -= dt
+      this.stoneBreakRemainingTime -= gameDt
+      this.stoneBreakTickTimer     -= gameDt
 
       // Каждую секунду — шаг уменьшения множителя
       if (this.stoneBreakTickTimer <= 0) {
@@ -809,7 +813,7 @@ export class GameRenderer {
           this.multiplier,
           this.stoneBreakStartMultiplier - stepSize * ticksDone
         )
-        this.stoneBreakTickTimer = 1.0   // следующий тик через секунду
+        this.stoneBreakTickTimer = 1.0 / spd   // следующий тик через 1 игровую секунду
         store.updateStats({ multiplier: Math.round(this.stoneBreakDisplayMult * 100) / 100 })
       }
 
@@ -842,8 +846,8 @@ export class GameRenderer {
 
     // Золотой самородок — стоим на месте, множитель визуально растёт до значения RGS
     if (this.goldBreakActive) {
-      this.goldBreakRemainingTime -= dt
-      this.goldBreakTickTimer     -= dt
+      this.goldBreakRemainingTime -= gameDt
+      this.goldBreakTickTimer     -= gameDt
 
       // Каждую секунду — шаг увеличения множителя
       if (this.goldBreakTickTimer <= 0) {
@@ -855,7 +859,7 @@ export class GameRenderer {
           this.multiplier,
           this.goldBreakStartMultiplier + stepSize * ticksDone
         )
-        this.goldBreakTickTimer = 1.0   // следующий тик через секунду
+        this.goldBreakTickTimer = 1.0 / spd   // следующий тик через 1 игровую секунду
         store.updateStats({ multiplier: Math.round(this.goldBreakDisplayMult * 100) / 100 })
       }
       if (Math.random() < 0.3) {
@@ -889,20 +893,20 @@ export class GameRenderer {
 
     if (canMove) {
       // Плавно меняем скорость к целевому значению
-      this._speedChangeTimer -= dt
+      this._speedChangeTimer -= gameDt
       if (this._speedChangeTimer <= 0) {
         this._speedTarget = GameConfig.movement.speedMultMin + Math.random() * (GameConfig.movement.speedMultMax - GameConfig.movement.speedMultMin)
         this._speedChangeTimer = GameConfig.movement.speedChangeMin + Math.random() * (GameConfig.movement.speedChangeMax - GameConfig.movement.speedChangeMin)
       }
-      this._speedMult += (this._speedTarget - this._speedMult) * dt * GameConfig.movement.speedLerpFactor
+      this._speedMult += (this._speedTarget - this._speedMult) * gameDt * GameConfig.movement.speedLerpFactor
 
       // Velocity Y — плавный разгон к целевой скорости
-      const targetVY = CHAR_SPEED * spd * this._speedMult
-      this._velY += (targetVY - this._velY) * Math.min(dt * 6, 1)
-      this.charY += this._velY * dt
+      const targetVY = CHAR_SPEED * this._speedMult  // spd уже в gameDt
+      this._velY += (targetVY - this._velY) * Math.min(dt * 6, 1)  // lerp — dt, позиция — gameDt
+      this.charY += this._velY * gameDt
 
       this.depth = (this.charY - this.surfY) / this.ppm
-      this.distance += this._velY * dt / this.ppm
+      this.distance += this._velY * gameDt / this.ppm
 
       if(this._waypointIdx>=this._waypoints.length-10){
         const more=this._buildWaypoints(200)
@@ -912,19 +916,21 @@ export class GameRenderer {
       // Velocity X — инерция при смене направления
       // Если активна заморозка после отталкивания — X от вейпоинта не обновляем,
       // персонаж скользит только по инерции импульса (_velX затухает самостоятельно)
-      this._repulseTimer -= dt
+      this._repulseTimer -= gameDt
       if (this._repulseTimer > 0) {
-        this._velX += (0 - this._velX) * Math.min(dt * 3, 1)  // плавное затухание
-        this.charX += this._velX * dt
+        this._velX += (0 - this._velX) * Math.min(dt * 3, 1)  // плавное затухание — dt, не gameDt
+        this.charX += this._velX * gameDt
       } else {
-        const X_SPEED=CHAR_SPEED*0.85*spd
+        const X_SPEED=CHAR_SPEED*0.85  // spd уже в gameDt
         if(this._waypointIdx<this._waypoints.length){
           const tx=this._waypoints[this._waypointIdx]
           const dx=tx-this.charX
           if(Math.abs(dx)>2){
             const targetVX = Math.sign(dx) * X_SPEED
+            // Lerp руления — dt (сырое время): плавность смены направления
+            // не зависит от скорости игры, иначе при spd=5 персонаж дёргается
             this._velX += (targetVX - this._velX) * Math.min(dt * 8, 1)
-            this.charX += this._velX * dt
+            this.charX += this._velX * gameDt
           }else{
             this.charX=tx
             this._velX=0
@@ -933,11 +939,11 @@ export class GameRenderer {
         }
       }
     } else {
-      // STONE / GOLD — плавное торможение
+      // STONE / GOLD — плавное торможение (lerp по dt, не gameDt — чтобы не было мгновенного стопа)
       this._velY += (0 - this._velY) * Math.min(dt * 10, 1)
       this._velX += (0 - this._velX) * Math.min(dt * 10, 1)
-      this.charY += this._velY * dt
-      this.charX += this._velX * dt
+      this.charY += this._velY * gameDt
+      this.charX += this._velX * gameDt
     }
 
     this.miner.root.scale.x=this._waypoints[this._waypointIdx]>=this.charX?1:-1
@@ -948,8 +954,10 @@ export class GameRenderer {
 
     const tCX=this.charX-this.W/2
     const tCY=this.charY-this.charScreenY
-    this.camX+=(tCX-this.camX)*0.12
-    this.camY+=(tCY-this.camY)*0.12
+    // Камера с gameDt — при высокой скорости закрывает большее расстояние за тик
+    const camLerp=Math.min(0.12*spd, 0.9)
+    this.camX+=(tCX-this.camX)*camLerp
+    this.camY+=(tCY-this.camY)*camLerp
 
     this.worldLayer.x=-this.camX;   this.worldLayer.y=-this.camY
     this.objectsLayer.x=-this.camX; this.objectsLayer.y=-this.camY
@@ -965,7 +973,7 @@ export class GameRenderer {
     this._spawnCavesAhead()
     if(this.spawner)this.spawner.update(this.charX,this.charY,this.H*5)
 
-    this.miner.update(dt,spd,true)
+    this.miner.update(gameDt,1,true)
 
     store.updateStats({
       depth:    Math.max(0,Math.round(this.depth*10)/10),
@@ -1000,7 +1008,7 @@ export class GameRenderer {
       },GameConfig.round.loseDelayMs)
     }
 
-    this._pUpdate(dt)
+    this._pUpdate(gameDt)
   }
 
   // ─── Сбор объекта ─────────────────────────────────────────────────────────
