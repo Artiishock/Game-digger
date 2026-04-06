@@ -40,7 +40,6 @@ class SpineCharacter {
   root: PIXI.Container
   chunkParent: PIXI.Container | null = null
   private _spine: _Spine | null = null
-  private _dirts: { g: PIXI.Graphics; vx: number; vy: number; life: number }[] = []
   private _digging = false
   private _tornadoState: 'none' | 'show' | 'idle' = 'none'
 
@@ -65,9 +64,9 @@ class SpineCharacter {
   setIdleMode(idle: boolean) {
     if (this._spine) this._spine.y = idle ? CHAR_Y_IDLE : CHAR_Y_RUN
     if (idle) {
-      // Возврат в начальное состояние — сбрасываем торнадо
       this._digging = false
       this._tornadoState = 'none'
+      this._dirtState   = 'none'
       SpineAnimator.setAnimation(this._spine, CHAR_ANIM.idle, true)
     }
   }
@@ -77,21 +76,19 @@ class SpineCharacter {
       this._spine.y = digging ? CHAR_Y_RUN : CHAR_Y_IDLE
 
       if (!digging) {
-        // До старта — character_idle, loop
         if (this._digging) {
-          // Только что вернулись из копания — сброс
-          this._digging = false
+          this._digging     = false
           this._tornadoState = 'none'
+          this._dirtState   = 'none'
         }
         SpineAnimator.setAnimation(this._spine, CHAR_ANIM.idle, true)
       } else {
+        // ── Торнадо (track 0) ────────────────────────────────────────────────
         if (!this._digging) {
-          // Первый кадр копания — запускаем tornado_show (одноразово)
-          this._digging = true
+          this._digging      = true
           this._tornadoState = 'show'
           SpineAnimator.setAnimation(this._spine, CHAR_ANIM.tornadoShow, false)
         } else if (this._tornadoState === 'show') {
-          // Проверяем закончилась ли tornado_show
           const track = (this._spine.state as any).tracks?.[0]
           const animName = track?.animation?.name ?? ''
           const finished = animName !== CHAR_ANIM.tornadoShow ||
@@ -101,32 +98,26 @@ class SpineCharacter {
             SpineAnimator.setAnimation(this._spine, CHAR_ANIM.tornadoIdle, true)
           }
         }
-        // tornadoState === 'idle' — ничего не меняем, уже крутится
+
+        // ── Грязь (track 1) — dirt_show → dirt_idle через Spine-анимацию ───
+        if (this._dirtState === 'none') {
+          this._dirtState = 'show'
+          SpineAnimator.setAnimationOnTrack(this._spine, 1, DIRT_ANIM.show, false)
+        } else if (this._dirtState === 'show') {
+          const track1 = (this._spine.state as any).tracks?.[1]
+          const name1  = track1?.animation?.name ?? ''
+          const done   = name1 !== DIRT_ANIM.show ||
+            (track1 && track1.trackTime >= track1.animation.duration)
+          if (done) {
+            this._dirtState = 'idle'
+            SpineAnimator.setAnimationOnTrack(this._spine, 1, DIRT_ANIM.idle, true)
+          }
+        }
       }
     }
-    // Частицы грязи при копании
-    if (digging && Math.random() < 0.04) this._dirt()
-
-    this._dirts = this._dirts.filter(d => {
-      d.life -= dt * 2.2
-      if (d.life <= 0) { d.g.parent?.removeChild(d.g); d.g.destroy(); return false }
-      d.g.x += d.vx * dt; d.g.y += d.vy * dt; d.vy += 320 * dt
-      d.g.alpha = d.life; d.g.rotation += dt * 5; return true
-    })
-  }
-
-  private _dirt() {
-    const p = this.chunkParent ?? this.root.parent; if (!p) return
-    const g = new PIXI.Graphics()
-    const sz = Math.random() * 6 + 3
-    g.beginFill(0x8B5E3C, 0.9); g.drawRoundedRect(-sz / 2, -sz / 2, sz, sz, 2); g.endFill()
-    g.x = this.root.x + 18 + (Math.random() - 0.5) * 12; g.y = this.root.y + 8
-    p.addChild(g)
-    this._dirts.push({ g, vx: 50 + Math.random() * 60, vy: -(20 + Math.random() * 50), life: 1 })
   }
 
   destroy() {
-    this._dirts.forEach(d => d.g.destroy())
     if (this._spine) SpineAnimator.remove(this._spine)
     this.root.destroy({ children: true })
   }
@@ -366,7 +357,12 @@ class ObjectSpawner {
     this.objects=[]
     this.spawnedUpToY=0
     this.homeSpawnedUpToY=0
+  }
 
+  /** Пропустить генерацию объектов выше minY — чтобы они не появлялись в видимой зоне при старте */
+  skipTo(minY: number): void {
+    this.spawnedUpToY     = Math.max(this.spawnedUpToY, minY)
+    this.homeSpawnedUpToY = Math.max(this.homeSpawnedUpToY, minY)
   }
 }
 
@@ -646,6 +642,9 @@ export class GameRenderer {
       this._getLavaSize.bind(this),
     )
     this.spawner.setRgsEvents(events, this.ppm)
+    // Не спавним объекты в изначально видимой области экрана.
+    // camY + H = нижняя граница видимой камеры в мировых координатах.
+    this.spawner.skipTo(this.camY + this.H)
 
     this.tileWorld.update(this.camX,this.camY,this.W,this.H)
     this.minerLayer.addChild(this.miner.root)
