@@ -153,7 +153,8 @@ const SPAWN_INTERVAL  = TILE * GameConfig.spawn.intervalTiles
 class ObjectSpawner {
   private layer:     PIXI.Container
   private objects:   SpawnedObj[] = []
-  private spawnedUpToY = 0
+  private spawnedUpToY     = 0
+  private homeSpawnedUpToY = 0   // отдельный трекер только для HOME
   private seed:      number
   private drawPickup: (g:PIXI.Graphics, type:EventType) => void
   private drawHome:   (g:PIXI.Graphics, cx:number, cy:number) => void
@@ -184,13 +185,18 @@ class ObjectSpawner {
     this.rgsEvents = events
     events.forEach((ev)=>{
       const worldY  = this.surfY + ev.depth * ppm
-      const isTerminal = ev.type === 'HOME' || ev.type === 'LAVA'
+      const isTerminal = ev.type === 'HOME' 
       this._spawnAt(ev.type, worldY, isTerminal)
     })
   }
 
   update(charX:number, charY:number, aheadPx:number){
     const genUpTo = charY + aheadPx
+    const { types } = GameConfig.spawn
+    const HOME_INTERVAL = TILE * types.homeIntervalTiles
+    const homeMinY      = this.surfY + TILE * types.homeMinDepth
+
+    // ── Основной цикл: COIN, BOMB, STONE, GOLD, DIAMOND ──────────────────────
     let y = this.spawnedUpToY || charY
     while(y < genUpTo){
       y += SPAWN_INTERVAL
@@ -198,15 +204,25 @@ class ObjectSpawner {
       if(r < GameConfig.spawn.spawnChance){
         const type = this._pickType(y, this._rng(y^0xABC))
         this._spawnAt(type, y, false)
-        // Иногда спавним дополнительный объект сбоку
         if(this._rng(y^0xBEEF) < GameConfig.spawn.doubleChance) {
           this._spawnAt(this._pickType(y+1, this._rng(y^0xF00D)), y + SPAWN_INTERVAL * 0.5, false)
         }
       }
     }
     this.spawnedUpToY = Math.max(this.spawnedUpToY, y)
-    // Терминальные события (HOME/LAVA) берутся только из RGS — случайная генерация удалена
 
+    // ── Отдельный цикл HOME: свой интервал, своя сетка ───────────────────────
+    let hy = this.homeSpawnedUpToY || homeMinY
+    while(hy < genUpTo){
+      hy += HOME_INTERVAL
+      if(hy < homeMinY) continue
+      if(this._rng(hy^0xA11CE) < types.homeChance){
+        this._spawnAt('HOME', hy, true)
+      }
+    }
+    this.homeSpawnedUpToY = Math.max(this.homeSpawnedUpToY, hy)
+
+    // ── Culling ───────────────────────────────────────────────────────────────
     this.objects = this.objects.filter(o=>{
       if(o.collected) return false
       if(o.worldY < charY - TILE*15){
@@ -228,11 +244,13 @@ class ObjectSpawner {
 
     if(type==='HOME') {
       this.drawHome(gfx, worldX, worldY)
+      gfx.x = worldX; gfx.y = worldY
       const homeSize = this.getHomeSize()
       size = { w: homeSize.w * 0.6, h: homeSize.h * 0.6 }
     }
     else if(type==='LAVA') {
       this.drawLava(gfx, worldX, worldY)
+      gfx.x = worldX; gfx.y = worldY
       size = this.getLavaSize()
     }
     else {
@@ -300,6 +318,7 @@ class ObjectSpawner {
     this.objects.forEach(o=>{ SpineAnimator.remove(o.spine); if(o.gfx.parent) o.gfx.parent.removeChild(o.gfx); o.gfx.destroy() })
     this.objects=[]
     this.spawnedUpToY=0
+    this.homeSpawnedUpToY=0
   }
 }
 
@@ -346,18 +365,25 @@ export class GameRenderer {
   private _speedMult = 1.0        // текущий множитель скорости
   private _speedTarget = 1.0      // целевой множитель
   private _speedChangeTimer = 0   // таймер смены скорости
+  // Velocity — физическая инерция персонажа
+  private _velY = 0               // текущая скорость по Y (px/sec)
+  private _velX = 0               // текущая скорость по X (px/sec)
 
   // Stone breaking
   private stoneBreakActive = false;
   private stoneBreakRemainingTime = 0;
   private stoneBreakTotalDuration = 0;
   private stoneBreakStartMultiplier = 0;
+  private stoneBreakTickTimer = 0;      // таймер до следующего тика (-1/сек)
+  private stoneBreakDisplayMult = 0;   // текущее отображаемое значение
 
   // Золотой самородок — останавливает персонажа, множитель растёт ×3/сек
   private goldBreakActive = false;
   private goldBreakRemainingTime = 0;
   private goldBreakTotalDuration = 0;
   private goldBreakStartMultiplier = 0;
+  private goldBreakTickTimer = 0;       // таймер до следующего тика (+N/сек)
+  private goldBreakDisplayMult = 0;    // текущее отображаемое значение
 
   // Активный объект во время брейка (показываем action-анимацию)
   private _breakSpine: import('pixi-spine').Spine | null = null;
@@ -517,10 +543,14 @@ export class GameRenderer {
     this.stoneBreakRemainingTime = 0;
     this.stoneBreakTotalDuration = 0;
     this.stoneBreakStartMultiplier = 0;
+    this.stoneBreakTickTimer = 0;
+    this.stoneBreakDisplayMult = 0;
     this.goldBreakActive = false;
     this.goldBreakRemainingTime = 0;
     this.goldBreakTotalDuration = 0;
     this.goldBreakStartMultiplier = 0;
+    this.goldBreakTickTimer = 0;
+    this.goldBreakDisplayMult = 0;
     this._breakStage = 0;
     this._destroyBreakObj();
 
@@ -543,6 +573,7 @@ export class GameRenderer {
     this._waypoints=this._buildWaypoints(500)
     this._waypointIdx=0
     this._speedMult = 1.0; this._speedTarget = 1.0; this._speedChangeTimer = 0
+    this._velY = 0; this._velX = 0
 
     this.charX=0;this.charY=this.surfY
     this.camX=this.charX-this.W/2;this.camY=this.idleCamY
@@ -614,16 +645,16 @@ export class GameRenderer {
     return this._texturesLoading
   }
 
-  private _drawHome(gfx:PIXI.Graphics, cx:number, cy:number) {
+  private _drawHome(gfx:PIXI.Graphics, _cx:number, _cy:number) {
     const tex = this._textures.get('home')
     if (tex) {
       const spr = new PIXI.Sprite(tex)
       spr.anchor.set(0.5, 0.5)
       spr.scale.set(0.3, 0.3)
-      spr.x = cx; spr.y = cy
+      spr.x = 0; spr.y = 0
       gfx.addChild(spr)
     } else {
-      gfx.beginFill(0x27AE60).drawRect(cx - 60, cy - 60, 120, 120).endFill()
+      gfx.beginFill(0x27AE60).drawRect(-60, -60, 120, 120).endFill()
     }
   }
 
@@ -684,7 +715,7 @@ export class GameRenderer {
   // ─── Tick ─────────────────────────────────────────────────────────────────
 
   private _tick(delta:number){
-    const dt=delta/60
+    const dt=Math.min(delta/60, 0.1)  // cap 100ms — безопасно при лагге вкладки
     const store=useGameStore.getState()
     const spd=store.speed
 
@@ -714,16 +745,25 @@ export class GameRenderer {
 
     // ── DIGGING ───────────────────────────────────────────────────────────────
 
-    let move=0
     let canMove=true
 
     if (this.stoneBreakActive) {
       this.stoneBreakRemainingTime -= dt
-      // Визуально плавно снижаем множитель до финального значения из RGS
-      const progress = 1 - Math.max(0, this.stoneBreakRemainingTime / this.stoneBreakTotalDuration)
-      const targetMult = this.multiplier  // уже установлен из RGS в _onCollect
-      const displayMult = this.stoneBreakStartMultiplier + (targetMult - this.stoneBreakStartMultiplier) * progress
-      store.updateStats({ multiplier: Math.round(displayMult * 100) / 100 })
+      this.stoneBreakTickTimer     -= dt
+
+      // Каждую секунду — шаг уменьшения множителя
+      if (this.stoneBreakTickTimer <= 0) {
+        const elapsed      = this.stoneBreakTotalDuration - Math.max(0, this.stoneBreakRemainingTime)
+        const totalTicks   = Math.floor(this.stoneBreakTotalDuration)
+        const ticksDone    = Math.min(Math.floor(elapsed), totalTicks)
+        const stepSize     = (this.stoneBreakStartMultiplier - this.multiplier) / Math.max(totalTicks, 1)
+        this.stoneBreakDisplayMult = Math.max(
+          this.multiplier,
+          this.stoneBreakStartMultiplier - stepSize * ticksDone
+        )
+        this.stoneBreakTickTimer = 1.0   // следующий тик через секунду
+        store.updateStats({ multiplier: Math.round(this.stoneBreakDisplayMult * 100) / 100 })
+      }
 
       // Переключение стадий анимации:
       // T = stoneBreakTotalDuration, action фиксирован = BREAK_ACTION_DURATION
@@ -754,12 +794,24 @@ export class GameRenderer {
     // Золотой самородок — стоим на месте, множитель визуально растёт до значения RGS
     if (this.goldBreakActive) {
       this.goldBreakRemainingTime -= dt
-      const progress = Math.max(0, 1 - this.goldBreakRemainingTime / Math.max(this.goldBreakTotalDuration, 0.01))
-      const displayMult = this.goldBreakStartMultiplier + (this.multiplier - this.goldBreakStartMultiplier) * progress
+      this.goldBreakTickTimer     -= dt
+
+      // Каждую секунду — шаг увеличения множителя
+      if (this.goldBreakTickTimer <= 0) {
+        const elapsed      = this.goldBreakTotalDuration - Math.max(0, this.goldBreakRemainingTime)
+        const totalTicks   = Math.floor(this.goldBreakTotalDuration)
+        const ticksDone    = Math.min(Math.floor(elapsed), totalTicks)
+        const stepSize     = (this.multiplier - this.goldBreakStartMultiplier) / Math.max(totalTicks, 1)
+        this.goldBreakDisplayMult = Math.min(
+          this.multiplier,
+          this.goldBreakStartMultiplier + stepSize * ticksDone
+        )
+        this.goldBreakTickTimer = 1.0   // следующий тик через секунду
+        store.updateStats({ multiplier: Math.round(this.goldBreakDisplayMult * 100) / 100 })
+      }
       if (Math.random() < 0.3) {
         this._burst(this.charX, this.charY, C.gold, 3)
       }
-      store.updateStats({ multiplier: Math.round(displayMult * 100) / 100 })
 
       // Переключение стадий анимации золота
       if (this._breakSpine) {
@@ -794,27 +846,40 @@ export class GameRenderer {
       }
       this._speedMult += (this._speedTarget - this._speedMult) * dt * GameConfig.movement.speedLerpFactor
 
-      move = CHAR_SPEED * spd * this._speedMult * dt
-      this.charY += move
+      // Velocity Y — плавный разгон к целевой скорости
+      const targetVY = CHAR_SPEED * spd * this._speedMult
+      this._velY += (targetVY - this._velY) * Math.min(dt * 6, 1)
+      this.charY += this._velY * dt
+
       this.depth = (this.charY - this.surfY) / this.ppm
-      this.distance += move / this.ppm
+      this.distance += this._velY * dt / this.ppm
 
       if(this._waypointIdx>=this._waypoints.length-10){
         const more=this._buildWaypoints(200)
         this._waypoints.push(...more)
       }
 
+      // Velocity X — инерция при смене направления
       const X_SPEED=CHAR_SPEED*0.85*spd
       if(this._waypointIdx<this._waypoints.length){
         const tx=this._waypoints[this._waypointIdx]
         const dx=tx-this.charX
         if(Math.abs(dx)>2){
-          this.charX+=Math.sign(dx)*X_SPEED*dt
+          const targetVX = Math.sign(dx) * X_SPEED
+          this._velX += (targetVX - this._velX) * Math.min(dt * 8, 1)
+          this.charX += this._velX * dt
         }else{
           this.charX=tx
+          this._velX=0
           this._waypointIdx++
         }
       }
+    } else {
+      // STONE / GOLD — плавное торможение
+      this._velY += (0 - this._velY) * Math.min(dt * 10, 1)
+      this._velX += (0 - this._velX) * Math.min(dt * 10, 1)
+      this.charY += this._velY * dt
+      this.charX += this._velX * dt
     }
 
     this.miner.root.scale.x=this._waypoints[this._waypointIdx]>=this.charX?1:-1
@@ -847,7 +912,10 @@ export class GameRenderer {
     store.updateStats({
       depth:    Math.max(0,Math.round(this.depth*10)/10),
       distance: Math.round(this.distance*10)/10,
-      multiplier:Math.round(this.multiplier*100)/100,
+      // Во время брейков multiplier обновляет их собственная логика (плавно)
+      ...((!this.stoneBreakActive && !this.goldBreakActive) && {
+        multiplier: Math.round(this.multiplier*100)/100,
+      }),
     })
 
     if(this.spawner && !this._ended && !this.stoneBreakActive){
@@ -871,7 +939,7 @@ export class GameRenderer {
       setTimeout(()=>{
         gameEngine.onRoundComplete(0,false)
         this._returnToIdle()
-      },1000)
+      },GameConfig.round.loseDelayMs)
     }
 
     this._pUpdate(dt)
@@ -958,6 +1026,8 @@ export class GameRenderer {
       this._logCollect('STONE', multBefore, this.multiplier, duration)
       this.stoneBreakTotalDuration = duration
       this.stoneBreakRemainingTime = duration
+      this.stoneBreakDisplayMult   = multBefore   // начинаем с текущего значения
+      this.stoneBreakTickTimer     = 1.0           // первый тик через 1 сек
       this._breakStage = 1
       if (obj.spine) {
         // Стартуем с state1 (первые трещины), loop: true
@@ -993,6 +1063,8 @@ export class GameRenderer {
       this._logCollect('GOLD', multBefore, this.multiplier, duration)
       this.goldBreakRemainingTime = duration
       this.goldBreakTotalDuration = duration
+      this.goldBreakDisplayMult   = multBefore   // начинаем с текущего значения
+      this.goldBreakTickTimer     = 1.0           // первый тик через 1 сек
       this._breakStage = 1
       this._burst(obj.worldX, obj.worldY, C.gold, 12)
       if (obj.spine) {
@@ -1040,12 +1112,20 @@ export class GameRenderer {
       this._ended=true
       this.running=false
       obj.gfx.visible=false
-      const won=type==='HOME'
+
+      // Фактический исход определяет RGS — ищем HOME или LAVA в очереди
+      const rgsTermIdx = this.rgsQueue.findIndex(e => e.type === 'HOME' || e.type === 'LAVA')
+      let won = type === 'HOME'  // fallback если RGS не прислал терминал
+      if (rgsTermIdx >= 0) {
+        const rgsTermEv = this.rgsQueue.splice(rgsTermIdx, 1)[0]
+        won = rgsTermEv.type === 'HOME'
+      }
+
       this._logTerminal('object', won ? 'HOME' : 'LAVA')
       setTimeout(()=>{
         gameEngine.onRoundComplete(won?this.multiplier:0,won)
         this._returnToIdle()
-      },won?800:1000)
+      },won ? GameConfig.round.winDelayMs : GameConfig.round.loseDelayMs)
     }else{
       this._animCollect(obj.gfx, obj.spine)
     }

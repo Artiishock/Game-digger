@@ -277,7 +277,6 @@ export class SpineAnimator {
       const slotR     = skel.findSlot('side_right')
 
       if (showSide) {
-        // Фаза "ребро": скрыть лицевые стороны, показать ребро
         if (slotFront) slotFront.attachment = null
         if (slotBack)  slotBack.attachment  = null
         const skin = skel.data.defaultSkin
@@ -286,13 +285,23 @@ export class SpineAnimator {
         if (slotL) slotL.attachment = att ?? null
         if (slotR) slotR.attachment = att ?? null
       } else {
-        // Фазы "фронт"/"обратная": JSON управляет coin_front/coin_back, ребро скрыть
         if (slotL) slotL.attachment = null
         if (slotR) slotR.attachment = null
-        // Сбрасываем alpha слотов монеты: Spine-таймлайн может записывать color.a < 1
-        // что приводит к визуальной полупрозрачности монеты — форсируем 1.0
-        if (slotFront) slotFront.color.a = 1.0
-        if (slotBack)  slotBack.color.a  = 1.0
+      }
+
+      // slot.color.a — не работает надёжно: PIXI рендер-луп вызывает updateTransform()
+      // который перестраивает меши с оригинальными цветами из анимации.
+      // Форсируем alpha напрямую на PIXI slotContainers — это уровень отображения,
+      // он не перезаписывается Spine-таймлайном.
+      const containers = (inst as any).slotContainers as PIXI.Container[] | undefined
+      if (containers) {
+        const coinSlotNames = ['coin_front', 'coin_back', 'coin_front2', 'coin_back2', 'side_left', 'side_right']
+        for (let i = 0; i < skel.slots.length; i++) {
+          const slotName = skel.slots[i].data.name
+          if (coinSlotNames.includes(slotName) && containers[i]) {
+            containers[i].alpha = 1.0
+          }
+        }
       }
 
     } catch (e) {

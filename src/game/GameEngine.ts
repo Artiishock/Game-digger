@@ -12,6 +12,7 @@ import { useGameStore } from '../store/gameStore'
 import type { AutoplayConfig } from '../store/gameStore'
 import * as RGS from '../rgs/client'
 import * as Demo from '../rgs/demo'
+import { GameConfig } from './GameConfig'
 
 class GameEngine {
   private static _instance: GameEngine
@@ -147,7 +148,7 @@ class GameEngine {
         const winDisplay = won ? bet * multiplier : 0
         if (!this._shouldStopAutoplay(ap, winDisplay, newBalance)) {
           store.decrementAutoplay()
-          setTimeout(() => this.startRound(), 1200)
+          setTimeout(() => this.startRound(), GameConfig.round.autoplayDelayMs)
         } else {
           store.setAutoplay({ active: false })
           store.setPhase('IDLE')
