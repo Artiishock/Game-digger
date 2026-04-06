@@ -4,7 +4,7 @@ import { useGameStore } from '../store/gameStore'
 import type { RoundEvent, EventType } from '../rgs/client'
 import { TileWorld, TILE } from './Tileworld'
 import { LavaSimulation } from './LavaSimulation'
-import { SpineAnimator, CHAR_ANIM, ROCK_ANIM, GOLD_ANIM, BREAK_ACTION_DURATION, getSpineItemSize } from './SpineAnimator'
+import { SpineAnimator, CHAR_ANIM, ROCK_ANIM, GOLD_ANIM, DIRT_ANIM, BREAK_ACTION_DURATION, getSpineItemSize } from './SpineAnimator'
 import type { Spine } from 'pixi-spine'
 import { GameConfig } from './GameConfig'
 
@@ -66,7 +66,6 @@ class SpineCharacter {
     if (idle) {
       this._digging = false
       this._tornadoState = 'none'
-      this._dirtState   = 'none'
       SpineAnimator.setAnimation(this._spine, CHAR_ANIM.idle, true)
     }
   }
@@ -79,7 +78,6 @@ class SpineCharacter {
         if (this._digging) {
           this._digging     = false
           this._tornadoState = 'none'
-          this._dirtState   = 'none'
         }
         SpineAnimator.setAnimation(this._spine, CHAR_ANIM.idle, true)
       } else {
@@ -96,21 +94,6 @@ class SpineCharacter {
           if (finished) {
             this._tornadoState = 'idle'
             SpineAnimator.setAnimation(this._spine, CHAR_ANIM.tornadoIdle, true)
-          }
-        }
-
-        // ── Грязь (track 1) — dirt_show → dirt_idle через Spine-анимацию ───
-        if (this._dirtState === 'none') {
-          this._dirtState = 'show'
-          SpineAnimator.setAnimationOnTrack(this._spine, 1, DIRT_ANIM.show, false)
-        } else if (this._dirtState === 'show') {
-          const track1 = (this._spine.state as any).tracks?.[1]
-          const name1  = track1?.animation?.name ?? ''
-          const done   = name1 !== DIRT_ANIM.show ||
-            (track1 && track1.trackTime >= track1.animation.duration)
-          if (done) {
-            this._dirtState = 'idle'
-            SpineAnimator.setAnimationOnTrack(this._spine, 1, DIRT_ANIM.idle, true)
           }
         }
       }
@@ -442,6 +425,10 @@ export class GameRenderer {
   private _textures: Map<string, PIXI.Texture> = new Map()
   private _texturesLoading: Promise<void> | null = null
 
+  // Эффект грязи в точке входа (dirt_show → dirt_idle)
+  private _dirtEntry: import('pixi-spine').Spine | null = null
+  private _dirtEntryGfx: PIXI.Container | null = null
+
   // Пещеры
   private _lastCaveY = 0
   private _caveInterval = TILE * 15
@@ -657,6 +644,10 @@ export class GameRenderer {
     this.miner.setIdleMode(false)
     // skyLayer visibility is managed dynamically in _tick based on camera depth
     this.skyLayer.visible = true
+
+    // ── Эффект грязи в точке входа ─────────────────────────────────────────
+    this._spawnDirtEntry()
+
     this.running=true
   }
 
@@ -974,6 +965,15 @@ export class GameRenderer {
 
     this.miner.update(gameDt,1,true)
 
+    // Переход dirt_show → dirt_idle по завершении анимации
+    if (this._dirtEntry && !(this._dirtEntry as any).destroyed) {
+      const track = (this._dirtEntry.state as any).tracks?.[0]
+      const name  = track?.animation?.name ?? ''
+      if (name === DIRT_ANIM.show && track && track.trackTime >= track.animation.duration) {
+        SpineAnimator.setAnimation(this._dirtEntry, DIRT_ANIM.idle, true)
+      }
+    }
+
     store.updateStats({
       depth:    Math.max(0,Math.round(this.depth*10)/10),
       distance: Math.round(this.distance*10)/10,
@@ -1245,9 +1245,53 @@ export class GameRenderer {
     }
   }
 
+  // ─── Точка входа — эффект грязи ──────────────────────────────────────────
+
+  private _spawnDirtEntry(): void {
+    this._destroyDirtEntry()
+
+    const container = new PIXI.Container()
+    container.x = this.charX
+    container.y = this.surfY - 60
+    this.minerLayer.addChild(container)  // minerLayer — поверх skyLayer, не перекрывается фоном
+    this._dirtEntryGfx = container
+
+    const tryAttach = () => {
+      const inst = SpineAnimator.createDirt()
+      if (!inst) return  // Spine ещё не загружен — тик сам обновит позже
+      container.addChild(inst)
+      this._dirtEntry = inst
+      // dirt_show — одноразово, потом dirt_idle — зацикленно
+      // Переход отслеживаем в _tick через _checkDirtEntryTransition
+    }
+
+    tryAttach()
+    if (!this._dirtEntry) {
+      SpineAnimator.load().then(() => {
+        if (!this._dirtEntryGfx || (this._dirtEntryGfx as any).destroyed) return
+        tryAttach()
+      })
+    }
+  }
+
+  private _destroyDirtEntry(): void {
+    if (this._dirtEntry) {
+      SpineAnimator.remove(this._dirtEntry)
+      this._dirtEntry = null
+    }
+    if (this._dirtEntryGfx) {
+      if (this._dirtEntryGfx.parent) this._dirtEntryGfx.parent.removeChild(this._dirtEntryGfx)
+      this._dirtEntryGfx.destroy({ children: true })
+      this._dirtEntryGfx = null
+    }
+  }
+
   private _returnToIdle(){
     this._hideTunnel()
     this.spawner?.reset(); this.spawner=null
+
+    // Убираем эффект грязи
+    this._destroyDirtEntry()
 
     for (const {renderer} of this.activeLavas.values()) {
       renderer.destroy()

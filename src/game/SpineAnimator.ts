@@ -69,11 +69,11 @@ const ITEM_SCALE: Partial<Record<EventType, number>> = {
   STONE:   0.08,
 }
 
-// Компенсация смещения корневой кости в Spine-пространстве.
-// coin_main.x = -1368.38 → при scale=0.22 монета рендерится в -301px от origin.
-// Прибавляем это значение чтобы визуал совпал с хитбоксом.
+// Компенсация смещения origin-кости в Spine-скелете.
+// coin_main: x=-1368.4 от origin → монета рендерится левее центра контейнера.
+// Прибавляем -offset * scale, чтобы визуал совпал с позицией gfx.
 const ITEM_SPINE_OFFSET: Partial<Record<EventType, { x: number; y: number }>> = {
-  COIN: { x: 1368.38, y: 0 },
+  COIN: { x: -1368.4, y: 0 },  // coin_main.x в Spine-единицах
 }
 
 // ─── SpineAnimator ────────────────────────────────────────────────────────────
@@ -164,9 +164,11 @@ export class SpineAnimator {
     const scale = ITEM_SCALE[type] ?? 0.20
     const spine = this._make(animName, scale)
     if (spine) {
-      // Компенсируем смещение корневой кости (напр. coin_main.x = -1368.38)
       const off = ITEM_SPINE_OFFSET[type]
-      if (off) { spine.x = off.x * scale; spine.y = off.y * scale }
+      if (off) {
+        spine.x = -off.x * scale  // компенсируем смещение кости
+        spine.y = -off.y * scale
+      }
     }
     return spine
   }
@@ -174,6 +176,11 @@ export class SpineAnimator {
   /** Создать Spine-персонажа (character_idle / character_action) */
   static createCharacter(scale = 0.30): Spine | null {
     return this._make(CHAR_ANIM.idle, scale)
+  }
+
+  /** Создать эффект грязи в точке входа (dirt_show → dirt_idle) */
+  static createDirt(scale = 0.30): Spine | null {
+    return this._make(DIRT_ANIM.show, scale)
   }
 
   /** Тикнуть один конкретный инстанс напрямую (для персонажа) */
