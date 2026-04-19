@@ -1,7 +1,6 @@
 import React, { useEffect, useRef } from 'react'
 import { GameCanvas }      from './game/GameCanvas'
 import { Hud }             from './ui/hud/Hud'
-import { BetControls }     from './ui/controls/BetControls'
 import { DigButton }       from './ui/controls/DigButton'
 import { TopBar }          from './ui/controls/TopBar'
 import { ResultOverlay }   from './ui/modals/ResultOverlay'
@@ -9,10 +8,13 @@ import { AutoplayModal }   from './ui/modals/AutoplayModal'
 import { BurgerMenu }      from './ui/menus/BurgerMenu'
 import { ErrorScreen }     from './ui/modals/ErrorScreen'
 import { useGameStore }    from './store/gameStore'
+import { shallow }         from 'zustand/shallow'
+import { gameAudio }       from './audio/GameAudio'
 import { useWindowSize }   from './hooks/useWindowSize'
 import { gameEngine }      from './game/GameEngine'
 import { addReplayRound }  from './ui/menus/InfoAndReplay'
 import { toDisplay }       from './rgs/client'
+import './ui/ui.css'
 
 // Import Bebas Neue from Google Fonts
 const fontLink = document.createElement('link')
@@ -23,12 +25,21 @@ document.head.appendChild(fontLink)
 export const App: React.FC = () => {
   const { width, height } = useWindowSize()
   const phase    = useGameStore(s => s.phase)
+  const settings = useGameStore(s => s.settings, shallow)
   const prevPhase = useRef<string>('')
 
   // ── Boot ─────────────────────────────────────────────────────────────────────
   useEffect(() => {
     gameEngine.boot()
   }, [])
+
+  useEffect(() => {
+    gameAudio.syncPhase(phase)
+  }, [phase])
+
+  useEffect(() => {
+    gameAudio.refreshFromStore()
+  }, [settings])
 
   // ── Record round history for Bet Replay ─────────────────────────────────────
   useEffect(() => {
@@ -70,10 +81,7 @@ export const App: React.FC = () => {
       {/* ── HUD (bottom bar) ── */}
       <Hud />
 
-      {/* ── Bet controls ── */}
-      <BetControls />
-
-      {/* ── DIG button + Autoplay button ── */}
+{/* ── DIG button + Autoplay button ── */}
       <DigButton />
 
       {/* ── Top-right controls ── */}
@@ -86,28 +94,9 @@ export const App: React.FC = () => {
 
       {/* ── Boot loading spinner ── */}
       {phase === 'BOOT' && (
-        <div style={{
-          position: 'absolute', inset: 0, zIndex: 300,
-          background: '#1A0E08',
-          display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center',
-          gap: 20,
-        }}>
-          <div style={{
-            width: 56, height: 56,
-            border: '4px solid rgba(255,184,48,0.2)',
-            borderTopColor: '#FFB830',
-            borderRadius: '50%',
-            animation: 'spin 0.9s linear infinite',
-          }} />
-          <div style={{
-            fontFamily: 'Bebas Neue, sans-serif',
-            fontSize: 32, color: '#FFB830',
-            letterSpacing: '.1em',
-          }}>
-            DEEP RUSH
-          </div>
-          <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+        <div className="ui-boot">
+          <div className="ui-boot-spinner" />
+          <div className="ui-boot-title">DEEP RUSH</div>
         </div>
       )}
     </div>

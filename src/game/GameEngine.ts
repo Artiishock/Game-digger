@@ -9,6 +9,7 @@
  */
 
 import { useGameStore } from '../store/gameStore'
+import { gameAudio } from '../audio/GameAudio'
 import type { AutoplayConfig } from '../store/gameStore'
 import * as RGS from '../rgs/client'
 import * as Demo from '../rgs/demo'
@@ -47,6 +48,8 @@ class GameEngine {
         store.setBet(RGS.toDisplay(auth.config.defaultBetLevel))
       }
 
+      gameAudio.init()
+
       // Resume active round if disconnected mid-game
       if (auth.round?.isActive && auth.round.events.length > 0) {
         store.setEvents(auth.round.events, auth.round.roundID)
@@ -66,6 +69,7 @@ class GameEngine {
           store.setCurrency('FUN')
           store.setConfig(auth.config)
           store.setPhase('IDLE')
+          gameAudio.init()
         } else {
           store.setError(RGS.rgsErrorMessage(err.code))
         }

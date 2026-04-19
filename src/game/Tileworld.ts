@@ -1,5 +1,7 @@
 import * as PIXI from 'pixi.js'
+import { GameConfig } from './GameConfig'
 import { LavaSimulation, CELL_PX } from './LavaSimulation'
+import { GameAssets } from './gameAssets'
 
 export const TILE = 120
 export const CHUNK_W = 6
@@ -7,6 +9,46 @@ export const CHUNK_H = 4
 
 const CPW = CHUNK_W * TILE
 const CPH = CHUNK_H * TILE
+
+/**
+ * Эллипс в локальных координатах чанка: `rx` поперёк движения, `ry` вдоль;
+ * (ux, uy) — направление копания (необязательно единичное, нормализуем).
+ */
+function tunnelEllipsePolyRotatedLocal(
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+  ux: number,
+  uy: number,
+  steps: number,
+): number[] {
+  const len = Math.hypot(ux, uy)
+  const tx = len > 1e-6 ? ux / len : 0
+  const ty = len > 1e-6 ? uy / len : 1
+  const px = -ty
+  const py = tx
+  const v: number[] = []
+  for (let i = 0; i <= steps; i++) {
+    const a = (i / steps) * Math.PI * 2
+    const ca = Math.cos(a), sa = Math.sin(a)
+    v.push(cx + rx * ca * px + ry * sa * tx, cy + rx * ca * py + ry * sa * ty)
+  }
+  return v
+}
+
+/** Верхняя полоса травы в локальных координатах чанка: меньше Y → выше на экране (смотри маску чанка при сильном отрицании). */
+const GRASS_SPRITE_Y_OFFSET = -13
+
+/**
+ * Фиксированная лавовая пещера — строгий axis-aligned прямоугольник (маска + лава по `rect`).
+ * Компактнее прежнего; seed не влияет.
+ */
+const LAVA_CAVE_HW = TILE * 2.15
+const LAVA_CAVE_HH = TILE * 1.15
+/** Радиус скругления углов пещеры (в мире, px). */
+const LAVA_CAVE_CORNER_R = TILE * 0.55
+const LAVA_CAVE_FILL = 0.94
 
 export const enum T {
   AIR = 0, GRASS, DIRT, DIRT2, DIRT3,
@@ -101,12 +143,50 @@ function buildOverrides(
   colEnd: number,   rowEnd: number,
   worldSeed: number,
   totalRows: number,
+  pathWaypoints: number[]  = [],
+  pathSurfY:     number    = TILE,
+  pathProtectY:  number    = Infinity,
 ): TileOverride {
   const out: TileOverride = new Map()
   const set = (tc: number, tr: number, type: T) => {
     if (tr < 0) return
     out.set(`${tc},${tr}`, type)
   }
+
+  const STEP_Y_TW = TILE * 0.72
+  const isInPathCorridor = (tc: number, tr: number): boolean => {
+    if (pathWaypoints.length === 0) return false
+    const wx = tc * TILE
+    const wy = tr * TILE
+    if (wy > pathProtectY) return false
+
+    // Капсульная проверка: расстояние от тайла до отрезка пути
+    const idxCenter = Math.round((wy - pathSurfY) / STEP_Y_TW)
+    const lo = Math.max(0, idxCenter - 4)
+    const hi = Math.min(pathWaypoints.length - 2, idxCenter + 4)
+
+    for (let i = lo; i <= hi; i++) {
+      const xA = pathWaypoints[i]
+      const yA = pathSurfY + i * STEP_Y_TW
+      const xB = pathWaypoints[i + 1] ?? xA
+      const yB = pathSurfY + (i + 1) * STEP_Y_TW
+
+      // distPointSegment
+      const dx = xB - xA, dy = yB - yA
+      const lenSq = dx * dx + dy * dy
+      let dist: number
+      if (lenSq === 0) {
+        dist = Math.hypot(wx - xA, wy - yA)
+      } else {
+        const t = Math.max(0, Math.min(1, ((wx - xA) * dx + (wy - yA) * dy) / lenSq))
+        dist = Math.hypot(wx - xA - t * dx, wy - yA - t * dy)
+      }
+      // Как WorldMap.LAVA_MARGIN: SAFE_R + TILE (не ставим лаву ближе к коридору)
+      if (dist < TILE * 2.5 + TILE) return true
+    }
+    return false
+  }
+
   const PAD = 8
   const tc0 = colStart * CHUNK_W - PAD
   const tc1 = colEnd   * CHUNK_W + CHUNK_W + PAD
@@ -146,6 +226,8 @@ function buildOverrides(
   for (let tc = tc0; tc <= tc1; tc++) {
     for (let tr = Math.max(tr0, 10); tr <= tr1; tr++) {
       const depth = tr % 200
+      // Случайная лава — пропускаем если тайл в коридоре пути
+      if (isInPathCorridor(tc, tr)) continue
       if (depth >= 40 && depth <= 80 && caveNoise(tc*1.3+50, tr*0.8, worldSeed^0xFF00) > 0.70) set(tc, tr, T.LAVA)
       if (depth >= 130 && depth <= 180 && caveNoise(tc*1.1+30, tr*0.9, worldSeed^0xFF11) > 0.65) set(tc, tr, T.MAGMA)
     }
@@ -217,13 +299,14 @@ function baseTile(tileRow: number, _totalRows: number, rng: () => number): T {
 function drawTile(g: PIXI.Graphics, type: T, px: number, py: number, tileSeed: number) {
   if (type === T.AIR) return
   // LAVA и MAGMA тайлы рендерим как тёмный камень — реальная лава через LavaSimulation
-  if (type === T.LAVA || type === T.MAGMA) type = T.DEEP
+  const wasLavaOrMagma = type === T.LAVA || type === T.MAGMA
+  if (wasLavaOrMagma) type = T.DEEP
   const [fill, shadow] = COL[type] ?? [0x555555, 0x333333]
   const rng = lcg(tileSeed)
   g.beginFill(fill); g.drawRect(px, py, TILE, TILE); g.endFill()
   g.beginFill(shadow, 0.30); g.drawRect(px, py+TILE-5, TILE, 5); g.endFill()
   g.beginFill(0x000000, 0.10); g.drawRect(px+TILE-3, py, 3, TILE); g.endFill()
-  if (type !== T.LAVA && type !== T.MAGMA) {
+  if (!wasLavaOrMagma) {
     g.beginFill(0xffffff, 0.06); g.drawRect(px, py, TILE, 3); g.endFill()
   }
   if (type === T.GRASS) {
@@ -307,11 +390,14 @@ function drawCapsule(
 interface Chunk { gfx: PIXI.Container; col: number; row: number }
 
 export interface CavePath {
-  points: Array<{x: number, y: number, r: number}>
+  points: Array<{ x: number; y: number; r: number }>
+  /** Прямоугольная выемка и зона лавы в мировых координатах (центр + полуразмеры). */
+  rect: { cx: number; cy: number; hw: number; hh: number; cr: number }
 }
 
 export class TileWorld {
-  private container:  PIXI.Container
+  /** Только чанки (трава/земля); фон bgLight живёт в `bgContainer`. */
+  private chunkContainer: PIXI.Container
   private chunks:     Map<string, Chunk> = new Map()
   private overrides:  TileOverride = new Map()
   private seed:       number
@@ -322,15 +408,34 @@ export class TileWorld {
 
   private brush: PIXI.Graphics = new PIXI.Graphics()
   private line:  PIXI.Graphics = new PIXI.Graphics()
+  /** Переиспользование в scratchAt вместо new Graphics() каждый кадр */
+  private _scratchDb = new PIXI.Graphics()
+  private _scratchWb = new PIXI.Graphics()
+  private _scratchDl = new PIXI.Graphics()
   private lastPt: {x:number,y:number}|null = null
   renderer: PIXI.Renderer|null = null
 
   private _pendingCaves: CavePath[] = []
   private _lastCavePath: CavePath | null = null
   private _cavesByPosition: Map<string, CavePath> = new Map()
+  /** Счётчик не-терминальных лавовых пещер (лимит GameConfig.lava.maxDecorCaves) */
+  private _decorLavaCaveCount = 0
   private _caveGfx: PIXI.Graphics = new PIXI.Graphics()
 
   lavaSimulation: LavaSimulation | null = null
+
+  // Путь персонажа — лава не генерируется в коридоре пути
+  private _pathWaypoints:  number[] = []
+  private _pathSurfY:      number   = TILE
+  private _pathProtectY:   number   = Infinity
+
+  /** Устанавливает путь. Лава не будет генерироваться в коридоре ±3 тайла от пути. */
+  setPathWaypoints(waypoints: number[], surfY: number, protectUntilY: number = Infinity): void {
+    this._pathWaypoints = waypoints
+    this._pathSurfY     = surfY
+    this._pathProtectY  = protectUntilY
+    this.overridesBuilt = false
+  }
 
   private bgLight:  PIXI.Graphics = new PIXI.Graphics()
   private _bgLightAdded = false
@@ -338,27 +443,68 @@ export class TileWorld {
 
   static grassTex:  PIXI.Texture | null = null
   static groundTex: PIXI.Texture | null = null
+  static earthTex:  [PIXI.Texture | null, PIXI.Texture | null, PIXI.Texture | null] = [null, null, null]
 
   static loadGrassTex(): Promise<void> {
     const p1 = TileWorld.grassTex
       ? Promise.resolve()
-      : PIXI.Texture.fromURL('./grass.png').then(t=>{TileWorld.grassTex=t}).catch(()=>{TileWorld.grassTex=null})
-    const p2 = TileWorld.groundTex
-      ? Promise.resolve()
-      : PIXI.Texture.fromURL('./graund.png').then(t=>{TileWorld.groundTex=t}).catch(()=>{TileWorld.groundTex=null})
-    return Promise.all([p1, p2]).then(()=>{})
+      : PIXI.Texture.fromURL(GameAssets.grass).then(t => { TileWorld.grassTex = t }).catch(() => { TileWorld.grassTex = null })
+    const pEarth = Promise.all([
+      PIXI.Texture.fromURL(GameAssets.earth1).then(t => { TileWorld.earthTex[0] = t }).catch(() => { TileWorld.earthTex[0] = null }),
+      PIXI.Texture.fromURL(GameAssets.earth2).then(t => { TileWorld.earthTex[1] = t }).catch(() => { TileWorld.earthTex[1] = null }),
+      PIXI.Texture.fromURL(GameAssets.earth3).then(t => { TileWorld.earthTex[2] = t }).catch(() => { TileWorld.earthTex[2] = null }),
+    ])
+    return Promise.all([p1, pEarth]).then(() => {})
   }
 
-  constructor(container: PIXI.Container, seed: number, _totalDepthPx?: number) {
-    this.container = container
-    this.seed      = seed
+  constructor(bgContainer: PIXI.Container, chunkContainer: PIXI.Container, seed: number, _totalDepthPx?: number) {
+    this.chunkContainer = chunkContainer
+    this.seed = seed
     this.totalRows = Number.MAX_SAFE_INTEGER
 
     // Светлый фон — бесконечный, без маски
     this.bgLight.beginFill(0x845D46)
       .drawRect(-500000, 0, 1000000, 1000000)
       .endFill()
-    container.addChild(this.bgLight)
+    this.bgLight.zIndex = -10
+    this.chunkContainer.sortableChildren = true
+    bgContainer.addChild(this.bgLight)
+  }
+
+  /** Вариант earth1/2/3 для глобальной клетки: нет двух одинаковых у соседей слева/сверху */
+  private _earthVariant = new Map<string, number>()
+
+  private _earthKey(gCol: number, gRow: number): string {
+    return `${gCol},${gRow}`
+  }
+
+  private _pickEarthVariant(gCol: number, gRow: number): number {
+    const k = this._earthKey(gCol, gRow)
+    let v = this._earthVariant.get(k)
+    if (v !== undefined) return v
+
+    const left = gCol > 0 ? this._earthVariant.get(this._earthKey(gCol - 1, gRow)) : undefined
+    const top = this._earthVariant.get(this._earthKey(gCol, gRow - 1))
+
+    const r = h2(gCol, gRow * 17 + 3, this.seed ^ 0xE471)
+    const bad = new Set<number>()
+    if (left !== undefined) bad.add(left)
+    if (top !== undefined) bad.add(top)
+    const opts = [0, 1, 2].filter(i => !bad.has(i))
+    if (opts.length === 0) v = Math.floor(r * 3) % 3
+    else v = opts[Math.floor(r * opts.length)]!
+    this._earthVariant.set(k, v)
+    return v
+  }
+
+  private _forgetEarthVariantsForChunk(chunkCol: number, chunkRow: number) {
+    const gCol0 = chunkCol * CHUNK_W
+    const gRow0 = chunkRow * CHUNK_H
+    for (let ly = 0; ly < CHUNK_H; ly++) {
+      for (let lx = 0; lx < CHUNK_W; lx++) {
+        this._earthVariant.delete(this._earthKey(gCol0 + lx, gRow0 + ly))
+      }
+    }
   }
 
   initMasks() {
@@ -370,110 +516,148 @@ export class TileWorld {
 
   // ── Scratch ────────────────────────────────────────────────────────────────
 
-  scratchAt(sx: number, sy: number, camX: number, camY: number) {
+  /** Один овал + опциональная линия от предыдущей точки (мир, px) — для цепочки субсэмплов. */
+  private _scratchWorldTunnelStamp(
+    wx: number,
+    wy: number,
+    rx: number,
+    ry: number,
+    ux: number,
+    uy: number,
+    lineFrom: { x: number; y: number } | null,
+  ) {
     if (!this.renderer) return
-    const wx = sx + camX, wy = sy + camY
-    const R = 70, R_bg = R - 5
+    const ts = GameConfig.tunnelScratch
+    const steps = ts.ellipsePolySteps ?? 36
+    const inset = ts.darkInsetPx
+    const rxBg = Math.max(2, rx - inset)
+    const ryBg = Math.max(2, ry - inset)
+    // Толщина «нитки» между субточками ≈ ширина поперёк копания, не max(rx,ry) — иначе туннель раздувается.
+    const lineW = 2 * rx + 2
 
-    const colMin = Math.floor((wx-R)/CPW), colMax = Math.floor((wx+R)/CPW)
-    const rowMin = Math.floor((wy-R)/CPH), rowMax = Math.floor((wy+R)/CPH)
+    const pad = Math.hypot(rx, ry) + 4
+    const colMin = Math.floor((wx - pad) / CPW), colMax = Math.floor((wx + pad) / CPW)
+    const rowMin = Math.floor((wy - pad) / CPH), rowMax = Math.floor((wy + pad) / CPH)
 
-    for (let row=rowMin; row<=rowMax; row++) {
-      for (let col=colMin; col<=colMax; col++) {
-        if (row<0) continue
+    for (let row = rowMin; row <= rowMax; row++) {
+      for (let col = colMin; col <= colMax; col++) {
+        if (row < 0) continue
         const chunk = this.chunks.get(`${col}_${row}`)
         if (!chunk) continue
-        const lx = wx - col*CPW, ly = wy - row*CPH
+        const lx = wx - col * CPW, ly = wy - row * CPH
+        const poly = tunnelEllipsePolyRotatedLocal(lx, ly, rx, ry, ux, uy, steps)
         this.brush.clear()
-        this.brush.beginFill(0x000000).drawCircle(lx, ly, R).endFill()
+        this.brush.beginFill(0x000000).drawPolygon(poly).endFill()
         this.renderer.render(this.brush, { renderTexture: (chunk as any).maskRT, clear: false })
 
-        // Тёмный фон чанка — рисуем чёрный круг → darkBg скрывается → виден bgLight
         if ((chunk as any).darkMaskRT) {
-          const db = new PIXI.Graphics()
-          db.beginFill(0x000000).drawCircle(lx, ly, R_bg).endFill()
-          this.renderer.render(db, { renderTexture: (chunk as any).darkMaskRT, clear: false })
-          db.destroy()
+          const polyBg = tunnelEllipsePolyRotatedLocal(lx, ly, rxBg, ryBg, ux, uy, steps)
+          this._scratchDb.clear()
+          this._scratchDb.beginFill(0x000000).drawPolygon(polyBg).endFill()
+          this.renderer.render(this._scratchDb, { renderTexture: (chunk as any).darkMaskRT, clear: false })
         }
 
         if ((chunk as any).lavaRT) {
-          const wb = new PIXI.Graphics()
-          wb.beginFill(0xffffff).drawCircle(lx, ly, R).endFill()
-          this.renderer.render(wb, { renderTexture: (chunk as any).lavaRT, clear: false })
-          wb.destroy()
+          this._scratchWb.clear()
+          this._scratchWb.beginFill(0xffffff).drawPolygon(poly).endFill()
+          this.renderer.render(this._scratchWb, { renderTexture: (chunk as any).lavaRT, clear: false })
         }
 
-        // Открываем ячейки лавы только если туннель пересекает пещеру
         if (this.lavaSimulation) {
-          this.lavaSimulation.openAreaIfNearLava(wx, wy, R)
+          this.lavaSimulation.openAreaIfNearLava(wx, wy, rx, ry, ux, uy)
         }
 
-        if (this.lastPt) {
-          const plx = this.lastPt.x - col*CPW, ply = this.lastPt.y - row*CPH
+        if (lineFrom) {
+          const plx = lineFrom.x - col * CPW, ply = lineFrom.y - row * CPH
           this.line.clear()
-          this.line.lineStyle(R*2, 0x000000)
+          this.line.lineStyle(lineW, 0x000000)
           this.line.moveTo(plx, ply).lineTo(lx, ly)
           this.renderer.render(this.line, { renderTexture: (chunk as any).maskRT, clear: false })
 
           if ((chunk as any).darkMaskRT) {
-            const dl = new PIXI.Graphics()
-            dl.lineStyle(R_bg*2, 0x000000)
-            dl.moveTo(plx, ply).lineTo(lx, ly)
-            this.renderer.render(dl, { renderTexture: (chunk as any).darkMaskRT, clear: false })
-            dl.destroy()
+            const lineBg = Math.max(2, lineW - inset * 2)
+            this._scratchDl.clear()
+            this._scratchDl.lineStyle(lineBg, 0x000000)
+            this._scratchDl.moveTo(plx, ply).lineTo(lx, ly)
+            this.renderer.render(this._scratchDl, { renderTexture: (chunk as any).darkMaskRT, clear: false })
           }
         }
       }
     }
-    if (!this.lastPt) this.lastPt = {x:wx, y:wy}
-    this.lastPt.x = wx; this.lastPt.y = wy
+  }
+
+  scratchAt(sx: number, sy: number, camX: number, camY: number, tnx = 0, tny = 1) {
+    if (!this.renderer) return
+    const ts = GameConfig.tunnelScratch
+    const rx = ts.ellipseRadiusXPx
+    const ry = ts.ellipseRadiusYPx
+    const wxEnd = sx + camX, wyEnd = sy + camY
+    const spacingMul = ts.segmentSpacingMul ?? 0.22
+    const spacing = Math.min(rx, ry) * spacingMul
+
+    const ax = this.lastPt?.x ?? wxEnd
+    const ay = this.lastPt?.y ?? wyEnd
+    const segdx = wxEnd - ax, segdy = wyEnd - ay
+    const segLen = Math.hypot(segdx, segdy)
+    let ftx = tnx, fty = tny
+    const tl = Math.hypot(ftx, fty)
+    if (tl < 1e-3) {
+      ftx = 0
+      fty = 1
+    } else {
+      ftx /= tl
+      fty /= tl
+    }
+    // Всегда касательная пути, не хорда last→current: иначе при вертикали + дрожании X
+    // овал поворачивается «не туда» и ширина коридора на экране меняется с направлением.
+    const stampUx = ftx
+    const stampUy = fty
+
+    const nSteps = segLen < 0.5 ? 1 : Math.max(2, Math.ceil(segLen / spacing))
+
+    let prev: { x: number; y: number } | null = null
+    for (let i = 0; i <= nSteps; i++) {
+      const t = i / nSteps
+      const wx = ax + segdx * t
+      const wy = ay + segdy * t
+      this._scratchWorldTunnelStamp(wx, wy, rx, ry, stampUx, stampUy, prev)
+      prev = { x: wx, y: wy }
+    }
+
+    if (!this.lastPt) this.lastPt = { x: wxEnd, y: wyEnd }
+    this.lastPt.x = wxEnd
+    this.lastPt.y = wyEnd
   }
 
   resetScratch() { this.lastPt = null }
 
   // ── Пещеры ─────────────────────────────────────────────────────────────────
 
-  private _generateCavePath(centerX: number, centerY: number, seed: number): CavePath {
-    const rng = (() => {
-      let s = seed >>> 0
-      return () => { s = Math.imul(1664525, s) + 1013904223 >>> 0; return s / 0x100000000 }
-    })()
-    const points: Array<{x:number, y:number, r:number}> = []
-    let x = 0, y = 0
-    let angle = rng() * Math.PI * 2
-    const steps   = 28 + Math.floor(rng() * 42)
-    const baseR   = 28 + rng() * 22
-    const stepLen = 6 + rng() * 9
-
-    for (let i = 0; i < steps; i++) {
-      angle += (rng() - 0.5) * 1.2
-      const len = stepLen * (0.7 + rng() * 0.8)
-      x += Math.cos(angle) * len
-      y += Math.sin(angle) * len
-      const r = baseR * (0.6 + rng() * 0.8)
-      points.push({ x: centerX + x, y: centerY + y, r })
-
-      if (rng() < 0.22 && i > 5 && i < steps - 5) {
-        const branchSteps = 5 + Math.floor(rng() * 10)
-        let bx = x, by = y
-        const branchAngle = angle + (rng() - 0.5) * Math.PI
-        for (let j = 0; j < branchSteps; j++) {
-          const blen = stepLen * 0.6
-          bx += Math.cos(branchAngle) * blen
-          by += Math.sin(branchAngle) * blen
-          const br = baseR * (0.4 + rng() * 0.6)
-          points.push({ x: centerX + bx, y: centerY + by, r: br })
-        }
-      }
-    }
-    return { points }
+  private _generateCavePath(
+    centerX: number,
+    centerY: number,
+    _seed: number,
+    _preset: 'normal' | 'lavaTerminal' = 'normal',
+  ): CavePath {
+    const hw = LAVA_CAVE_HW
+    const hh = LAVA_CAVE_HH
+    const rect = { cx: centerX, cy: centerY, hw, hh, cr: LAVA_CAVE_CORNER_R }
+    // Одна «зона» для гравитации в пещере: круг по описанной окружности прямоугольника.
+    const zoneR = Math.hypot(hw, hh)
+    const points = [{ x: centerX, y: centerY, r: zoneR }]
+    return { rect, points }
   }
 
   private _applyCavePathToExistingChunks(cave: CavePath): number {
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
-    for (const p of cave.points) {
-      minX = Math.min(minX, p.x - p.r); maxX = Math.max(maxX, p.x + p.r)
-      minY = Math.min(minY, p.y - p.r); maxY = Math.max(maxY, p.y + p.r)
+    if (cave.rect) {
+      const { cx, cy, hw, hh } = cave.rect
+      minX = cx - hw; maxX = cx + hw; minY = cy - hh; maxY = cy + hh
+    } else {
+      for (const p of cave.points) {
+        minX = Math.min(minX, p.x - p.r); maxX = Math.max(maxX, p.x + p.r)
+        minY = Math.min(minY, p.y - p.r); maxY = Math.max(maxY, p.y + p.r)
+      }
     }
     const colMin = Math.floor(minX / CPW), colMax = Math.floor(maxX / CPW)
     const rowMin = Math.floor(minY / CPH), rowMax = Math.floor(maxY / CPH)
@@ -494,12 +678,33 @@ export class TileWorld {
     return count
   }
 
-  spawnCave(wx: number, wy: number, seed: number) {
-    const path = this._generateCavePath(wx, wy, seed)
+   /** Есть ли слот под ещё одну декоративную лавовую пещеру */
+  canSpawnMoreDecorCaves(): boolean {
+    return this._decorLavaCaveCount < GameConfig.lava.maxDecorCaves
+  }
+
+  spawnCave(
+    wx: number,
+    wy: number,
+    seed: number,
+    options?: { accept?: (path: CavePath) => boolean; lavaTerminal?: boolean },
+  ) {
+    const accept = options?.accept
+    const lavaTerminal = options?.lavaTerminal ?? false
+    const path = this._generateCavePath(wx, wy, seed, lavaTerminal ? 'lavaTerminal' : 'normal')
+    if (accept && !accept(path)) return false
+    if (!lavaTerminal && !this.canSpawnMoreDecorCaves()) return false
     this._pendingCaves.push(path)
     this._lastCavePath = path
     this._cavesByPosition.set(`${Math.round(wx)},${Math.round(wy)}`, path)
     this._applyCavePathToExistingChunks(path)
+    // Лаву инициализируем один раз на пещеру — не по каждому чанку (иначе дубли и «пустые» зоны).
+    // Без физики потока: только статическое заполнение, одна и та же доля объёма.
+    if (this.lavaSimulation && path.rect) {
+      this.lavaSimulation.addLavaSource(path.points, LAVA_CAVE_FILL, { static: true, rect: path.rect })
+    }
+    if (!lavaTerminal) this._decorLavaCaveCount++
+    return true
   }
 
   getLastCavePath(): CavePath | null { return this._lastCavePath }
@@ -523,7 +728,7 @@ export class TileWorld {
 
     if (needRebuild) {
       const oc0=colMin-6, oc1=colMax+6, or0=rowMin, or1=rowMax+8
-      const newOv=buildOverrides(oc0,or0,oc1,or1,this.seed,this.totalRows)
+      const newOv=buildOverrides(oc0,or0,oc1,or1,this.seed,this.totalRows,this._pathWaypoints,this._pathSurfY,this._pathProtectY)
       for(const[k,v]of newOv)this.overrides.set(k,v)
       this._ovColMin=oc0;this._ovColMax=oc1;this._ovRowMin=or0;this._ovRowMax=or1
       this.overridesBuilt=true
@@ -541,7 +746,8 @@ export class TileWorld {
     for(const[key,chunk]of this.chunks){
       if(chunk.col<colMin-cull||chunk.col>colMax+cull||
          chunk.row<rowMin-cull||chunk.row>rowMax+cull){
-        this.container.removeChild(chunk.gfx)
+        this._forgetEarthVariantsForChunk(chunk.col, chunk.row)
+        this.chunkContainer.removeChild(chunk.gfx)
         chunk.gfx.destroy({children:true})
         ;(chunk as any).maskRT?.destroy(true)
         ;(chunk as any).darkMaskRT?.destroy(true)
@@ -566,7 +772,26 @@ export class TileWorld {
 
     const content = new PIXI.Container()
 
-    if (TileWorld.groundTex) {
+    const hasEarth = TileWorld.earthTex.some(t => t != null)
+    if (hasEarth) {
+      const earthLayer = new PIXI.Container()
+      for (let ly = 0; ly < CHUNK_H; ly++) {
+        for (let lx = 0; lx < CHUNK_W; lx++) {
+          const gCol = col * CHUNK_W + lx
+          const gRow = row * CHUNK_H + ly
+          const vi = this._pickEarthVariant(gCol, gRow)
+          const tex = TileWorld.earthTex[vi]
+          if (!tex) continue
+          const cell = new PIXI.Sprite(tex)
+          cell.width = TILE
+          cell.height = TILE
+          cell.x = lx * TILE
+          cell.y = ly * TILE
+          earthLayer.addChild(cell)
+        }
+      }
+      content.addChild(earthLayer)
+    } else if (TileWorld.groundTex) {
       const spr = new PIXI.TilingSprite(TileWorld.groundTex, CPW, CPH)
       spr.tileScale.set(TILE/TileWorld.groundTex.width, TILE/TileWorld.groundTex.height)
       content.addChild(spr)
@@ -576,9 +801,13 @@ export class TileWorld {
       content.addChild(fb)
     }
 
+    // Одна полоса на весь чанк (растяжение). TilingSprite + мелкий tileScale давал узкие повторы по X.
     if (row===0 && TileWorld.grassTex) {
-      const spr = new PIXI.TilingSprite(TileWorld.grassTex, CPW, TILE)
-      spr.tileScale.set(TILE/TileWorld.grassTex.width, TILE/TileWorld.grassTex.height)
+      const spr = new PIXI.Sprite(TileWorld.grassTex)
+      spr.x = 0
+      spr.y = GRASS_SPRITE_Y_OFFSET
+      spr.width = CPW
+      spr.height = TILE
       content.addChild(spr)
     }
 
@@ -627,7 +856,7 @@ export class TileWorld {
     container.addChild(maskSpr)
     container.addChild(lavaMaskSpr)
 
-    this.container.addChild(container)
+    this.chunkContainer.addChild(container)
     this.chunks.set(key, {gfx:container, col, row, ...{maskRT, darkMaskRT, lavaRT}} as any)
   }
 
@@ -646,9 +875,18 @@ export class TileWorld {
     g.clear()
     let hasContent = false
 
-    // ── Рисуем настоящими капсулами (полигон по контуру) ────────────────────
-    if (cave.points.length === 1) {
-      const p  = cave.points[0]
+    if (cave.rect) {
+      const { cx, cy, hw, hh, cr } = cave.rect
+      const rx0 = cx - hw - offX
+      const ry0 = cy - hh - offY
+      const rw = 2 * hw
+      const rh = 2 * hh
+      if (rx0 + rw > 0 && rx0 < CPW && ry0 + rh > 0 && ry0 < CPH) {
+        hasContent = true
+        ;(g as any).beginFill(0x000000).drawRoundedRect(rx0, ry0, rw, rh, cr).endFill()
+      }
+    } else if (cave.points.length === 1) {
+      const p  = cave.points[0]!
       const lx = p.x - offX, ly = p.y - offY
       if (lx + p.r >= 0 && lx - p.r <= CPW && ly + p.r >= 0 && ly - p.r <= CPH) {
         hasContent = true
@@ -656,12 +894,11 @@ export class TileWorld {
       }
     } else {
       for (let i = 0; i < cave.points.length - 1; i++) {
-        const a   = cave.points[i]
-        const b   = cave.points[i + 1]
+        const a   = cave.points[i]!
+        const b   = cave.points[i + 1]!
         const lax = a.x - offX, lay = a.y - offY
         const lbx = b.x - offX, lby = b.y - offY
 
-        // Пропускаем если капсула полностью вне чанка
         const minX = Math.min(lax, lbx) - Math.max(a.r, b.r)
         const maxX = Math.max(lax, lbx) + Math.max(a.r, b.r)
         const minY = Math.min(lay, lby) - Math.max(a.r, b.r)
@@ -669,7 +906,6 @@ export class TileWorld {
         if (maxX < 0 || minX > CPW || maxY < 0 || minY > CPH) continue
 
         hasContent = true
-        // Настоящая капсула — плавный контур без артефактов на стыках
         drawCapsule(g, lax, lay, a.r, lbx, lby, b.r, 0x000000)
       }
     }
@@ -678,15 +914,23 @@ export class TileWorld {
 
     this.renderer.render(g, { renderTexture: maskRT, clear: false })
 
-    // Стираем тёмный фон пещеры (чёрный → darkBg скрывается → виден bgLight)
     if (darkMaskRT) {
       const gDark = new PIXI.Graphics()
-      if (cave.points.length === 1) {
-        const p = cave.points[0]
+      if (cave.rect) {
+        const { cx, cy, hw, hh, cr } = cave.rect
+        const inset = 10
+        const rx0 = cx - hw - offX + inset
+        const ry0 = cy - hh - offY + inset
+        const rw = Math.max(0, 2 * hw - inset * 2)
+        const rh = Math.max(0, 2 * hh - inset * 2)
+        const r2 = Math.max(0, cr - inset)
+        if (rw > 0 && rh > 0) (gDark as any).beginFill(0x000000).drawRoundedRect(rx0, ry0, rw, rh, r2).endFill()
+      } else if (cave.points.length === 1) {
+        const p = cave.points[0]!
         gDark.beginFill(0x000000).drawCircle(p.x - offX, p.y - offY, Math.max(0, p.r - 10)).endFill()
       } else {
         for (let i = 0; i < cave.points.length - 1; i++) {
-          const a = cave.points[i], b = cave.points[i + 1]
+          const a = cave.points[i]!, b = cave.points[i + 1]!
           const lax = a.x - offX, lay = a.y - offY
           const lbx = b.x - offX, lby = b.y - offY
           const minX = Math.min(lax,lbx)-Math.max(a.r,b.r), maxX = Math.max(lax,lbx)+Math.max(a.r,b.r)
@@ -699,14 +943,18 @@ export class TileWorld {
       gDark.destroy()
     }
 
-    // Белая маска для lavaRT — те же капсулы
     const gWhite = new PIXI.Graphics()
-    if (cave.points.length === 1) {
-      const p = cave.points[0]
+    if (cave.rect) {
+      const { cx, cy, hw, hh, cr } = cave.rect
+      const rx0 = cx - hw - offX
+      const ry0 = cy - hh - offY
+      ;(gWhite as any).beginFill(0xffffff).drawRoundedRect(rx0, ry0, 2 * hw, 2 * hh, cr).endFill()
+    } else if (cave.points.length === 1) {
+      const p = cave.points[0]!
       gWhite.beginFill(0xffffff).drawCircle(p.x - offX, p.y - offY, p.r).endFill()
     } else {
       for (let i = 0; i < cave.points.length - 1; i++) {
-        const a = cave.points[i], b = cave.points[i + 1]
+        const a = cave.points[i]!, b = cave.points[i + 1]!
         const lax = a.x - offX, lay = a.y - offY
         const lbx = b.x - offX, lby = b.y - offY
         const minX = Math.min(lax, lbx) - Math.max(a.r, b.r)
@@ -719,26 +967,28 @@ export class TileWorld {
     }
     this.renderer.render(gWhite, { renderTexture: lavaRT, clear: false })
     gWhite.destroy()
-
-    if (this.lavaSimulation) {
-      this.lavaSimulation.addLavaSource(cave.points, Math.random() * 0.6)
-    }
   }
 
-  updateLavas(deltaTime: number) {
-    if (this.lavaSimulation) this.lavaSimulation.update(deltaTime)
+  updateLavas(deltaTime: number, viewW?: number, viewH?: number) {
+    if (!this.lavaSimulation) return
+    if (viewW != null && viewH != null) this.lavaSimulation.setViewport(viewW, viewH)
+    this.lavaSimulation.update(deltaTime)
   }
 
   destroy() {
     for(const c of this.chunks.values()){
+      this._forgetEarthVariantsForChunk(c.col, c.row)
       c.gfx.destroy({children:true})
       ;(c as any).maskRT?.destroy(true)
       ;(c as any).darkMaskRT?.destroy(true)
       ;(c as any).lavaRT?.destroy(true)
     }
     this.chunks.clear()
+    this._earthVariant.clear()
     this._pendingCaves.length = 0
+    this._decorLavaCaveCount = 0
     this.brush.destroy(); this.line.destroy()
+    this._scratchDb.destroy(); this._scratchWb.destroy(); this._scratchDl.destroy()
     this._caveGfx.destroy()
     this.bgLight.destroy()
   }

@@ -1,126 +1,82 @@
-import React, { useRef, useState, useCallback } from 'react'
+import React, { useState } from 'react'
 import { useGameStore } from '../../store/gameStore'
 import { gameEngine } from '../../game/GameEngine'
+import { gameAudio } from '../../audio/GameAudio'
+import '../ui.css'
 
 export const DigButton: React.FC = () => {
-  const phase       = useGameStore(s => s.phase)
-  const settings    = useGameStore(s => s.settings)
-  const autoplay    = useGameStore(s => s.autoplay)
-  const setAP       = useGameStore(s => s.setAutoplayOpen)
-  const isAPOpen    = useGameStore(s => s.autoplayOpen)
+  const phase      = useGameStore(s => s.phase)
+  const autoplay   = useGameStore(s => s.autoplay)
+  const setAP      = useGameStore(s => s.setAutoplayOpen)
+  const isAPOpen   = useGameStore(s => s.autoplayOpen)
 
-  const [pos, setPos]           = useState({ x: settings.digBtnX, y: settings.digBtnY })
-  const dragRef                 = useRef<{ startX: number; startY: number; btnX: number; btnY: number; moved: boolean } | null>(null)
+  const [collapsed, setCollapsed] = useState(false)
 
-  const canDig      = phase === 'IDLE' || phase === 'WIN' || phase === 'LOSE'
-  const isRunning   = phase === 'RUNNING' || phase === 'BETTING'
+  const canDig       = phase === 'IDLE' || phase === 'WIN' || phase === 'LOSE'
+  const isRunning    = phase === 'RUNNING' || phase === 'BETTING'
   const isAutoActive = autoplay.active
 
-  // ── Drag-to-reposition ────────────────────────────────────────────────────
-  const onPointerDown = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
-    e.currentTarget.setPointerCapture(e.pointerId)
-    dragRef.current = {
-      startX: e.clientX, startY: e.clientY,
-      btnX: pos.x, btnY: pos.y,
-      moved: false,
-    }
-  }, [pos])
+  const handleSpinClick = () => {
+    gameAudio.unlock()
+    if (isAutoActive)   gameEngine.stopAutoplay()
+    else if (canDig)    gameEngine.startRound()
+  }
 
-  const onPointerMove = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
-    if (!dragRef.current) return
-    const dx = (e.clientX - dragRef.current.startX) / window.innerWidth
-    const dy = (e.clientY - dragRef.current.startY) / window.innerHeight
-    // Only start dragging after 5px movement to avoid eating clicks
-    if (Math.abs(e.clientX - dragRef.current.startX) > 5 ||
-        Math.abs(e.clientY - dragRef.current.startY) > 5) {
-      dragRef.current.moved = true
-    }
-    if (dragRef.current.moved) {
-      const nx = Math.max(0.05, Math.min(0.93, dragRef.current.btnX + dx))
-      const ny = Math.max(0.05, Math.min(0.88, dragRef.current.btnY + dy))
-      setPos({ x: nx, y: ny })
-    }
-  }, [])
+  // Клик по стрелке — показать/скрыть кнопку
+  const handleArrowClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setCollapsed(v => !v)
+  }
 
-  const onPointerUp = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
-    const wasDrag = dragRef.current?.moved ?? false
-    dragRef.current = null
-    // If it was NOT a drag → treat as a click
-    if (!wasDrag) {
-      if (isAutoActive) {
-        gameEngine.stopAutoplay()
-      } else if (canDig) {
-        gameEngine.startRound()
-      }
-    }
-  }, [canDig, isAutoActive])
+  // Клик по badge — открыть/закрыть autoplay modal
+  const handleBadgeClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setAP(!isAPOpen)
+  }
 
-  const SIZE = settings.digBtnSize * 80
+  const iconColor = isAutoActive
+    ? '#ffaa88'
+    : isRunning && !isAutoActive
+    ? 'rgba(255,255,255,0.25)'
+    : '#FFB830'
 
-  const label = isAutoActive
-    ? `СТОП\n${autoplay.remainingRounds}`
-    : isRunning ? '...' : '⛏ DIG'
-
-  const bgColor = isAutoActive
-    ? 'radial-gradient(circle at 35% 35%, #ff6b35, #cc2200)'
-    : isRunning
-    ? 'radial-gradient(circle at 35% 35%, #555, #333)'
-    : 'radial-gradient(circle at 35% 35%, #FFD060, #cc7700)'
-
-  const borderColor = isAutoActive ? '#ff4400' : isRunning ? '#666' : '#FFB830'
+  const btnClass = [
+    'ui-spin-btn',
+    isAutoActive               ? 'ui-spin-btn--auto'      : '',
+    isRunning && !isAutoActive ? 'ui-spin-btn--running'   : '',
+    collapsed                  ? 'ui-spin-btn--collapsed' : '',
+  ].filter(Boolean).join(' ')
 
   return (
-    <>
-      {/* ── DIG button ── */}
-      <button
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        style={{
-          position: 'absolute',
-          left: `${pos.x * 100}%`,
-          top:  `${pos.y * 100}%`,
-          transform: 'translate(-50%, -50%)',
-          zIndex: 60,
-          opacity: settings.digBtnOpacity,
-          touchAction: 'none',
-          width: SIZE, height: SIZE,
-          borderRadius: '50%',
-          background: bgColor,
-          border: `3px solid ${borderColor}`,
-          boxShadow: (!isRunning || isAutoActive)
-            ? `0 4px 24px ${isAutoActive ? 'rgba(255,80,0,0.5)' : 'rgba(255,160,0,0.45)'}`
-            : 'none',
-          color: '#fff',
-          fontSize: Math.max(11, SIZE * 0.16),
-          fontWeight: 900,
-          cursor: (isRunning && !isAutoActive) ? 'not-allowed' : 'grab',
-          letterSpacing: '0.04em',
-          whiteSpace: 'pre-line',
-          lineHeight: 1.2,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontFamily: 'inherit',
-          userSelect: 'none',
-          WebkitUserSelect: 'none',
-          transition: 'background 0.15s, border-color 0.15s',
-        }}
-      >
-        {label}
-      </button>
+    <button
+      className={btnClass}
+      onClick={handleSpinClick}
+      disabled={isRunning && !isAutoActive}
+    >
+      {/* Стрелка — toggles collapsed, всегда слева */}
+      <div
+        className="ui-spin-arrow"
+        onClick={handleArrowClick}
+      />
 
-      {/* ── Autoplay A button ── */}
-      <button
-        onClick={() => setAP(!isAPOpen)}
-        style={{
-          position: 'absolute', right: 56, bottom: 72,
-          width: 36, height: 36, borderRadius: '50%',
-          border: `2px solid ${isAutoActive ? '#FFB830' : 'rgba(255,255,255,0.2)'}`,
-          background: isAutoActive ? 'rgba(255,184,48,0.2)' : 'rgba(15,8,3,0.85)',
-          color: isAutoActive ? '#FFB830' : 'rgba(240,230,211,0.7)',
-          fontSize: 14, fontWeight: 800, cursor: 'pointer', zIndex: 60,
-          boxShadow: isAutoActive ? '0 0 10px rgba(255,184,48,0.4)' : 'none',
-        }}
-      >A</button>
-    </>
+      <svg className="ui-spin-icon" width="52" height="52" viewBox="0 0 52 52" fill="none">
+        <path
+          d="M44 26C44 35.941 35.941 44 26 44C16.059 44 8 35.941 8 26C8 16.059 16.059 8 26 8C32 8 37.3 10.9 40.7 15.4"
+          stroke={iconColor} strokeWidth="4" strokeLinecap="round"
+        />
+        <path d="M38 8L42 16L34 16Z" fill={iconColor} />
+      </svg>
+
+      {/* Badge — открывает autoplay modal */}
+      <div
+        className={`ui-spin-badge ${isAutoActive ? 'ui-spin-badge--active' : ''}`}
+        onClick={handleBadgeClick}
+      >
+        {isAutoActive
+          ? `STOP ${autoplay.remainingRounds}`
+          : 'AUTOPLAY'
+        }
+      </div>
+    </button>
   )
 }

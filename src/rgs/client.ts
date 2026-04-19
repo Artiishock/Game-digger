@@ -61,7 +61,7 @@ export interface RgsConfig {
 }
 
 /** A single event in a game round — Deep Rush flavour */
-export type EventType = 'COIN' | 'GOLD' | 'DIAMOND' | 'BOMB' | 'STONE' | 'HOME'
+export type EventType = 'COIN' | 'GOLD' | 'DIAMOND' | 'BOMB' | 'STONE' | 'HOME' | 'LAVA'
 
 export interface RoundEvent {
   type:           EventType

@@ -4,7 +4,7 @@ import { useGameStore } from '../../store/gameStore'
 // ─── Info Panel ────────────────────────────────────────────────────────────────
 
 export const InfoPanel: React.FC = () => (
-  <div style={{ display: 'flex', flexDirection: 'column', gap: 16, color: 'rgba(240,230,211,0.75)', fontSize: 13, lineHeight: 1.65 }}>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: 16, color: 'rgba(240,230,211,0.75)', fontSize: 16, lineHeight: 1.65 }}>
     <Section title="КАК ИГРАТЬ">
       Выберите размер ставки и нажмите кнопку <Gold>⛏ DIG</Gold>. Персонаж начинает бурить
       землю вниз. На пути он встречает бонусы и дебафы, которые меняют ваш выигрыш.
@@ -41,7 +41,7 @@ export const InfoPanel: React.FC = () => (
 
 const Section: React.FC<React.PropsWithChildren<{ title: string }>> = ({ title, children }) => (
   <div>
-    <div style={{ fontSize: 11, letterSpacing: '.16em', textTransform: 'uppercase', color: '#FFB830', fontWeight: 700, marginBottom: 8 }}>{title}</div>
+    <div style={{ fontSize: 16, letterSpacing: '.16em', textTransform: 'uppercase', color: '#FFB830', fontWeight: 700, marginBottom: 8 }}>{title}</div>
     <div>{children}</div>
   </div>
 )

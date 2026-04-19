@@ -15,6 +15,9 @@ import { SkeletonJson, AtlasAttachmentLoader } from '@pixi-spine/runtime-4.1'
 import type { EventType } from '../rgs/client'
 import { TILE } from './Tileworld'
 
+/** Отключить Spine: пикапы и персонаж — PNG из public/assets */
+const USE_SPINE = false
+
 // ─── Маппинг EventType → имя анимации ────────────────────────────────────────
 
 const ANIM_MAP: Partial<Record<EventType, string>> = {
@@ -159,6 +162,7 @@ export class SpineAnimator {
 
   /** Создать анимированный Spine-спрайт для пикапа */
   static createItem(type: EventType): Spine | null {
+    if (!USE_SPINE) return null
     const animName = ANIM_MAP[type]
     if (!animName) return null
     const scale = ITEM_SCALE[type] ?? 0.20
@@ -175,11 +179,13 @@ export class SpineAnimator {
 
   /** Создать Spine-персонажа (character_idle / character_action) */
   static createCharacter(scale = 0.30): Spine | null {
+    if (!USE_SPINE) return null
     return this._make(CHAR_ANIM.idle, scale)
   }
 
   /** Создать эффект грязи в точке входа (dirt_show → dirt_idle) */
   static createDirt(scale = 0.30): Spine | null {
+    if (!USE_SPINE) return null
     return this._make(DIRT_ANIM.show, scale)
   }
 
@@ -394,6 +400,7 @@ export class SpineAnimator {
 
 /** Хитбокс пикапа в пикселях на основе масштаба */
 export function getSpineItemSize(type: EventType): { w: number; h: number } {
+  if (!USE_SPINE) return { w: 0, h: 0 }
   const s = ITEM_SCALE[type] ?? 0.20
   // Spine-радиус ≈ 240 ед. → * scale = размер в пикселях
   const px = 240 * s * 0.5
