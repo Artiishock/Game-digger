@@ -36,6 +36,8 @@ export interface SettingsState {
   musicVolume:     number   // 0–1
   sfxVolume:       number   // 0–1
   highQuality:     boolean
+  batterySaver:    boolean
+  introScreen:     boolean
   digBtnSize:      number   // 0.5–1.5
   digBtnOpacity:   number   // 0–1
   digBtnX:         number   // 0–1 (normalised position)
@@ -113,6 +115,8 @@ const DEFAULT_SETTINGS: SettingsState = {
   musicVolume:   0.6,
   sfxVolume:     0.8,
   highQuality:   true,
+  batterySaver:  false,
+  introScreen:   true,
   digBtnSize:    1.0,
   digBtnOpacity: 1.0,
   digBtnX:       0.88,

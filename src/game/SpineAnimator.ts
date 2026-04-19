@@ -308,17 +308,17 @@ export class SpineAnimator {
       const backScale  = skel.findBone('coin_back_scale')
       if (!ctrl || !frontScale || !backScale) return
 
-      const sy       = ctrl.scaleY
+      const sy       = (ctrl as any).scaleY as number
       const showSide = sy < SpineAnimator.SIDE_SCALE
 
       // coin_scale_CTRL эмуляция: при ребре — фиксируем на SIDE_SCALE
-      frontScale.scaleY = showSide ? SpineAnimator.SIDE_SCALE : sy
-      backScale.scaleY  = showSide ? SpineAnimator.SIDE_SCALE : sy
+      ;(frontScale as any).scaleY = showSide ? SpineAnimator.SIDE_SCALE : sy
+      ;(backScale as any).scaleY  = showSide ? SpineAnimator.SIDE_SCALE : sy
 
       // coin_side_CTRL эмуляция
       const sideCtrl   = skel.findBone('coin_side_control')
       const backRotate = skel.findBone('coin_back_rotate')
-      if (sideCtrl && backRotate) backRotate.scaleY = sideCtrl.scaleY
+      if (sideCtrl && backRotate) (backRotate as any).scaleY = (sideCtrl as any).scaleY
 
       skel.updateWorldTransform()
 
@@ -329,16 +329,16 @@ export class SpineAnimator {
       const slotR     = skel.findSlot('side_right')
 
       if (showSide) {
-        if (slotFront) slotFront.attachment = null
-        if (slotBack)  slotBack.attachment  = null
+        if (slotFront) (slotFront as any).attachment = null
+        if (slotBack)  (slotBack as any).attachment  = null
         const skin = skel.data.defaultSkin
         const idx  = skel.data.findSlot('side_left')?.index ?? -1
         const att  = idx >= 0 ? skin.getAttachment(idx, 'coin_side') : null
-        if (slotL) slotL.attachment = att ?? null
-        if (slotR) slotR.attachment = att ?? null
+        if (slotL) (slotL as any).attachment = att ?? null
+        if (slotR) (slotR as any).attachment = att ?? null
       } else {
-        if (slotL) slotL.attachment = null
-        if (slotR) slotR.attachment = null
+        if (slotL) (slotL as any).attachment = null
+        if (slotR) (slotR as any).attachment = null
       }
 
       // slot.color.a — не работает надёжно: PIXI рендер-луп вызывает updateTransform()
