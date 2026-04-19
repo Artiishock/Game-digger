@@ -78,6 +78,27 @@ const COL: Record<number, [number, number]> = {
   [T.IRON]:     [0x7a7a7a,   0xaaaaaa  ],
 }
 
+function mulRgb(hex: number, k: number): number {
+  const r = Math.min(255, Math.round(((hex >> 16) & 0xff) * k))
+  const g = Math.min(255, Math.round(((hex >> 8) & 0xff) * k))
+  const b = Math.min(255, Math.round((hex & 0xff) * k))
+  return (r << 16) | (g << 8) | b
+}
+
+/** Фон под выкопом, если нет текстур земли (как fallback в чанке). */
+const TUNNEL_BG_FALLBACK = mulRgb(COL[T.DIRT]![0], 0.58)
+
+/** Мир: покрытие под туннелем (как прежний `drawRect`). */
+const TUNNEL_BG_X = -500000
+const TUNNEL_BG_W = 1_000_000
+const TUNNEL_BG_H = 1_000_000
+/** Тёмный фон чанка вокруг выкопа (`darkBg`, маска). */
+const CHUNK_DARK_BG_COLOR = 0x5d3011
+
+/** Полупрозрачный тон поверх текстуры дна туннеля — цвет и альфа задаются отдельно. */
+const TUNNEL_FLOOR_TINT_COLOR = 0x000000
+const TUNNEL_FLOOR_TINT_ALPHA = 0.42
+
 function lcg(seed: number) {
   let s = seed >>> 0
   return () => { s = Math.imul(1664525, s) + 1013904223 >>> 0; return s / 0x100000000 }
@@ -437,9 +458,15 @@ export class TileWorld {
     this.overridesBuilt = false
   }
 
-  private bgLight:  PIXI.Graphics = new PIXI.Graphics()
-  private _bgLightAdded = false
-  private bgMinX = 99999; private bgMaxX = -99999
+  /** Подложка под выкопом: текстура земли (как верхний слой чанка) или запасной цвет. */
+  private bgLight: PIXI.Container = new PIXI.Container()
+  private _tunnelBgMode: 'earthTiles' | 'groundTiling' | 'colorFill' = 'colorFill'
+  /** Земля / заливка под выкопом; оверлей затемнения — поверх этого контейнера. */
+  private _tunnelBgContent = new PIXI.Container()
+  private _tunnelBgDim = new PIXI.Graphics()
+  private _tunnelBgTiles = new Map<string, PIXI.Sprite>()
+  private _tunnelBgGroundTiling: PIXI.TilingSprite | null = null
+  private _tunnelBgColorFill: PIXI.Graphics | null = null
 
   static grassTex:  PIXI.Texture | null = null
   static groundTex: PIXI.Texture | null = null
@@ -462,13 +489,21 @@ export class TileWorld {
     this.seed = seed
     this.totalRows = Number.MAX_SAFE_INTEGER
 
-    // Светлый фон — бесконечный, без маски
-    this.bgLight.beginFill(0x845D46)
-      .drawRect(-500000, 0, 1000000, 1000000)
-      .endFill()
     this.bgLight.zIndex = -10
     this.chunkContainer.sortableChildren = true
     bgContainer.addChild(this.bgLight)
+    this.bgLight.addChild(this._tunnelBgContent)
+    this._redrawTunnelBgDimOverlay()
+    this.bgLight.addChild(this._tunnelBgDim)
+    this.rebuildTunnelBgFromTextures()
+  }
+
+  private _redrawTunnelBgDimOverlay(): void {
+    this._tunnelBgDim.clear()
+    if (TUNNEL_FLOOR_TINT_ALPHA <= 0) return
+    this._tunnelBgDim.beginFill(TUNNEL_FLOOR_TINT_COLOR, TUNNEL_FLOOR_TINT_ALPHA)
+      .drawRect(TUNNEL_BG_X, 0, TUNNEL_BG_W, TUNNEL_BG_H)
+      .endFill()
   }
 
   /** Вариант earth1/2/3 для глобальной клетки: нет двух одинаковых у соседей слева/сверху */
@@ -513,6 +548,96 @@ export class TileWorld {
 
   showBg() { this.bgLight.visible = true  }
   hideBg()  { this.bgLight.visible = false }
+
+  /**
+   * Подложка туннеля: те же `earth1/2/3` / `groundTex`, что и слой земли в чанке.
+   * Вызвать после `TileWorld.loadGrassTex()`, если мир создали до резолва Promise.
+   */
+  rebuildTunnelBgFromTextures(): void {
+    for (const spr of this._tunnelBgTiles.values()) {
+      this._tunnelBgContent.removeChild(spr)
+      spr.destroy({ texture: false })
+    }
+    this._tunnelBgTiles.clear()
+    if (this._tunnelBgGroundTiling) {
+      this._tunnelBgContent.removeChild(this._tunnelBgGroundTiling)
+      this._tunnelBgGroundTiling.destroy()
+      this._tunnelBgGroundTiling = null
+    }
+    if (this._tunnelBgColorFill) {
+      this._tunnelBgContent.removeChild(this._tunnelBgColorFill)
+      this._tunnelBgColorFill.destroy()
+      this._tunnelBgColorFill = null
+    }
+
+    const hasEarth = TileWorld.earthTex.some(t => t != null)
+    if (hasEarth) {
+      this._tunnelBgMode = 'earthTiles'
+      return
+    }
+    if (TileWorld.groundTex) {
+      this._tunnelBgMode = 'groundTiling'
+      const tex = TileWorld.groundTex
+      const spr = new PIXI.TilingSprite(tex, TUNNEL_BG_W, TUNNEL_BG_H)
+      spr.x = TUNNEL_BG_X
+      spr.y = 0
+      spr.tileScale.set(TILE / tex.width, TILE / tex.height)
+      this._tunnelBgContent.addChild(spr)
+      this._tunnelBgGroundTiling = spr
+      return
+    }
+    this._tunnelBgMode = 'colorFill'
+    const g = new PIXI.Graphics()
+    g.beginFill(TUNNEL_BG_FALLBACK).drawRect(TUNNEL_BG_X, 0, TUNNEL_BG_W, TUNNEL_BG_H).endFill()
+    this._tunnelBgContent.addChild(g)
+    this._tunnelBgColorFill = g
+  }
+
+  private _syncTunnelBgEarthTiles(camX: number, camY: number, screenW: number, screenH: number): void {
+    if (this._tunnelBgMode !== 'earthTiles') return
+    const margin = TILE * 6
+    const wx0 = camX - margin
+    const wx1 = camX + screenW + margin
+    const wy0 = Math.max(0, camY - margin)
+    const wy1 = camY + screenH + margin
+    const gc0 = Math.floor(wx0 / TILE)
+    const gc1 = Math.floor(wx1 / TILE)
+    const gr0 = Math.floor(wy0 / TILE)
+    const gr1 = Math.floor(wy1 / TILE)
+
+    const needed = new Set<string>()
+    for (let gr = gr0; gr <= gr1; gr++) {
+      if (gr < 0) continue
+      for (let gc = gc0; gc <= gc1; gc++) {
+        needed.add(`${gc}_${gr}`)
+      }
+    }
+
+    for (const k of [...this._tunnelBgTiles.keys()]) {
+      if (!needed.has(k)) {
+        const spr = this._tunnelBgTiles.get(k)!
+        this._tunnelBgContent.removeChild(spr)
+        spr.destroy({ texture: false })
+        this._tunnelBgTiles.delete(k)
+      }
+    }
+
+    for (const k of needed) {
+      if (this._tunnelBgTiles.has(k)) continue
+      const [gc, gr] = k.split('_').map(Number) as [number, number]
+      const vi = this._pickEarthVariant(gc, gr)
+      const tex = TileWorld.earthTex[vi]
+      if (!tex) continue
+      const spr = new PIXI.Sprite(tex)
+      spr.width = TILE
+      spr.height = TILE
+      spr.x = gc * TILE
+      spr.y = gr * TILE
+      spr.roundPixels = true
+      this._tunnelBgContent.addChild(spr)
+      this._tunnelBgTiles.set(k, spr)
+    }
+  }
 
   // ── Scratch ────────────────────────────────────────────────────────────────
 
@@ -755,6 +880,8 @@ export class TileWorld {
         this.chunks.delete(key)
       }
     }
+
+    this._syncTunnelBgEarthTiles(camX, camY, screenW, screenH)
   }
 
   private _extendBg(_colMin:number, _colMax:number, _rowMin:number, _rowMax:number) {
@@ -833,9 +960,9 @@ export class TileWorld {
       bl.destroy()
     }
 
-    // Тёмный фон чанка (0x4E312B) — виден везде, скрывается в туннеле/пещере
+    // Тёмный фон чанка (`CHUNK_DARK_BG_COLOR`) — виден везде, скрывается в туннеле/пещере
     const darkBg = new PIXI.Graphics()
-    darkBg.beginFill(0x4E312B).drawRect(0, 0, CPW, CPH).endFill()
+    darkBg.beginFill(CHUNK_DARK_BG_COLOR).drawRect(0, 0, CPW, CPH).endFill()
     darkBg.mask = darkMaskSpr
 
     const lavaContainer = new PIXI.Container()
@@ -990,6 +1117,9 @@ export class TileWorld {
     this.brush.destroy(); this.line.destroy()
     this._scratchDb.destroy(); this._scratchWb.destroy(); this._scratchDl.destroy()
     this._caveGfx.destroy()
-    this.bgLight.destroy()
+    this._tunnelBgTiles.clear()
+    this._tunnelBgGroundTiling = null
+    this._tunnelBgColorFill = null
+    this.bgLight.destroy({ children: true })
   }
 }

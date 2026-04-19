@@ -506,6 +506,23 @@ export function placeObstacles(
 ): SafeObject[] {
   const objects:  SafeObject[] = []
   const SPAWN_INTERVAL = TILE * GameConfig.spawn.decorIntervalTiles
+  const maxRow = Math.ceil((terminalY + TILE * 8) / TILE)
+
+  // ── Предпросчёт лавовых точек (используются и для анти-спавна декора, и для итогового спавна лавы) ──
+  const lavaSpots: Array<{ x: number; y: number; r: number; w: number; h: number }> = []
+  for (let tr = 10; tr <= maxRow; tr++) {
+    const wy = tr * TILE
+    const depth = tr % 200
+    const collectLava = (tc: number, scX: number, offX: number, scY: number, thresh: number, seed: number) => {
+      const wx = tc * TILE
+      if (caveNoise(tc * scX + offX, tr * scY, seed) <= thresh) return
+      const lavaR = TILE * 0.8
+      if (intersectsTunnel(wx, wy, lavaR, path, surfY, LAVA_MARGIN)) return
+      lavaSpots.push({ x: wx, y: wy, r: lavaR, w: TILE * 2, h: TILE * 2 })
+    }
+    if (depth >= 35  && depth <= 88)  for (let tc = -16; tc <= 16; tc++) collectLava(tc, 1.25, 50, 0.78, 0.56, worldSeed ^ 0xFF00)
+    if (depth >= 118 && depth <= 192) for (let tc = -16; tc <= 16; tc++) collectLava(tc, 1.08, 30, 0.88, 0.52, worldSeed ^ 0xFF11)
+  }
 
   // ── Декорации ──────────────────────────────────────────────────────────────
   const placed: Array<{ x: number; y: number; r: number }> = []
@@ -519,12 +536,18 @@ export function placeObstacles(
 
   const tryDecor = (type: EventType, yRow: number) => {
     const sz = type === 'HOME' ? DECOR_HOME_PLACE_SZ : (ITEM_SZ[type] ?? 60)
-    const r  = sz / 2
+    // Для квадратного HOME используем описанную окружность, иначе углы дома
+    // могут «въезжать» в коридор при круговой проверке intersectsTunnel.
+    const r  = type === 'HOME' ? (sz * Math.SQRT1_2) : (sz / 2)
     const ty = type.charCodeAt(0) ?? 0
 
     const tryPlace = (worldX: number, worldY: number, tunnelMargin = DECOR_TUNNEL_PLACE_MARGIN): boolean => {
       const x = Math.max(decorSpawnMinX, Math.min(decorSpawnMaxX, worldX))
       if (intersectsTunnel(x, worldY, r, path, surfY, tunnelMargin)) return false
+      // Не ставим декор в зонах будущей лавы.
+      for (const lv of lavaSpots) {
+        if (Math.hypot(x - lv.x, worldY - lv.y) < r + lv.r) return false
+      }
       const minD = r + decorClearance
       for (const p of placed) {
         if (Math.hypot(x - p.x, worldY - p.y) < minD + p.r) return false
@@ -691,19 +714,8 @@ export function placeObstacles(
   }
 
   // ── Лава (только вне туннеля) ─────────────────────────────────────────────
-  const maxRow = Math.ceil((terminalY + TILE * 8) / TILE)
-  for (let tr = 10; tr <= maxRow; tr++) {
-    const wy    = tr * TILE
-    const depth = tr % 200
-    const checkLava = (tc: number, scX: number, offX: number, scY: number, thresh: number, seed: number) => {
-      const wx = tc * TILE
-      if (caveNoise(tc * scX + offX, tr * scY, seed) <= thresh) return
-      const lavaR = TILE * 0.8
-      if (intersectsTunnel(wx, wy, lavaR, path, surfY, LAVA_MARGIN)) return
-      objects.push({ x: wx, y: wy, w: TILE * 2, h: TILE * 2, kind: 'lava' })
-    }
-    if (depth >= 35  && depth <= 88)  for (let tc = -16; tc <= 16; tc++) checkLava(tc, 1.25, 50, 0.78, 0.56, worldSeed ^ 0xFF00)
-    if (depth >= 118 && depth <= 192) for (let tc = -16; tc <= 16; tc++) checkLava(tc, 1.08, 30, 0.88, 0.52, worldSeed ^ 0xFF11)
+  for (const lv of lavaSpots) {
+    objects.push({ x: lv.x, y: lv.y, w: lv.w, h: lv.h, kind: 'lava' })
   }
 
   // ── Пещеры (только вне туннеля) ───────────────────────────────────────────

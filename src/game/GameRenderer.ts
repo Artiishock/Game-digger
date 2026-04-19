@@ -555,7 +555,7 @@ const TREE_X_RUN_DX: readonly [number, number, number] = [-480, 180, 520]
 
 export class GameRenderer {
   app:PIXI.Application
-  /** Коричневый подложечный фон (только bgLight из TileWorld). */
+  /** Подложка под выкопом (текстура земли / цвет из TileWorld.bgLight). */
   private worldBgLayer:   PIXI.Container
   /** Чанки травы/земли и лава — поверх неба и деревьев. */
   private worldChunkLayer: PIXI.Container
@@ -955,7 +955,9 @@ export class GameRenderer {
     })()
     // Соль на каждый запуск раунда: даже при одинаковых events маршрут/декор не повторяются.
     this.worldSeed = (baseSeed ^ randSalt) >>> 0
-    TileWorld.loadGrassTex()
+    TileWorld.loadGrassTex().then(() => {
+      this.tileWorld?.rebuildTunnelBgFromTextures()
+    })
     this.tileWorld= new TileWorld(this.worldBgLayer, this.worldChunkLayer, this.worldSeed)
     this.tileWorld.renderer=this.app.renderer as PIXI.Renderer
     this.tileWorld.initMasks()
