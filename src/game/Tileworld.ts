@@ -37,6 +37,50 @@ function tunnelEllipsePolyRotatedLocal(
   return v
 }
 
+/**
+ * Кольцо между двумя соосными эллипсами (внешний CCW, внутренний обратно) — маска «бортик» без заливки середины,
+ * чтобы под ним был полупрозрачный чёрный и тайлы.
+ */
+function tunnelRingPolyRotatedLocal(
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+  rxIn: number,
+  ryIn: number,
+  ux: number,
+  uy: number,
+  steps: number,
+): number[] | null {
+  if (rxIn >= rx - 0.25 || ryIn >= ry - 0.25) return null
+  const outer = tunnelEllipsePolyRotatedLocal(cx, cy, rx, ry, ux, uy, steps)
+  const inner = tunnelEllipsePolyRotatedLocal(cx, cy, rxIn, ryIn, ux, uy, steps)
+  const ring: number[] = []
+  for (let i = 0; i < outer.length; i++) ring.push(outer[i]!)
+  for (let i = inner.length - 2; i >= 0; i -= 2) {
+    ring.push(inner[i]!, inner[i + 1]!)
+  }
+  return ring
+}
+
+/** Четырёхугольник вдоль отрезка между центрами штампов — связка масок кольца (нормаль к хорде). */
+function tunnelRingConnectorQuad(
+  plx: number,
+  ply: number,
+  lx: number,
+  ly: number,
+  rx: number,
+  rxIn: number,
+): number[] {
+  const dx = lx - plx,
+    dy = ly - ply
+  const d = Math.hypot(dx, dy)
+  if (d < 1e-4) return []
+  const nx = -dy / d,
+    ny = dx / d
+  return [plx + nx * rx, ply + ny * rx, lx + nx * rx, ly + ny * rx, lx + nx * rxIn, ly + ny * rxIn, plx + nx * rxIn, ply + ny * rxIn]
+}
+
 /** Верхняя полоса травы в локальных координатах чанка: меньше Y → выше на экране (смотри маску чанка при сильном отрицании). */
 const GRASS_SPRITE_Y_OFFSET = -13
 
@@ -362,12 +406,13 @@ function drawCapsule(
   g: PIXI.Graphics,
   ax: number, ay: number, ra: number,
   bx: number, by: number, rb: number,
-  color: number
+  color: number,
+  fillAlpha = 0.2,
 ) {
   const dx = bx - ax, dy = by - ay
-  const len = Math.sqrt(dx*dx + dy*dy)
+  const len = Math.sqrt(dx * dx + dy * dy)
   if (len < 0.001) {
-    g.beginFill(color).drawCircle(ax, ay, ra).endFill()
+    g.beginFill(color, fillAlpha).drawCircle(ax, ay, ra).endFill()
     return
   }
   const STEPS = 10
@@ -382,7 +427,7 @@ function drawCapsule(
     const angle = Math.atan2(dy, dx) - Math.PI / 2 + (Math.PI / STEPS) * i
     verts.push(bx + Math.cos(angle) * rb, by + Math.sin(angle) * rb)
   }
-  g.beginFill(color).drawPolygon(verts).endFill()
+  g.beginFill(color, fillAlpha).drawPolygon(verts).endFill()
 }
 
 // ─── TileWorld ────────────────────────────────────────────────────────────────
@@ -406,12 +451,7 @@ export class TileWorld {
   private _ovColMin = 0; private _ovColMax = 0
   private _ovRowMin = 0; private _ovRowMax = 0
 
-  private brush: PIXI.Graphics = new PIXI.Graphics()
-  private line:  PIXI.Graphics = new PIXI.Graphics()
-  /** Переиспользование в scratchAt вместо new Graphics() каждый кадр */
-  private _scratchDb = new PIXI.Graphics()
   private _scratchWb = new PIXI.Graphics()
-  private _scratchDl = new PIXI.Graphics()
   private lastPt: {x:number,y:number}|null = null
   renderer: PIXI.Renderer|null = null
 
@@ -420,7 +460,6 @@ export class TileWorld {
   private _cavesByPosition: Map<string, CavePath> = new Map()
   /** Счётчик не-терминальных лавовых пещер (лимит GameConfig.lava.maxDecorCaves) */
   private _decorLavaCaveCount = 0
-  private _caveGfx: PIXI.Graphics = new PIXI.Graphics()
 
   lavaSimulation: LavaSimulation | null = null
 
@@ -525,15 +564,31 @@ export class TileWorld {
     ux: number,
     uy: number,
     lineFrom: { x: number; y: number } | null,
+    fillA: number,
+    innerA: number,
   ) {
     if (!this.renderer) return
     const ts = GameConfig.tunnelScratch
+    const tv = GameConfig.tunnelVisual
     const steps = ts.ellipsePolySteps ?? 36
-    const inset = ts.darkInsetPx
-    const rxBg = Math.max(2, rx - inset)
-    const ryBg = Math.max(2, ry - inset)
+    const fillRgb = tv.fillColor != null ? tv.fillColor : 0x000000
+    const fillAC = Math.min(0.98, Math.max(0, fillA))
+    const innerAC = Math.min(0.98, Math.max(0, innerA))
+    const innerLineA = Math.min(
+      0.98,
+      innerAC * Math.min(1, Math.max(0, tv.playerTunnelInnerLineAlphaMul ?? 0.16)),
+    )
+    const useMulTint = tv.playerTunnelTintUsesMultiply === true
+    const useShadeMask = tv.playerTunnelUsesShadeMask !== false
+    const rimW = tv.rimWidthPx ?? 3.5
+    const rimC = tv.rimColor ?? 0x5d3011
+    const rimA = tv.rimAlpha ?? 0.9
     // Толщина «нитки» между субточками ≈ ширина поперёк копания, не max(rx,ry) — иначе туннель раздувается.
     const lineW = 2 * rx + 2
+    const inset = ts.darkInsetPx ?? 5
+    const rxIn = Math.max(2, rx - inset)
+    const ryIn = Math.max(2, ry - inset)
+    const lineWInner = Math.max(4, 2 * rxIn + 2)
 
     const pad = Math.hypot(rx, ry) + 4
     const colMin = Math.floor((wx - pad) / CPW), colMax = Math.floor((wx + pad) / CPW)
@@ -546,15 +601,54 @@ export class TileWorld {
         if (!chunk) continue
         const lx = wx - col * CPW, ly = wy - row * CPH
         const poly = tunnelEllipsePolyRotatedLocal(lx, ly, rx, ry, ux, uy, steps)
-        this.brush.clear()
-        this.brush.beginFill(0x000000).drawPolygon(poly).endFill()
-        this.renderer.render(this.brush, { renderTexture: (chunk as any).maskRT, clear: false })
+        const tunnelFillGfx = (chunk as any).tunnelFillGfx as PIXI.Graphics | undefined
+        const tunnelPlayerTintGfx = (chunk as any).tunnelPlayerTintGfx as PIXI.Graphics | undefined
+        const tunnelRimGfx = (chunk as any).tunnelRimGfx as PIXI.Graphics | undefined
+        const tunnelDimMaskGfx = (chunk as any).tunnelDimMaskGfx as PIXI.Graphics | undefined
+        const tunnelSheenMaskGfx = (chunk as any).tunnelSheenMaskGfx as PIXI.Graphics | undefined
+        const tunnelShadeMaskGfx = (chunk as any).tunnelShadeMaskGfx as PIXI.Graphics | undefined
+        const mulC = tv.playerTintMultiplyColor != null ? tv.playerTintMultiplyColor : 0xb1b1b1
 
-        if ((chunk as any).darkMaskRT) {
-          const polyBg = tunnelEllipsePolyRotatedLocal(lx, ly, rxBg, ryBg, ux, uy, steps)
-          this._scratchDb.clear()
-          this._scratchDb.beginFill(0x000000).drawPolygon(polyBg).endFill()
-          this.renderer.render(this._scratchDb, { renderTexture: (chunk as any).darkMaskRT, clear: false })
+        if (useShadeMask) {
+          if (fillAC > 1e-4 && tunnelDimMaskGfx) {
+            tunnelDimMaskGfx.beginFill(0xffffff, 1).drawPolygon(poly).endFill()
+          }
+          // Коричневая плёнка — только кольцо (внешний минус внутренний), середина «прорезана» под чёрный и тайлы.
+          if (innerA > 1e-4 && tunnelSheenMaskGfx && rxIn < rx && ryIn < ry) {
+            const ringPoly = tunnelRingPolyRotatedLocal(lx, ly, rx, ry, rxIn, ryIn, ux, uy, steps)
+            if (ringPoly && ringPoly.length >= 6) {
+              tunnelSheenMaskGfx.beginFill(0xffffff, 1).drawPolygon(ringPoly).endFill()
+            }
+          }
+          if (innerA > 1e-4 && tunnelShadeMaskGfx && rxIn < rx && ryIn < ry) {
+            const polyIn = tunnelEllipsePolyRotatedLocal(lx, ly, rxIn, ryIn, ux, uy, steps)
+            tunnelShadeMaskGfx.beginFill(0xffffff, 1).drawPolygon(polyIn).endFill()
+          }
+        }
+
+        if (tunnelFillGfx) {
+          if (!useShadeMask && fillAC > 1e-4) {
+            tunnelFillGfx.beginFill(fillRgb, fillAC).drawPolygon(poly).endFill()
+          }
+          if (!useShadeMask && !useMulTint && innerAC > 1e-4 && rxIn < rx && ryIn < ry) {
+            const polyIn = tunnelEllipsePolyRotatedLocal(lx, ly, rxIn, ryIn, ux, uy, steps)
+            tunnelFillGfx.beginFill(fillRgb, innerAC).drawPolygon(polyIn).endFill()
+          }
+        }
+        if (!useShadeMask && useMulTint && tunnelPlayerTintGfx && innerA > 1e-4 && rxIn < rx && ryIn < ry) {
+          const polyIn = tunnelEllipsePolyRotatedLocal(lx, ly, rxIn, ryIn, ux, uy, steps)
+          tunnelPlayerTintGfx.beginFill(mulC, 1).drawPolygon(polyIn).endFill()
+        }
+
+        // Слой 2: коричневая обводка по внешнему контуру (бортик).
+        if (tunnelRimGfx && poly.length >= 4) {
+          tunnelRimGfx.lineStyle(rimW, rimC, rimA)
+          tunnelRimGfx.moveTo(poly[0]!, poly[1]!)
+          for (let i = 2; i < poly.length; i += 2) {
+            tunnelRimGfx.lineTo(poly[i]!, poly[i + 1]!)
+          }
+          tunnelRimGfx.lineTo(poly[0]!, poly[1]!)
+          tunnelRimGfx.lineStyle(0)
         }
 
         if ((chunk as any).lavaRT) {
@@ -569,17 +663,39 @@ export class TileWorld {
 
         if (lineFrom) {
           const plx = lineFrom.x - col * CPW, ply = lineFrom.y - row * CPH
-          this.line.clear()
-          this.line.lineStyle(lineW, 0x000000)
-          this.line.moveTo(plx, ply).lineTo(lx, ly)
-          this.renderer.render(this.line, { renderTexture: (chunk as any).maskRT, clear: false })
-
-          if ((chunk as any).darkMaskRT) {
-            const lineBg = Math.max(2, lineW - inset * 2)
-            this._scratchDl.clear()
-            this._scratchDl.lineStyle(lineBg, 0x000000)
-            this._scratchDl.moveTo(plx, ply).lineTo(lx, ly)
-            this.renderer.render(this._scratchDl, { renderTexture: (chunk as any).darkMaskRT, clear: false })
+          if (useShadeMask && fillAC > 1e-4 && tunnelDimMaskGfx) {
+            tunnelDimMaskGfx.lineStyle(lineW, 0xffffff, 1)
+            tunnelDimMaskGfx.moveTo(plx, ply).lineTo(lx, ly)
+            tunnelDimMaskGfx.lineStyle(0)
+          } else if (!useShadeMask && fillAC > 1e-4 && tunnelFillGfx) {
+            tunnelFillGfx.lineStyle(lineW, fillRgb, fillAC)
+            tunnelFillGfx.moveTo(plx, ply).lineTo(lx, ly)
+            tunnelFillGfx.lineStyle(0)
+          } else if (innerA > 1e-4 && rxIn < rx) {
+            if (useShadeMask && tunnelSheenMaskGfx) {
+              const rq = tunnelRingConnectorQuad(plx, ply, lx, ly, rx, rxIn)
+              if (rq.length >= 6) {
+                tunnelSheenMaskGfx.beginFill(0xffffff, 1).drawPolygon(rq).endFill()
+              }
+            }
+            if (useShadeMask && tunnelShadeMaskGfx) {
+              tunnelShadeMaskGfx.lineStyle(lineWInner, 0xffffff, 1)
+              tunnelShadeMaskGfx.moveTo(plx, ply).lineTo(lx, ly)
+              tunnelShadeMaskGfx.lineStyle(0)
+            }
+            if (!useShadeMask && useMulTint && tunnelPlayerTintGfx) {
+              tunnelPlayerTintGfx.lineStyle(lineWInner, mulC, 1)
+              tunnelPlayerTintGfx.moveTo(plx, ply).lineTo(lx, ly)
+              tunnelPlayerTintGfx.lineStyle(0)
+            } else if (!useShadeMask && tunnelFillGfx && innerLineA > 1e-4) {
+              tunnelFillGfx.lineStyle(lineWInner, fillRgb, innerLineA)
+              tunnelFillGfx.moveTo(plx, ply).lineTo(lx, ly)
+              tunnelFillGfx.lineStyle(0)
+            }
+          } else if (rimA > 1e-4 && tunnelFillGfx) {
+            tunnelFillGfx.lineStyle(Math.max(2, rimW), rimC, rimA)
+            tunnelFillGfx.moveTo(plx, ply).lineTo(lx, ly)
+            tunnelFillGfx.lineStyle(0)
           }
         }
       }
@@ -608,25 +724,62 @@ export class TileWorld {
       ftx /= tl
       fty /= tl
     }
-    // Всегда касательная пути, не хорда last→current: иначе при вертикали + дрожании X
-    // овал поворачивается «не туда» и ширина коридора на экране меняется с направлением.
     const stampUx = ftx
     const stampUy = fty
 
-    const nSteps = segLen < 0.5 ? 1 : Math.max(2, Math.ceil(segLen / spacing))
+    const tv = GameConfig.tunnelVisual
+    const baseFill = tv.fillAlpha ?? 0
+    const baseInner = tv.playerInnerFillAlpha ?? 0
+    const useMulTint = tv.playerTunnelTintUsesMultiply === true
+    const useShadeMask = tv.playerTunnelUsesShadeMask !== false
+    const overlapF = Math.max(0.35, tv.playerTunnelStampOverlapFactor ?? 2.25)
+    const minDenom = Math.max(1, tv.playerTunnelMinStampDenom ?? 36)
+
+    const stampAlphas = (nIntervals: number) => {
+      const nDenom = Math.max(minDenom, Math.max(1, nIntervals) * overlapF)
+      const stampFillA = baseFill > 1e-4 ? Math.min(0.98, baseFill / nDenom) : 0
+      const stampInnerA =
+        baseInner > 1e-4
+          ? useMulTint
+            ? Math.min(0.98, baseInner)
+            : Math.min(0.98, baseInner / nDenom)
+          : 0
+      return { stampFillA, stampInnerA }
+    }
+
+    const stampForCall = (nIntervals: number) => {
+      if (useShadeMask) {
+        return {
+          stampFillA: baseFill > 1e-4 ? Math.min(0.98, baseFill) : 0,
+          stampInnerA: baseInner > 1e-4 ? 1 : 0,
+        }
+      }
+      return stampAlphas(nIntervals)
+    }
+
+    // Нет движения — не копим штампы (раньше при segLen≈0 рисовалось 2 овала в одной точке за вызов).
+    if (segLen < 1e-4) {
+      if (!this.lastPt) {
+        const { stampFillA, stampInnerA } = stampForCall(1)
+        this._scratchWorldTunnelStamp(wxEnd, wyEnd, rx, ry, stampUx, stampUy, null, stampFillA, stampInnerA)
+      }
+      this.lastPt = { x: wxEnd, y: wyEnd }
+      return
+    }
+
+    const nIntervals = Math.max(1, Math.ceil(segLen / Math.max(1e-6, spacing)))
+    const { stampFillA, stampInnerA } = stampForCall(nIntervals)
 
     let prev: { x: number; y: number } | null = null
-    for (let i = 0; i <= nSteps; i++) {
-      const t = i / nSteps
+    for (let i = 0; i <= nIntervals; i++) {
+      const t = i / nIntervals
       const wx = ax + segdx * t
       const wy = ay + segdy * t
-      this._scratchWorldTunnelStamp(wx, wy, rx, ry, stampUx, stampUy, prev)
+      this._scratchWorldTunnelStamp(wx, wy, rx, ry, stampUx, stampUy, prev, stampFillA, stampInnerA)
       prev = { x: wx, y: wy }
     }
 
-    if (!this.lastPt) this.lastPt = { x: wxEnd, y: wyEnd }
-    this.lastPt.x = wxEnd
-    this.lastPt.y = wyEnd
+    this.lastPt = { x: wxEnd, y: wyEnd }
   }
 
   resetScratch() { this.lastPt = null }
@@ -670,7 +823,17 @@ export class TileWorld {
         if (!chunk) continue
         const offX = col * CPW, offY = row * CPH
         const lavaContainer = chunk.gfx.children[0] as PIXI.Container
-        this._applyCavePathToChunk(cave, col, row, (chunk as any).maskRT, (chunk as any).darkMaskRT, (chunk as any).lavaRT, lavaContainer, offX, offY)
+        this._applyCavePathToChunk(
+          cave,
+          col,
+          row,
+          (chunk as any).tunnelFillGfx,
+          (chunk as any).tunnelRimGfx,
+          (chunk as any).lavaRT,
+          lavaContainer,
+          offX,
+          offY,
+        )
         count++
       }
     }
@@ -749,8 +912,6 @@ export class TileWorld {
         this._forgetEarthVariantsForChunk(chunk.col, chunk.row)
         this.chunkContainer.removeChild(chunk.gfx)
         chunk.gfx.destroy({children:true})
-        ;(chunk as any).maskRT?.destroy(true)
-        ;(chunk as any).darkMaskRT?.destroy(true)
         ;(chunk as any).lavaRT?.destroy(true)
         this.chunks.delete(key)
       }
@@ -811,68 +972,123 @@ export class TileWorld {
       content.addChild(spr)
     }
 
-    const maskRT  = PIXI.RenderTexture.create({width:CPW, height:CPH})
-    const maskSpr = new PIXI.Sprite(maskRT)
-    maskSpr.renderable = false
+    const tunnelFillGfx = new PIXI.Graphics()
+    const tunnelPlayerTintGfx = new PIXI.Graphics()
+    tunnelPlayerTintGfx.blendMode = PIXI.BLEND_MODES.MULTIPLY
+    const tunnelRimGfx = new PIXI.Graphics()
 
-    const darkMaskRT  = PIXI.RenderTexture.create({width:CPW, height:CPH})
-    const darkMaskSpr = new PIXI.Sprite(darkMaskRT)
-    darkMaskSpr.renderable = false
+    const tv0 = GameConfig.tunnelVisual
+    const useShadeMask0 = tv0.playerTunnelUsesShadeMask !== false
+    let tunnelDimGfx: PIXI.Graphics | undefined
+    let tunnelDimMaskGfx: PIXI.Graphics | undefined
+    let tunnelSheenGfx: PIXI.Graphics | undefined
+    let tunnelSheenMaskGfx: PIXI.Graphics | undefined
+    let tunnelShadeGfx: PIXI.Graphics | undefined
+    let tunnelShadeMaskGfx: PIXI.Graphics | undefined
+    if (useShadeMask0) {
+      const fillRgb0 = tv0.fillColor != null ? tv0.fillColor : 0x000000
+      const outA = tv0.fillAlpha ?? 0
+      if (outA > 1e-4) {
+        tunnelDimGfx = new PIXI.Graphics()
+        tunnelDimMaskGfx = new PIXI.Graphics()
+        tunnelDimGfx.beginFill(fillRgb0, Math.min(0.98, outA)).drawRect(0, 0, CPW, CPH).endFill()
+        tunnelDimGfx.mask = tunnelDimMaskGfx
+      }
+      const ringA = tv0.playerTunnelRingTintAlpha ?? 0
+      if (ringA > 1e-4) {
+        tunnelSheenGfx = new PIXI.Graphics()
+        tunnelSheenMaskGfx = new PIXI.Graphics()
+        tunnelSheenGfx.beginFill(tv0.rimColor ?? 0x5d3011, Math.min(0.98, ringA)).drawRect(0, 0, CPW, CPH).endFill()
+        tunnelSheenGfx.mask = tunnelSheenMaskGfx
+      }
+      const innerA0 = tv0.playerInnerFillAlpha ?? 0
+      if (innerA0 > 1e-4) {
+        tunnelShadeGfx = new PIXI.Graphics()
+        tunnelShadeMaskGfx = new PIXI.Graphics()
+        tunnelShadeGfx.beginFill(fillRgb0, Math.min(0.98, innerA0)).drawRect(0, 0, CPW, CPH).endFill()
+        tunnelShadeGfx.mask = tunnelShadeMaskGfx
+      }
+    }
 
-    const lavaRT      = PIXI.RenderTexture.create({width:CPW, height:CPH})
+    const lavaRT = PIXI.RenderTexture.create({ width: CPW, height: CPH })
     const lavaMaskSpr = new PIXI.Sprite(lavaRT)
     lavaMaskSpr.renderable = false
 
     if (this.renderer) {
-      const wh = new PIXI.Graphics().beginFill(0xffffff).drawRect(0,0,CPW,CPH).endFill()
-      this.renderer.render(wh, {renderTexture:maskRT, clear:true})
-      this.renderer.render(wh, {renderTexture:darkMaskRT, clear:true})
-      wh.destroy()
-      const bl = new PIXI.Graphics().beginFill(0x000000).drawRect(0,0,CPW,CPH).endFill()
-      this.renderer.render(bl, {renderTexture:lavaRT, clear:true})
+      const bl = new PIXI.Graphics().beginFill(0x000000).drawRect(0, 0, CPW, CPH).endFill()
+      this.renderer.render(bl, { renderTexture: lavaRT, clear: true })
       bl.destroy()
     }
 
-    // Тёмный фон чанка (0x4E312B) — виден везде, скрывается в туннеле/пещере
-    const darkBg = new PIXI.Graphics()
-    darkBg.beginFill(0x4E312B).drawRect(0, 0, CPW, CPH).endFill()
-    darkBg.mask = darkMaskSpr
-
     const lavaContainer = new PIXI.Container()
-    lavaContainer.mask  = lavaMaskSpr
+    lavaContainer.mask = lavaMaskSpr
 
     for (const cave of this._pendingCaves) {
-      this._applyCavePathToChunk(cave, col, row, maskRT, darkMaskRT, lavaRT, lavaContainer, offX, offY)
+      this._applyCavePathToChunk(cave, col, row, tunnelFillGfx, tunnelRimGfx, lavaRT, lavaContainer, offX, offY)
     }
 
-    content.mask = maskSpr
-
     const container = new PIXI.Container()
-    container.x = offX; container.y = offY
+    container.x = offX
+    container.y = offY
     container.addChild(lavaContainer)
-    container.addChild(darkBg)
-    container.addChild(darkMaskSpr)
     container.addChild(content)
-    container.addChild(maskSpr)
+    if (tunnelDimGfx && tunnelDimMaskGfx) {
+      container.addChild(tunnelDimGfx)
+      container.addChild(tunnelDimMaskGfx)
+    }
+    if (tunnelSheenGfx && tunnelSheenMaskGfx) {
+      container.addChild(tunnelSheenGfx)
+      container.addChild(tunnelSheenMaskGfx)
+    }
+    if (tunnelShadeGfx && tunnelShadeMaskGfx) {
+      container.addChild(tunnelShadeGfx)
+      container.addChild(tunnelShadeMaskGfx)
+    }
+    container.addChild(tunnelRimGfx)
+    container.addChild(tunnelPlayerTintGfx)
+    container.addChild(tunnelFillGfx)
     container.addChild(lavaMaskSpr)
 
     this.chunkContainer.addChild(container)
-    this.chunks.set(key, {gfx:container, col, row, ...{maskRT, darkMaskRT, lavaRT}} as any)
+    this.chunks.set(key, {
+      gfx: container,
+      col,
+      row,
+      ...{
+        tunnelFillGfx,
+        tunnelPlayerTintGfx,
+        tunnelRimGfx,
+        tunnelDimGfx,
+        tunnelDimMaskGfx,
+        tunnelSheenGfx,
+        tunnelSheenMaskGfx,
+        tunnelShadeGfx,
+        tunnelShadeMaskGfx,
+        lavaRT,
+      },
+    } as any)
   }
 
   private _applyCavePathToChunk(
     cave: CavePath,
-    col: number, row: number,
-    maskRT: PIXI.RenderTexture,
-    darkMaskRT: PIXI.RenderTexture | null,
+    col: number,
+    row: number,
+    tunnelFillGfx: PIXI.Graphics,
+    tunnelRimGfx: PIXI.Graphics,
     lavaRT: PIXI.RenderTexture,
     lavaContainer: PIXI.Container,
-    offX: number, offY: number
+    offX: number,
+    offY: number,
   ) {
-    if (!this.renderer) return
+    const tv = GameConfig.tunnelVisual
+    const fillRgb =
+      tv.caveFillColor != null ? tv.caveFillColor : tv.fillColor != null ? tv.fillColor : 0x000000
+    const aOut = tv.caveOuterFillAlpha ?? 0.5
+    const aIn = tv.caveInnerFillAlpha ?? 0.38
+    const rimW = tv.rimWidthPx ?? 3.5
+    const rimC = tv.caveRimColor != null ? tv.caveRimColor : tv.rimColor ?? 0x5d3011
+    const rimA = tv.caveRimAlpha != null ? tv.caveRimAlpha : tv.rimAlpha ?? 0.9
 
-    const g = this._caveGfx
-    g.clear()
     let hasContent = false
 
     if (cave.rect) {
@@ -883,19 +1099,32 @@ export class TileWorld {
       const rh = 2 * hh
       if (rx0 + rw > 0 && rx0 < CPW && ry0 + rh > 0 && ry0 < CPH) {
         hasContent = true
-        ;(g as any).beginFill(0x000000).drawRoundedRect(rx0, ry0, rw, rh, cr).endFill()
+        tunnelFillGfx.beginFill(fillRgb, aOut).drawRoundedRect(rx0, ry0, rw, rh, cr).endFill()
+        const inset = 10
+        const ix0 = cx - hw - offX + inset
+        const iy0 = cy - hh - offY + inset
+        const iw = Math.max(0, rw - inset * 2)
+        const ih = Math.max(0, rh - inset * 2)
+        const ir = Math.max(0, cr - inset)
+        if (iw > 0 && ih > 0) {
+          tunnelFillGfx.beginFill(fillRgb, aIn).drawRoundedRect(ix0, iy0, iw, ih, ir).endFill()
+        }
+        tunnelRimGfx.lineStyle(rimW, rimC, rimA)
+        tunnelRimGfx.drawRoundedRect(rx0, ry0, rw, rh, cr)
+        tunnelRimGfx.lineStyle(0)
       }
     } else if (cave.points.length === 1) {
-      const p  = cave.points[0]!
+      const p = cave.points[0]!
       const lx = p.x - offX, ly = p.y - offY
       if (lx + p.r >= 0 && lx - p.r <= CPW && ly + p.r >= 0 && ly - p.r <= CPH) {
         hasContent = true
-        g.beginFill(0x000000).drawCircle(lx, ly, p.r).endFill()
+        tunnelFillGfx.beginFill(fillRgb, aOut).drawCircle(lx, ly, p.r).endFill()
+        tunnelFillGfx.beginFill(fillRgb, aIn).drawCircle(lx, ly, Math.max(0, p.r - 10)).endFill()
       }
     } else {
       for (let i = 0; i < cave.points.length - 1; i++) {
-        const a   = cave.points[i]!
-        const b   = cave.points[i + 1]!
+        const a = cave.points[i]!
+        const b = cave.points[i + 1]!
         const lax = a.x - offX, lay = a.y - offY
         const lbx = b.x - offX, lby = b.y - offY
 
@@ -906,42 +1135,23 @@ export class TileWorld {
         if (maxX < 0 || minX > CPW || maxY < 0 || minY > CPH) continue
 
         hasContent = true
-        drawCapsule(g, lax, lay, a.r, lbx, lby, b.r, 0x000000)
+        drawCapsule(tunnelFillGfx, lax, lay, a.r, lbx, lby, b.r, fillRgb, aOut)
+        drawCapsule(
+          tunnelFillGfx,
+          lax,
+          lay,
+          Math.max(0, a.r - 10),
+          lbx,
+          lby,
+          Math.max(0, b.r - 10),
+          fillRgb,
+          aIn,
+        )
       }
     }
 
     if (!hasContent) return
-
-    this.renderer.render(g, { renderTexture: maskRT, clear: false })
-
-    if (darkMaskRT) {
-      const gDark = new PIXI.Graphics()
-      if (cave.rect) {
-        const { cx, cy, hw, hh, cr } = cave.rect
-        const inset = 10
-        const rx0 = cx - hw - offX + inset
-        const ry0 = cy - hh - offY + inset
-        const rw = Math.max(0, 2 * hw - inset * 2)
-        const rh = Math.max(0, 2 * hh - inset * 2)
-        const r2 = Math.max(0, cr - inset)
-        if (rw > 0 && rh > 0) (gDark as any).beginFill(0x000000).drawRoundedRect(rx0, ry0, rw, rh, r2).endFill()
-      } else if (cave.points.length === 1) {
-        const p = cave.points[0]!
-        gDark.beginFill(0x000000).drawCircle(p.x - offX, p.y - offY, Math.max(0, p.r - 10)).endFill()
-      } else {
-        for (let i = 0; i < cave.points.length - 1; i++) {
-          const a = cave.points[i]!, b = cave.points[i + 1]!
-          const lax = a.x - offX, lay = a.y - offY
-          const lbx = b.x - offX, lby = b.y - offY
-          const minX = Math.min(lax,lbx)-Math.max(a.r,b.r), maxX = Math.max(lax,lbx)+Math.max(a.r,b.r)
-          const minY = Math.min(lay,lby)-Math.max(a.r,b.r), maxY = Math.max(lay,lby)+Math.max(a.r,b.r)
-          if (maxX < 0 || minX > CPW || maxY < 0 || minY > CPH) continue
-          drawCapsule(gDark, lax, lay, Math.max(0,a.r-10), lbx, lby, Math.max(0,b.r-10), 0x000000)
-        }
-      }
-      this.renderer.render(gDark, { renderTexture: darkMaskRT, clear: false })
-      gDark.destroy()
-    }
+    if (!this.renderer) return
 
     const gWhite = new PIXI.Graphics()
     if (cave.rect) {
@@ -979,17 +1189,13 @@ export class TileWorld {
     for(const c of this.chunks.values()){
       this._forgetEarthVariantsForChunk(c.col, c.row)
       c.gfx.destroy({children:true})
-      ;(c as any).maskRT?.destroy(true)
-      ;(c as any).darkMaskRT?.destroy(true)
       ;(c as any).lavaRT?.destroy(true)
     }
     this.chunks.clear()
     this._earthVariant.clear()
     this._pendingCaves.length = 0
     this._decorLavaCaveCount = 0
-    this.brush.destroy(); this.line.destroy()
-    this._scratchDb.destroy(); this._scratchWb.destroy(); this._scratchDl.destroy()
-    this._caveGfx.destroy()
+    this._scratchWb.destroy()
     this.bgLight.destroy()
   }
 }
