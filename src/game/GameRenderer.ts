@@ -344,6 +344,8 @@ class ObjectSpawner {
    * По мере движения персонажа вниз добавляем объекты впереди.
    */
   update(charX: number, charY: number, aheadPx: number) {
+    if (!this._safeObjects || !Array.isArray(this._safeObjects)) return
+    
     const genUpTo = charY + aheadPx
 
     // Спавним безопасные декорации из WorldMap (по мере продвижения)
@@ -411,7 +413,7 @@ class ObjectSpawner {
   skipTo(minY: number): void {
     // Пропускаем safe objects до minY
     while (this._safeSpawnedIdx < this._safeObjects.length &&
-           this._safeObjects[this._safeSpawnedIdx].y < minY) {
+           this._safeObjects[this._safeSpawnedIdx]?.y < minY) {
       const so = this._safeObjects[this._safeSpawnedIdx]
       if (so.kind === 'lava') this.onLavaDecorObstacle?.(so)
       this._safeSpawnedIdx++
@@ -938,6 +940,10 @@ export class GameRenderer {
     this.worldChunkLayer.removeChildren()
     this.objectsLayer.removeChildren()  // ← чистим объекты
 
+    if (!events || !Array.isArray(events) || events.length === 0) {
+      console.error('[GameRenderer] startRound called with no events:', events)
+      return
+    }
     const lastEv  = events[events.length-1]
     const depthM  = Math.max(lastEv.depth,50)
     const spread = GameConfig.round.depthSpreadScreenFactor ?? 2.5
@@ -1093,6 +1099,7 @@ export class GameRenderer {
   }
 
   private _rebuildTunnelCumLengths(): void {
+    if (!this._tunnelPath) return
     const n = this._tunnelPath.length
     if (this._tunnelCumPathLen !== n) {
       this._tunnelCumLen = tunnelPathCumulativeLengths(this._tunnelPath)
@@ -1103,7 +1110,7 @@ export class GameRenderer {
   /** Спуск в яме LOSS с той же скоростью, что в туннеле (без привязки к дуге path). */
   private _stepLossPitFall(gameDt: number, dt: number): void {
     // Только финальный спуск к лаве — не тянуть X к финишу в промежуточных пещерах
-    const pathLy = this._tunnelPath.length ? this._tunnelPath[this._tunnelPath.length - 1]!.y : Infinity
+    const pathLy = (this._tunnelPath && this._tunnelPath.length) ? this._tunnelPath[this._tunnelPath.length - 1]!.y : Infinity
     const nearEnd = this.charY >= pathLy - STEP_PATH_Y * 2.0
     // Не clamp к 1: при большом gameDt иначе X «телепортируется» к центру за один тик.
     if (nearEnd && this._lossTerminalDescent && this._lossLavaCenterX != null) {
@@ -1254,6 +1261,7 @@ export class GameRenderer {
 
   private _tick(delta:number){
     const dt=Math.min(delta/60, 0.1)  // cap 100ms — безопасно при лагге вкладки
+    if(!this.miner){this._pUpdate(dt);return}  // конструктор ещё не завершён
     const store=useGameStore.getState()
     const spd=store.speed
     // gameDt — масштабированное время: вся игровая логика использует его,
@@ -1389,7 +1397,7 @@ export class GameRenderer {
       lavaTrailAx = this.charX
       lavaTrailAy = this.charY
 
-      if (this._caveZones.length > 500 && !this._lossTerminalDescent) {
+      if (this._caveZones && this._caveZones.length > 500 && !this._lossTerminalDescent) {
         this._caveZones = this._caveZones.filter(z => z.y > this.camY - TILE * 5)
       }
 
@@ -1397,8 +1405,10 @@ export class GameRenderer {
       if (
         this._lossRound &&
         !this._lossTerminalDescent &&
-        this._tunnelPath.length &&
-        this._tunnelCumLen.length
+        this._tunnelPath &&
+        this._tunnelPath.length > 0 &&
+        this._tunnelCumLen &&
+        this._tunnelCumLen.length > 0
       ) {
         const ptProbe = pointOnTunnelAtArcLength(this._tunnelPath, this._tunnelCumLen, this._pathArcS)
         const pathLy = this._tunnelPath[this._tunnelPath.length - 1]!.y
@@ -1426,9 +1436,9 @@ export class GameRenderer {
           const yIdx = Math.max(0, Math.floor((this.charY - this.surfY) / STEP_PATH_Y))
           // LOSS: не удлиняем полилинию — терминальная лава привязана к концу buildRoundPath;
           // иначе хвост уезжает в сторону, а лава и падение остаются у старой точки.
-          if (!this._lossRound && yIdx >= this._waypoints.length - 10) {
+          if (!this._lossRound && this._waypoints && yIdx >= this._waypoints.length - 10) {
             const more = this._buildWaypoints(200)
-            const base = this._tunnelPath.length
+            const base = this._tunnelPath ? this._tunnelPath.length : 0
             for (let j = 0; j < more.length; j++) {
               this._tunnelPath.push({ x: more[j]!, y: this.surfY + (base + j) * STEP_PATH_Y })
             }
@@ -1437,7 +1447,7 @@ export class GameRenderer {
         }
 
         this._rebuildTunnelCumLengths()
-        const totalArc = this._tunnelCumLen[this._tunnelCumLen.length - 1] ?? 0
+        const totalArc = (this._tunnelCumLen && this._tunnelCumLen.length > 0) ? (this._tunnelCumLen[this._tunnelCumLen.length - 1] ?? 0) : 0
         const arcLerp = GameConfig.movement.arcSpeedLerp
         this._arcSpeedSmoothed += (targetSpeed - this._arcSpeedSmoothed) * Math.min(1, gameDt * arcLerp)
         this._pathArcS = Math.min(this._pathArcS + this._arcSpeedSmoothed * gameDt, totalArc)
@@ -1623,7 +1633,7 @@ export class GameRenderer {
 
   private _logTerminal(source: 'object' | 'simulation', type: 'HOME' | 'LAVA'): void {
     console.log(`--- КОНЕЦ РАУНДА [${type}] источник=${source} mult=×${this.multiplier.toFixed(2)} ---`)
-    if (this.rgsQueue.length > 0) {
+    if (this.rgsQueue && this.rgsQueue.length > 0) {
       console.warn(
         `[WARN] В rgsQueue остались необработанные события (${this.rgsQueue.length}):`,
         this.rgsQueue.map(e => `${e.type}(depth=${e.depth})`).join(', ')
@@ -1946,6 +1956,7 @@ export class GameRenderer {
   private _spawnCaveClearOfTunnel(wx: number, wy: number, seed: number): boolean {
     if (!this.tileWorld || !this.tileWorld.canSpawnMoreDecorCaves()) return false
     const tunnel = this._tunnelPath
+    if (!tunnel) return false
     const surf = this.surfY
     for (let a = 0; a < 12; a++) {
       const s = (seed ^ (a * 0x9E3779B1)) >>> 0
@@ -1965,7 +1976,7 @@ export class GameRenderer {
 
     const aheadY = this.charY + this.H * 5.0  // далеко вперёд — текстуры успевают загрузиться
     const path = this._tunnelPath
-    const pathEndY = path.length > 0 ? path[path.length - 1]!.y : Infinity
+    const pathEndY = (path && path.length > 0) ? path[path.length - 1]!.y : Infinity
     const perFrameCap = GameConfig.lava.maxCavesSpawnPerFrame ?? 2
     const caveBase = GameConfig.lava.proceduralCaveBaseTiles ?? 20
     const caveDepth = GameConfig.lava.proceduralCaveDepthAdd ?? 6

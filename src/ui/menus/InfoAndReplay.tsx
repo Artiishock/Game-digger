@@ -34,7 +34,18 @@ export const InfoPanel: React.FC = () => (
 
     <Section title="RTP И МАКСИМАЛЬНЫЙ ВЫИГРЫШ">
       <div style={{ color: '#FFB830' }}>RTP: 96.0%</div>
-      <div>Максимальный выигрыш: 10 000× ставки</div>
+      <div>Максимальный выигрыш: 50 000× ставки</div>
+    </Section>
+
+    <Section title="ОТКАЗ ОТ ОТВЕТСТВЕННОСТИ">
+      <div style={{ fontSize: 13, color: 'rgba(240,230,211,0.5)', lineHeight: 1.5 }}>
+        Malfunction voids all wins and plays. A consistent internet connection is required.
+        In the event of a disconnection, reload the game to finish any uncompleted rounds.
+        The expected return is calculated over many plays. The game display is not
+        representative of any physical device and is for illustrative purposes only.
+        Winnings are settled according to the amount received from the Remote Game Server
+        and not from events within the web browser. TM and © 2026 Stake Engine.
+      </div>
     </Section>
   </div>
 )

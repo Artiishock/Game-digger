@@ -1,6 +1,8 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
+import { useGameStore } from './store/gameStore'
+import { gameEngine } from './game/GameEngine'
 
 const root = document.getElementById('root')
 if (!root) throw new Error('Root element not found')
@@ -15,3 +17,19 @@ if (!root) throw new Error('Root element not found')
 //      stale context, crashing checkMaxIfStatementsInShader.
 // All other React best-practices checks still apply without StrictMode.
 createRoot(root).render(<App />)
+
+// Spacebar → DIG button (RGS requirement)
+window.addEventListener('keydown', (e: KeyboardEvent) => {
+  if (e.code === 'Space' && !e.repeat) {
+    e.preventDefault()
+    const store = useGameStore.getState()
+    const { phase, autoplay } = store
+    if (phase === 'IDLE' || phase === 'WIN' || phase === 'LOSE') {
+      if (autoplay.active) {
+        gameEngine.stopAutoplay()
+      } else {
+        gameEngine.startRound()
+      }
+    }
+  }
+})

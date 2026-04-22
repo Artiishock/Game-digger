@@ -23,6 +23,16 @@ export interface UrlParams {
   rgsUrl:    string
 }
 
+export interface ReplayParams {
+  replay:   boolean
+  game:     string
+  version:  number
+  mode:     string
+  event:    number
+  currency: string
+  amount:   number
+}
+
 export function getUrlParams(): UrlParams {
   const p = new URLSearchParams(window.location.search)
   return {
@@ -36,6 +46,28 @@ export function getUrlParams(): UrlParams {
 /** True when no rgs_url is present → run in FUN/demo mode */
 export function isDemo(): boolean {
   return !getUrlParams().rgsUrl
+}
+
+/** Check if game is in replay mode */
+export function isReplayMode(): boolean {
+  const p = new URLSearchParams(window.location.search)
+  return p.get('replay') === 'true'
+}
+
+/** Get replay parameters from URL */
+export function getReplayParams(): ReplayParams | null {
+  const p = new URLSearchParams(window.location.search)
+  if (p.get('replay') !== 'true') return null
+  
+  return {
+    replay:   true,
+    game:     p.get('game') ?? '',
+    version:  parseInt(p.get('version') ?? '1', 10),
+    mode:     p.get('mode') ?? 'BASE',
+    event:    parseInt(p.get('event') ?? '0', 10),
+    currency: p.get('currency') ?? 'USD',
+    amount:   parseInt(p.get('amount') ?? '1000000', 10),
+  }
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -58,6 +90,7 @@ export interface RgsConfig {
   defaultBetLevel: number
   betLevels:       number[]
   jurisdiction:    JurisdictionConfig
+  maxWin?:          number   // maximum win in API units
 }
 
 /** A single event in a game round — Deep Rush flavour */
@@ -91,6 +124,16 @@ export interface PlayResponse {
 
 export interface EndRoundResponse {
   balance: MoneyAmount
+}
+
+export interface BalanceResponse {
+  balance: MoneyAmount
+}
+
+export interface ReplayResponse {
+  payoutMultiplier: number
+  costMultiplier: number
+  state:       RoundEvent[]
 }
 
 // ─── Error ───────────────────────────────────────────────────────────────────
@@ -209,4 +252,33 @@ export function formatMoney(apiAmount: number, currency: string): string {
   } catch {
     return `${d.toFixed(2)} ${currency}`
   }
+}
+
+// ─── Bet Replay API ───────────────────────────────────────────────────────────
+
+export async function fetchReplay(replayParams: ReplayParams): Promise<ReplayResponse> {
+  const { rgsUrl } = getUrlParams()
+  const base = rgsUrl.startsWith('http') ? rgsUrl.replace(/\/$/, '') : `https://${rgsUrl}`
+  const url = `${base}/bet/replay/${replayParams.game}/${replayParams.version}/${replayParams.mode}/${replayParams.event}`
+
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method:  'GET',
+      headers: { 'Content-Type': 'application/json' },
+    })
+  } catch (e) {
+    throw new RgsError('ERR_GEN')
+  }
+
+  if (!res.ok) {
+    let code = `HTTP_${res.status}`
+    try {
+      const data = await res.json() as { statusCode?: string }
+      if (data.statusCode) code = data.statusCode
+    } catch { /* ignore */ }
+    throw new RgsError(code, res.status)
+  }
+
+  return res.json() as Promise<ReplayResponse>
 }

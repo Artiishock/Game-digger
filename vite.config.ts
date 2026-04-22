@@ -5,8 +5,6 @@ import { resolve } from 'path'
 export default defineConfig({
   plugins: [react()],
 
-  // CRITICAL for Stake Engine: all asset paths must be relative
-  // Game is hosted at: https://{team}.cdn.stake-engine.com/{gameID}/{version}/index.html
   base: './',
 
   resolve: {
@@ -21,11 +19,12 @@ export default defineConfig({
     target: 'es2020',
     rollupOptions: {
       output: {
-        // Split large vendor chunks for faster CDN delivery
-        manualChunks: {
-          'vendor-react': ['react', 'react-dom'],
-          'vendor-pixi':  ['pixi.js'],
-          'vendor-state': ['zustand'],
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react')) return 'vendor-react'
+            if (id.includes('pixi')) return 'vendor-pixi'
+            if (id.includes('zustand')) return 'vendor-state'
+          }
         },
       },
     },

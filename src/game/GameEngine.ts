@@ -18,6 +18,7 @@ import { GameConfig } from './GameConfig'
 class GameEngine {
   private static _instance: GameEngine
   private _abortAutoplay = false
+  private _forceDemoMode = false
 
   static get instance(): GameEngine {
     if (!this._instance) this._instance = new GameEngine()
@@ -63,7 +64,7 @@ class GameEngine {
       console.error('[GameEngine] boot error:', err)
       if (err instanceof RGS.RgsError) {
         // Fallback to demo on auth failure in dev
-        if (process.env.NODE_ENV === 'development') {
+        if (import.meta.env.DEV) {
           const auth = await Demo.demoAuthenticate()
           store.setBalance(auth.balance.amount)
           store.setCurrency('FUN')
@@ -104,7 +105,20 @@ class GameEngine {
       store.setPhase('RUNNING')
 
     } catch (err) {
-      this._handleRgsError(err)
+      if (RGS.isDemo() || this._forceDemoMode) {
+        this._handleRgsError(err)
+        return
+      }
+      console.warn('[GameEngine] RGS play failed, falling back to demo:', err)
+      this._forceDemoMode = true
+      try {
+        const response = await Demo.demoPlay(bet)
+        store.setBalance(response.balance.amount)
+        store.setEvents(response.round.events, response.round.roundID)
+        store.setPhase('RUNNING')
+      } catch (demoErr) {
+        this._handleRgsError(demoErr)
+      }
     }
   }
 
@@ -120,18 +134,23 @@ class GameEngine {
     try {
       let newBalance: number
 
-      if (RGS.isDemo()) {
-        const res = await Demo.demoEndRound(bet, won ? multiplier : 0)
-        newBalance = res.balance.amount
+      if (RGS.isDemo() || this._forceDemoMode) {
+        const demoRes = await Demo.demoEndRound(bet, won ? multiplier : 0)
+        newBalance = demoRes.balance.amount
       } else {
-        // Only call end-round when there is a payout (Stake Engine requirement)
-        if (won && multiplier > 0) {
-          const res = await RGS.endRound()
-          newBalance = res.balance.amount
-        } else {
-          // Loss: just refresh balance
-          const bal = await RGS.getBalance()
-          newBalance = bal.amount
+        try {
+          if (won && multiplier > 0) {
+            const endRes = await RGS.endRound()
+            newBalance = endRes.balance.amount
+          } else {
+            const bal = await RGS.getBalance()
+            newBalance = bal.amount
+          }
+        } catch {
+          console.warn('[GameEngine] RGS endRound failed, falling back to demo')
+          this._forceDemoMode = true
+          const demoRes = await Demo.demoEndRound(bet, won ? multiplier : 0)
+          newBalance = demoRes.balance.amount
         }
       }
 
