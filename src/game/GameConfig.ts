@@ -153,7 +153,7 @@ export const GameConfig = {
     characterPaddingPx: 4,
 
     /** Итоговый радиус = halfDiagonal(bounds) * scale + padding. */
-    characterRadiusScale: 0.8,
+    characterRadiusScale: 0.7,
 
     /** Минимальный радиус, даже если текущий bounds временно меньше. */
     minCharacterRadiusPx: 0,
