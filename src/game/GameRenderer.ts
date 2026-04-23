@@ -148,20 +148,23 @@ const HERO_LEGACY_FEET_ANCHOR_Y = 0.88
  */
 const HERO_DRILL_FACING_OFFSET = -Math.PI / 2
 
-const IDLE_SPINE_BASE = './animations/character/character_23-04-26/character_1'
+const CHARACTER_SPINE_JSON = './animations/character/character_23-04-26/character_1.json'
+const CHARACTER_SPINE_ATLAS = './animations/character/character_23-04-26/character_1.atlas.txt'
+const CHARACTER_SPINE_PNG = './animations/character/character_23-04-26/character_1.png'
+const CHARACTER_SPINE_ANIM = { idle: 'idle', start2: 'start_2', loop2: 'loop_2' } as const
 
-async function loadIdleCharacterSpine(): Promise<Spine | null> {
+async function loadCharacterSpineInstance(): Promise<Spine | null> {
   try {
     const [atlasText, spineJson, texture] = await Promise.all([
-      fetch(`${IDLE_SPINE_BASE}.atlas.txt`).then(r => {
-        if (!r.ok) throw new Error(`Atlas not found (${r.status})`)
+      fetch(CHARACTER_SPINE_ATLAS).then(r => {
+        if (!r.ok) throw new Error(`Character atlas not found (${r.status})`)
         return r.text()
       }),
-      fetch(`${IDLE_SPINE_BASE}.json`).then(r => {
-        if (!r.ok) throw new Error(`Spine JSON not found (${r.status})`)
+      fetch(CHARACTER_SPINE_JSON).then(r => {
+        if (!r.ok) throw new Error(`Character json not found (${r.status})`)
         return r.json()
       }),
-      PIXI.Texture.fromURL(`${IDLE_SPINE_BASE}.png`),
+      PIXI.Texture.fromURL(CHARACTER_SPINE_PNG),
     ])
 
     if (typeof spineJson?.skeleton?.spine === 'string' && spineJson.skeleton.spine.startsWith('4.2')) {
@@ -174,13 +177,10 @@ async function loadIdleCharacterSpine(): Promise<Spine | null> {
     )
     const skelJson = new SkeletonJson(new AtlasAttachmentLoader(atlas))
     skelJson.scale = 1
-    const skeletonData = skelJson.readSkeletonData(spineJson as any)
-    const spine = new Spine(skeletonData as any)
-    spine.autoUpdate = false
-    spine.state.setAnimation(0, 'idle', true)
-    return spine
-  } catch (e) {
-    console.warn('[GameRenderer] Failed to load idle spine hero:', e)
+    const skeletonData = skelJson.readSkeletonData(spineJson)
+    return new Spine(skeletonData as any)
+  } catch (err) {
+    console.warn('[GameRenderer] Failed to load character spine', err)
     return null
   }
 }
@@ -189,12 +189,12 @@ class SpriteCharacter {
   root: PIXI.Container
   chunkParent: PIXI.Container | null = null
   private _spr: PIXI.Sprite | null = null
-  private _idleSpine: Spine | null = null
+  private _spine: Spine | null = null
   /** Сдвиг по Y: центр текстуры → прежняя точка у ног остаётся в origin корня. */
   private _pivotFootCompensateY = 0
   /** Текущий поворот (рад). */
   private _facingRad = 0
-  private _idleMode = true
+  private _mode: 'idle' | 'start2' | 'loop2' = 'idle'
 
   constructor() {
     this.root = new PIXI.Container()
@@ -206,7 +206,7 @@ class SpriteCharacter {
       this._spr.destroy()
       this._spr = null
     }
-    if (!tex) return
+    if (!tex || this._spine) return
     const s = new PIXI.Sprite(tex)
     s.anchor.set(0.5, 0.5)
     const sc = HERO_MAX_SIDE_PX / Math.max(tex.width, tex.height)
@@ -214,64 +214,109 @@ class SpriteCharacter {
     const h = tex.height * sc
     this._pivotFootCompensateY = (HERO_LEGACY_FEET_ANCHOR_Y - 0.5) * h
     s.y = this._pivotFootCompensateY + GameConfig.hero.spriteIdleYOffsetPx
+    s.visible = true
     this._spr = s
     this.root.addChild(s)
-    this._applyIdleMode()
   }
 
-  setIdleSpine(spine: Spine | null) {
-    if (this._idleSpine) {
-      this.root.removeChild(this._idleSpine)
-      this._idleSpine.destroy({ children: true })
-      this._idleSpine = null
+  setHeroSpine(spine: Spine | null) {
+    if (this._spine) {
+      this.root.removeChild(this._spine)
+      this._spine.destroy({ children: true })
+      this._spine = null
+    }
+    if (this._spr) {
+      this.root.removeChild(this._spr)
+      this._spr.destroy()
+      this._spr = null
     }
     if (!spine) return
-
+    spine.autoUpdate = false
     const bounds = spine.getLocalBounds()
     const maxSide = Math.max(bounds.width, bounds.height, 1)
     const sc = HERO_MAX_SIDE_PX / maxSide
     spine.scale.set(sc)
-
     const footY = bounds.y + bounds.height * HERO_LEGACY_FEET_ANCHOR_Y
     spine.pivot.set(bounds.x + bounds.width * 0.5, footY)
     spine.position.set(0, GameConfig.hero.spriteIdleYOffsetPx)
-    spine.visible = false
-
-    this._idleSpine = spine
+    spine.visible = true
+    this._spine = spine
     this.root.addChild(spine)
-    this._applyIdleMode()
+    this.playIdleAnimation()
+  }
+
+  hasSpineCharacter(): boolean {
+    return !!this._spine
+  }
+
+  private _setVisualY(y: number) {
+    if (this._spr) this._spr.y = this._pivotFootCompensateY + y
+    if (this._spine) this._spine.position.y = y
+  }
+
+  private _setVisualRotation(angle: number) {
+    if (this._spr) this._spr.rotation = angle
+    if (this._spine) this._spine.rotation = angle
+  }
+
+  private _playSpineAnimation(name: string, loop: boolean, mode: 'idle' | 'start2' | 'loop2') {
+    if (!this._spine) return
+    const anim = this._spine.spineData.findAnimation(name)
+    if (!anim) return
+    const cur = (this._spine.state as any).tracks?.[0]
+    if (cur?.animation?.name === name) return
+    this._spine.state.setAnimation(0, name, loop)
+    this._mode = mode
+  }
+
+  playIdleAnimation() {
+    this._mode = 'idle'
+    this._setVisualY(GameConfig.hero.spriteIdleYOffsetPx)
+    this._setVisualRotation(0)
+    if (this._spine) this._playSpineAnimation(CHARACTER_SPINE_ANIM.idle, true, 'idle')
+  }
+
+  playStartDigAnimation() {
+    if (!this._spine) return
+    this._mode = 'start2'
+    this._setVisualY(GameConfig.hero.spriteIdleYOffsetPx)
+    this._setVisualRotation(0)
+    this._playSpineAnimation(CHARACTER_SPINE_ANIM.start2, false, 'start2')
+  }
+
+  playDigLoopAnimation() {
+    if (!this._spine) return
+    this._mode = 'loop2'
+    this._setVisualY(GameConfig.hero.spriteRunYOffsetPx)
+    this._playSpineAnimation(CHARACTER_SPINE_ANIM.loop2, true, 'loop2')
+  }
+
+  isStartDigAnimationComplete(): boolean {
+    if (!this._spine || this._mode !== 'start2') return false
+    const entry = (this._spine.state as any).tracks?.[0]
+    if (!entry?.animation) return true
+    const animationEnd = entry.animationEnd ?? entry.animation?.duration ?? 0
+    const trackTime = entry.trackTime ?? 0
+    return trackTime >= Math.max(animationEnd, 0) - 1e-3
   }
 
   setIdleMode(idle: boolean) {
-    this._idleMode = idle
-    this._applyIdleMode()
-  }
-
-  private _applyIdleMode() {
-    if (this._spr) {
-      this._spr.visible = !this._idleMode || !this._idleSpine
-      this._spr.y =
-        this._pivotFootCompensateY +
-        (this._idleMode ? GameConfig.hero.spriteIdleYOffsetPx : GameConfig.hero.spriteRunYOffsetPx)
-    }
-    if (this._idleSpine) {
-      this._idleSpine.visible = this._idleMode
-      this._idleSpine.position.y = GameConfig.hero.spriteIdleYOffsetPx
-      this._idleSpine.rotation = 0
+    if (idle) {
+      this.playIdleAnimation()
+    } else if (!this._spine) {
+      this._setVisualY(GameConfig.hero.spriteRunYOffsetPx)
     }
   }
 
   resetFacing() {
     this._facingRad = 0
-    if (this._spr) this._spr.rotation = 0
-    if (this._idleSpine) this._idleSpine.rotation = 0
+    this._setVisualRotation(0)
   }
 
   /**
    * Мгновенно: локальный +Y спрайта (ось «тело → бур») совпадает с направлением (dx,dy) в мире.
    */
   snapFacingToWorldDir(dx: number, dy: number) {
-    if (!this._spr) return
     const len = Math.hypot(dx, dy)
     if (len < 1e-6) return
     const nx = dx / len, ny = dy / len
@@ -279,12 +324,11 @@ class SpriteCharacter {
     while (t > Math.PI) t -= Math.PI * 2
     while (t < -Math.PI) t += Math.PI * 2
     this._facingRad = t
-    this._spr.rotation = this._facingRad
+    this._setVisualRotation(this._facingRad)
   }
 
   /** Плавный поворот вдоль единичного направления (или ненормализованного вектора скорости). */
   orientAlongWorldDir(dx: number, dy: number, dt: number, strength = 12) {
-    if (!this._spr) return
     const len = Math.hypot(dx, dy)
     if (len < 1e-4) return
     const nx = dx / len, ny = dy / len
@@ -296,25 +340,27 @@ class SpriteCharacter {
     while (da < -Math.PI) da += Math.PI * 2
     const k = Math.min(1, strength * dt)
     this._facingRad += da * k
-    this._spr.rotation = this._facingRad
+    this._setVisualRotation(this._facingRad)
   }
 
   update(dt: number, _spd: number, digging: boolean) {
-    if (this._spr) {
-      const active = digging
+    const modeY = this._mode === 'loop2'
+      ? GameConfig.hero.spriteRunYOffsetPx
+      : GameConfig.hero.spriteIdleYOffsetPx
+    if (this._spine) {
+      this._setVisualY(modeY)
+      this._spine.update(dt)
+      if (!digging && this._mode === 'loop2') this.playIdleAnimation()
+    } else if (this._spr) {
       this._spr.y =
         this._pivotFootCompensateY +
-        (active ? GameConfig.hero.spriteRunYOffsetPx : GameConfig.hero.spriteIdleYOffsetPx)
-    }
-    if (this._idleSpine?.visible) {
-      this._idleSpine.update(dt)
-      this._idleSpine.position.y = GameConfig.hero.spriteIdleYOffsetPx
+        (digging ? GameConfig.hero.spriteRunYOffsetPx : GameConfig.hero.spriteIdleYOffsetPx)
     }
   }
 
   destroy() {
+    if (this._spine) this._spine.destroy({ children: true })
     if (this._spr) this._spr.destroy()
-    if (this._idleSpine) this._idleSpine.destroy({ children: true })
     this.root.destroy({ children: true })
   }
 }
@@ -658,6 +704,7 @@ export class GameRenderer {
 
   // Round
   private running=false
+  private _pendingRoundStart: { events: RoundEvent[]; spd: number } | null = null
   private charX=0; private charY=0
   private charScreenY=0
   private multiplier=1; private depth=0; private distance=0
@@ -989,7 +1036,28 @@ export class GameRenderer {
 
   // ─── Round ────────────────────────────────────────────────────────────────
 
-  startRound(events:RoundEvent[],_spd:number){
+  startRound(events:RoundEvent[], spd:number){
+    if (this.miner.hasSpineCharacter()) {
+      this._pendingRoundStart = { events: [...events], spd }
+      this.running = false
+      this.idleActive = false
+      this._ended = false
+      this.miner.playStartDigAnimation()
+      this.miner.resetFacing()
+      this.miner.root.scale.x = 1
+      const hi = GameConfig.hero
+      this.miner.root.x = this.idleX + hi.idleRootOffsetXPx
+      this.miner.root.y = this.surfY + hi.idleRootOffsetYPx
+      this.camX = this.miner.root.x - this.W / 2
+      this.camY = this.idleCamY
+      this._syncLayerScroll()
+      this.skyLayer.visible = true
+      return
+    }
+    this._beginRound(events, spd)
+  }
+
+  private _beginRound(events:RoundEvent[],_spd:number){
     this.running=false;this.idleActive=false;this._ended=false
     this.multiplier=0;this.depth=0;this.distance=0
     this.particles=[]
@@ -1150,6 +1218,7 @@ export class GameRenderer {
     this.miner.root.x=this.charX;this.miner.root.y=this.charY
     this.miner.root.scale.x=1
     this._syncLayerScroll()
+    this.miner.playDigLoopAnimation()
     this.miner.setIdleMode(false)
     // skyLayer visibility is managed dynamically in _tick based on camera depth
     this.skyLayer.visible = true
@@ -1260,9 +1329,8 @@ export class GameRenderer {
       } catch {
         console.warn('[GameRenderer] Failed to load hero texture')
       }
-      const idleSpine = await loadIdleCharacterSpine()
-      if (idleSpine) this.miner.setIdleSpine(idleSpine)
-      this.miner.setIdleMode(this.idleActive)
+      const heroSpine = await loadCharacterSpineInstance()
+      if (heroSpine) this.miner.setHeroSpine(heroSpine)
       this.skyLayer.removeChildren()
       this._buildSky()
       this._syncSurfaceScenery()
@@ -1364,6 +1432,34 @@ export class GameRenderer {
       if(this.tileWorld)this.tileWorld.update(this.camX,this.camY,this.W,this.H)
       this.miner.update(dt,0.9,false)
       this._pUpdate(dt);return
+    }
+
+    if(this._pendingRoundStart){
+      if(this.tunnelActive) this._hideTunnel()
+      this.miner.resetFacing()
+      this.miner.root.scale.x = 1
+      const hiStart = GameConfig.hero
+      this.miner.root.x = this.idleX + hiStart.idleRootOffsetXPx
+      this.miner.root.y = this.surfY + hiStart.idleRootOffsetYPx
+      const tcX = this.miner.root.x - this.W / 2
+      this.camX += (tcX - this.camX) * 0.08
+      this.camY += (this.idleCamY - this.camY) * 0.08
+      this._syncLayerScroll()
+      this._syncSkyBgParallax()
+      this._updateSkyDecor(dt)
+      this._updateWorldMask(this.W, this.H)
+      if(this.tileWorld)this.tileWorld.update(this.camX,this.camY,this.W,this.H)
+      this.miner.update(gameDt,1,false)
+      if (this.miner.isStartDigAnimationComplete()) {
+        const pending = this._pendingRoundStart
+        this._pendingRoundStart = null
+        if (pending) {
+          this._beginRound(pending.events, pending.spd)
+          return
+        }
+      }
+      this._pUpdate(gameDt)
+      return
     }
 
     if(!this.running){this._pUpdate(dt);return}
@@ -1624,6 +1720,7 @@ export class GameRenderer {
     this._spawnCavesAhead()
     if(this.spawner)this.spawner.update(this.charX,this.charY,this.H*5)
 
+    this.miner.playDigLoopAnimation()
     this.miner.update(gameDt, 1, true)
 
     store.updateStats({
@@ -1968,6 +2065,7 @@ export class GameRenderer {
     this._makeIdleWorld()
     this.minerLayer.addChild(this.miner.root)
     this.idleX=this.charX;this.idleDir=1;this._bounceT=3
+    this._pendingRoundStart = null
     this.idleActive=true
     this.miner.setIdleMode(true)
     this.miner.resetFacing()
