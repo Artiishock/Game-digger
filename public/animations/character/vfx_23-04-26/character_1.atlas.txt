@@ -1,0 +1,9 @@
+character_1.png
+size:664,352
+filter:Linear,Linear
+pma:true
+glow_vfx
+bounds:2,2,346,345
+offsets:30,33,407,409
+vfx
+bounds:350,32,312,315
