@@ -12,7 +12,7 @@ const TILE_PX = 120
  * Большая сторона PNG героя в пикселях мира (масштаб спрайта в GameRenderer).
  * Ширина выкопа поперёк копания = эта величина (полуось `ellipseRadiusXPx` = половина).
  */
-export const HERO_MAX_SIDE_PX = TILE_PX * 1.1
+export const HERO_MAX_SIDE_PX = TILE_PX * 0.8
 
 /** Доля полуоси Y от maxSide: прежнее соотношение 34/132 при maxSide = TILE×1.1. */
 const TUNNEL_SCRATCH_RY_FRAC_OF_MAX_SIDE = 34 / 132
@@ -182,7 +182,7 @@ export const GameConfig = {
     tunnelWorldOffsetXPx: 0,
     tunnelWorldOffsetYPx: -80,
     /** Смещение текстуры внутри корня: idle / туннель */
-    spriteIdleYOffsetPx: -100,
+    spriteIdleYOffsetPx: 50,
     /** В туннеле чуть меньше, чем было при якоре у ног — персонаж визуально выше оси скретча */
     spriteRunYOffsetPx: 24,
   },
