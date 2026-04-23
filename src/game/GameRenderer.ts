@@ -126,7 +126,8 @@ const PICKUP_SPRITE_SCALE = 0.150
  * gold.png / stone.png — холст 220×249; у coin/bomb/gem шире/выше → при одном scale золото и камень мельче.
  * Крути здесь, чтобы визуально догнать остальные пикапы.
  */
-const PICKUP_SCALE_GOLD_STONE_MUL = 1.74
+// 1,74
+const PICKUP_SCALE_GOLD_STONE_MUL = 2.61
 
 function pickupTextureScale(type: EventType): number {
   if (type === 'GOLD' || type === 'STONE') return PICKUP_SPRITE_SCALE * PICKUP_SCALE_GOLD_STONE_MUL
@@ -358,17 +359,12 @@ class ObjectSpawner {
       }
     }
 
-    // Пульсация маркеров road items
+    // Пульсация маркеров road items — только alpha, геометрия не перестраивается
     const pulse = 0.45 + 0.55 * Math.sin(Date.now() * 0.004)
     for (const obj of this._roadItems) {
       const m = obj.roadMarker
       if (!m || obj.collected || (m as any).destroyed) continue
-      try {
-        m.clear()
-        m.lineStyle(3, 0xFFD700, pulse)
-        const r = Math.max(obj.width, obj.height) * 0.55 + 10
-        m.drawCircle(0, 0, r)
-      } catch { obj.roadMarker = undefined }
+      m.alpha = pulse
     }
 
     // Culling
@@ -661,6 +657,7 @@ export class GameRenderer {
   private lavasCavePathUpdated: WeakSet<any> = new WeakSet()
   private lavaSimulation: LavaSimulation | null = null
   private _worldMask: PIXI.Graphics = new PIXI.Graphics()
+  private _cullCounter = 0
 
   constructor(canvas:HTMLCanvasElement,w:number,h:number){
     this.W=w;this.H=h
@@ -1905,7 +1902,9 @@ export class GameRenderer {
   // ─── Particles ────────────────────────────────────────────────────────────
 
   private _burst(wx:number,wy:number,col:number,n:number){
-    for(let i=0;i<n;i++){
+    const cap = Math.min(n, 80 - this.particles.length)
+    if (cap <= 0) return
+    for(let i=0;i<cap;i++){
       const g=new PIXI.Graphics()
       g.beginFill(col);g.drawCircle(0,0,Math.random()*5+2);g.endFill()
       g.x=wx;g.y=wy;this.objectsLayer.addChild(g)  // ← частицы тоже в objectsLayer
@@ -1937,7 +1936,10 @@ export class GameRenderer {
     if (this.lavaSimulation) {
       this.lavaSimulation.setCameraPos(this.camX, this.camY)
       this.lavaSimulation.setViewport(this.W, this.H)
-      this.lavaSimulation.cullFarCells(this.camX, this.camY, this.W, this.H)
+      this._cullCounter = (this._cullCounter + 1) % 10
+      if (this._cullCounter === 0) {
+        this.lavaSimulation.cullFarCells(this.camX, this.camY, this.W, this.H)
+      }
     }
     if (this.tileWorld) this.tileWorld.updateLavas(dt, this.W, this.H)
   }

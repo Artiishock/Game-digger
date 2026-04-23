@@ -593,8 +593,18 @@ export class TileWorld {
     this._tunnelBgColorFill = g
   }
 
+  private _lastBgSyncCamX = -Infinity
+  private _lastBgSyncCamY = -Infinity
+
   private _syncTunnelBgEarthTiles(camX: number, camY: number, screenW: number, screenH: number): void {
     if (this._tunnelBgMode !== 'earthTiles') return
+
+    // Пропускаем если камера сдвинулась меньше чем на полтайла
+    if (Math.abs(camX - this._lastBgSyncCamX) < TILE * 0.5 &&
+        Math.abs(camY - this._lastBgSyncCamY) < TILE * 0.5) return
+    this._lastBgSyncCamX = camX
+    this._lastBgSyncCamY = camY
+
     const margin = TILE * 6
     const wx0 = camX - margin
     const wx1 = camX + screenW + margin
@@ -717,6 +727,13 @@ export class TileWorld {
     const rx = ts.ellipseRadiusXPx
     const ry = ts.ellipseRadiusYPx
     const wxEnd = sx + camX, wyEnd = sy + camY
+
+    // Если персонаж почти не сдвинулся — пропускаем (экономит десятки GPU-вызовов)
+    if (this.lastPt) {
+      const dx = wxEnd - this.lastPt.x, dy = wyEnd - this.lastPt.y
+      if (dx * dx + dy * dy < 1.0) return
+    }
+
     const spacingMul = ts.segmentSpacingMul ?? 0.22
     const spacing = Math.min(rx, ry) * spacingMul
 
@@ -733,8 +750,6 @@ export class TileWorld {
       ftx /= tl
       fty /= tl
     }
-    // Всегда касательная пути, не хорда last→current: иначе при вертикали + дрожании X
-    // овал поворачивается «не туда» и ширина коридора на экране меняется с направлением.
     const stampUx = ftx
     const stampUy = fty
 
@@ -840,7 +855,7 @@ export class TileWorld {
   // ── Update ─────────────────────────────────────────────────────────────────
 
   update(camX: number, camY: number, screenW: number, screenH: number) {
-    const buf    = CPW*4  // больший буфер — чанки строятся заранее
+    const buf    = CPW*2  // 1440px — один экран за пределами видимости (было CPW*4 = 2880)
     const colMin = Math.floor((camX-buf)/CPW)
     const colMax = Math.ceil((camX+screenW+buf)/CPW)
     const rowMin = Math.max(0, Math.floor((camY-buf)/CPH))
@@ -867,7 +882,7 @@ export class TileWorld {
 
     this._extendBg(colMin, colMax, rowMin, rowMax)
 
-    const cull=6
+    const cull=3  // чанки удаляются быстрее (было 6)
     for(const[key,chunk]of this.chunks){
       if(chunk.col<colMin-cull||chunk.col>colMax+cull||
          chunk.row<rowMin-cull||chunk.row>rowMax+cull){
@@ -938,15 +953,15 @@ export class TileWorld {
       content.addChild(spr)
     }
 
-    const maskRT  = PIXI.RenderTexture.create({width:CPW, height:CPH})
+    const maskRT  = PIXI.RenderTexture.create({width:CPW, height:CPH, resolution: 0.5})
     const maskSpr = new PIXI.Sprite(maskRT)
     maskSpr.renderable = false
 
-    const darkMaskRT  = PIXI.RenderTexture.create({width:CPW, height:CPH})
+    const darkMaskRT  = PIXI.RenderTexture.create({width:CPW, height:CPH, resolution: 0.5})
     const darkMaskSpr = new PIXI.Sprite(darkMaskRT)
     darkMaskSpr.renderable = false
 
-    const lavaRT      = PIXI.RenderTexture.create({width:CPW, height:CPH})
+    const lavaRT      = PIXI.RenderTexture.create({width:CPW, height:CPH, resolution: 0.5})
     const lavaMaskSpr = new PIXI.Sprite(lavaRT)
     lavaMaskSpr.renderable = false
 

@@ -66,8 +66,8 @@ export class LavaSimulation {
   private _texLayer:     PIXI.Container = new PIXI.Container()
   private _texMaskGfx:   PIXI.Graphics  = new PIXI.Graphics()
   private _tilingSprite: PIXI.TilingSprite | null = null
-  private cells: Map<string, { amount: number; static?: boolean }> = new Map()
-  private dirty: Set<string> = new Set()
+  private cells: Map<number, { amount: number; static?: boolean; gx: number; gy: number }> = new Map()
+  private dirty: Set<number> = new Set()
 
   readonly container: PIXI.Container
   readonly glowGfx:   PIXI.Graphics
@@ -85,6 +85,14 @@ export class LavaSimulation {
   private _blurFilter:   PIXI.BlurFilter
   private _threshFilter: PIXI.Filter
   private time = 0
+  private _renderDirty = true
+  private _lastRenderCamX = -Infinity
+  private _lastRenderCamY = -Infinity
+
+  /** Числовой ключ из координат сетки — избегаем аллокации строк и парсинга */
+  private static _k(gx: number, gy: number): number {
+    return ((gx + 65536) & 0x1FFFF) | (((gy + 65536) & 0x1FFFF) << 17)
+  }
 
   constructor() {
     this.container = new PIXI.Container()
@@ -220,7 +228,7 @@ export class LavaSimulation {
     hw: number,
     hh: number,
     cr: number,
-    outKeys: Set<string>,
+    outKeys: Set<number>,
   ) {
     const minX = cx - hw
     const maxX = cx + hw
@@ -247,8 +255,8 @@ export class LavaSimulation {
             if (cx2 * cx2 + cy2 * cy2 > cr * cr) continue
           }
         }
-        const key = `${gx},${gy}`
-        if (!this.cells.has(key)) this.cells.set(key, { amount: 0 })
+        const key = LavaSimulation._k(gx, gy)
+        if (!this.cells.has(key)) this.cells.set(key, { amount: 0, gx, gy })
         outKeys.add(key)
       }
     }
@@ -265,7 +273,7 @@ export class LavaSimulation {
     let hasLavaNear = false
     for (let dy = -cr; dy <= cr && !hasLavaNear; dy++) {
       for (let dx = -cr; dx <= cr && !hasLavaNear; dx++) {
-        const cell = this.cells.get(`${cx+dx},${cy+dy}`)
+        const cell = this.cells.get(LavaSimulation._k(cx+dx, cy+dy))
         if (cell && cell.amount > 0.1) hasLavaNear = true
       }
     }
@@ -286,7 +294,7 @@ export class LavaSimulation {
     const rect = opts?.rect
     if (rect) {
       this._addCaveMaskRect(rect)
-      const caveKeys = new Set<string>()
+      const caveKeys = new Set<number>()
       this._registerAabbCells(rect.cx, rect.cy, rect.hw, rect.hh, Math.max(0, rect.cr ?? 0), caveKeys)
       if (caveKeys.size === 0) return
       for (const key of caveKeys) {
@@ -296,6 +304,7 @@ export class LavaSimulation {
         cell.static = true
         this.dirty.add(key)
       }
+      this._renderDirty = true
       return
     }
 
@@ -303,7 +312,7 @@ export class LavaSimulation {
 
     this._addCaveMask(points)
 
-    const caveKeys = new Set<string>()
+    const caveKeys = new Set<number>()
 
     if (points.length === 1) {
       this._registerCircleCells(points[0]!.x, points[0]!.y, points[0]!.r, caveKeys)
@@ -321,9 +330,10 @@ export class LavaSimulation {
 
     const byRow = new Map<number, number[]>()
     for (const key of caveKeys) {
-      const [gx, gy] = key.split(',').map(Number)
-      if (!byRow.has(gy)) byRow.set(gy, [])
-      byRow.get(gy)!.push(gx)
+      const cell = this.cells.get(key)
+      if (!cell) continue
+      if (!byRow.has(cell.gy)) byRow.set(cell.gy, [])
+      byRow.get(cell.gy)!.push(cell.gx)
     }
 
     const allCells: [number, number][] = []
@@ -336,10 +346,10 @@ export class LavaSimulation {
     const fillCount = Math.max(1, Math.ceil(n * Math.min(0.99, fillFraction)))
     const topPart = Math.ceil(fillCount * 0.52)
     const botPart = fillCount - topPart
-    const filledKeys = new Set<string>()
+    const filledKeys = new Set<number>()
     for (let i = 0; i < topPart && i < n; i++) {
       const [gx, gy] = allCells[i]!
-      const key = `${gx},${gy}`
+      const key = LavaSimulation._k(gx, gy)
       if (filledKeys.has(key)) continue
       filledKeys.add(key)
       const cell = this.cells.get(key)!
@@ -348,7 +358,7 @@ export class LavaSimulation {
     }
     for (let j = 0; j < botPart && j < n; j++) {
       const [gx, gy] = allCells[n - 1 - j]!
-      const key = `${gx},${gy}`
+      const key = LavaSimulation._k(gx, gy)
       if (filledKeys.has(key)) continue
       filledKeys.add(key)
       const cell = this.cells.get(key)!
@@ -374,11 +384,12 @@ export class LavaSimulation {
         }
       }
     }
+    this._renderDirty = true
   }
 
   // ── Регистрация ячеек по кругу ────────────────────────────────────────────
 
-  private _registerCircleCells(wx: number, wy: number, r: number, outKeys?: Set<string>) {
+  private _registerCircleCells(wx: number, wy: number, r: number, outKeys?: Set<number>) {
     const cr  = Math.ceil(r / SIM_CELL) + 1
     const cx  = Math.floor(wx / SIM_CELL)
     const cy  = Math.floor(wy / SIM_CELL)
@@ -389,8 +400,8 @@ export class LavaSimulation {
         const py = (cy + dy) * SIM_CELL + SIM_CELL / 2
         const ddx = px - wx, ddy = py - wy
         if (ddx*ddx + ddy*ddy > r2) continue
-        const key = `${cx+dx},${cy+dy}`
-        if (!this.cells.has(key)) this.cells.set(key, { amount: 0 })
+        const key = LavaSimulation._k(cx+dx, cy+dy)
+        if (!this.cells.has(key)) this.cells.set(key, { amount: 0, gx: cx+dx, gy: cy+dy })
         outKeys?.add(key)
       }
     }
@@ -402,7 +413,7 @@ export class LavaSimulation {
     ax: number, ay: number,
     bx: number, by: number,
     r:  number,
-    outKeys?: Set<string>
+    outKeys?: Set<number>
   ) {
     const minX = Math.min(ax, bx) - r
     const maxX = Math.max(ax, bx) + r
@@ -419,8 +430,8 @@ export class LavaSimulation {
         const px = gx * SIM_CELL + SIM_CELL / 2
         const py = gy * SIM_CELL + SIM_CELL / 2
         if (this._distToSegment(px, py, ax, ay, bx, by) > r) continue
-        const key = `${gx},${gy}`
-        if (!this.cells.has(key)) this.cells.set(key, { amount: 0 })
+        const key = LavaSimulation._k(gx, gy)
+        if (!this.cells.has(key)) this.cells.set(key, { amount: 0, gx, gy })
         outKeys?.add(key)
       }
     }
@@ -430,23 +441,24 @@ export class LavaSimulation {
 
 
   // Заполняет пробелы между ячейками — гарантирует связность сетки
-  private _fillGaps(keys: Set<string>) {
+  private _fillGaps(keys: Set<number>) {
     let changed = true
     while (changed) {
       changed = false
       for (const key of keys) {
-        const [gx, gy] = key.split(',').map(Number)
-        for (const [dx, dy] of [[0,1],[0,-1],[1,0],[-1,0]]) {
-          const nk = `${gx+dx},${gy+dy}`
+        const cell = this.cells.get(key)
+        if (!cell) continue
+        const gx = cell.gx, gy = cell.gy
+        for (const [dx, dy] of [[0,1],[0,-1],[1,0],[-1,0]] as const) {
+          const nk = LavaSimulation._k(gx+dx, gy+dy)
           if (keys.has(nk)) continue
-          // Если у соседа есть ещё один сосед из keys — заполняем пробел
           let neighborCount = 0
-          for (const [dx2, dy2] of [[0,1],[0,-1],[1,0],[-1,0]]) {
-            if (keys.has(`${gx+dx+dx2},${gy+dy+dy2}`)) neighborCount++
+          for (const [dx2, dy2] of [[0,1],[0,-1],[1,0],[-1,0]] as const) {
+            if (keys.has(LavaSimulation._k(gx+dx+dx2, gy+dy+dy2))) neighborCount++
           }
           if (neighborCount >= 2) {
             keys.add(nk)
-            if (!this.cells.has(nk)) this.cells.set(nk, { amount: 0 })
+            if (!this.cells.has(nk)) this.cells.set(nk, { amount: 0, gx: gx+dx, gy: gy+dy })
             changed = true
           }
         }
@@ -474,6 +486,11 @@ export class LavaSimulation {
   // ── Update ────────────────────────────────────────────────────────────────
 
   setCameraPos(camX: number, camY: number) {
+    // Перерисовка нужна только если камера сдвинулась достаточно для изменения видимых ячеек
+    if (Math.abs(camX - this._lastRenderCamX) > SIM_CELL * 2 ||
+        Math.abs(camY - this._lastRenderCamY) > SIM_CELL * 2) {
+      this._renderDirty = true
+    }
     this._camX = camX
     this._camY = camY
   }
@@ -514,11 +531,10 @@ export class LavaSimulation {
   // ── Физика течения ────────────────────────────────────────────────────────
 
   private _flow(topDown: boolean) {
-    const lavaCells: Array<[string, number, number]> = []
+    const lavaCells: Array<[number, number, number]> = []
     for (const [key, cell] of this.cells) {
       if (cell.amount < MIN_FLOW) continue
-      const [gx, gy] = key.split(',').map(Number)
-      lavaCells.push([key, gx, gy])
+      lavaCells.push([key, cell.gx, cell.gy])
     }
     lavaCells.sort((a, b) => topDown ? a[2] - b[2] : b[2] - a[2])
 
@@ -527,7 +543,7 @@ export class LavaSimulation {
       if (!cell || cell.amount < MIN_FLOW || cell.static) continue
 
       // Вниз
-      const downKey = `${gx},${gy+1}`
+      const downKey = LavaSimulation._k(gx, gy+1)
       const down = this.cells.get(downKey)
       if (down && !down.static && down.amount < MAX_AMOUNT) {
         const flow = Math.min(cell.amount * GRAVITY_BIAS, (MAX_AMOUNT - down.amount) * GRAVITY_BIAS * 1.2)
@@ -540,7 +556,7 @@ export class LavaSimulation {
 
       // Диагональ вниз
       if (!down || down.static || down.amount >= MAX_AMOUNT - MIN_FLOW) {
-        const dlKey = `${gx-1},${gy+1}`, drKey = `${gx+1},${gy+1}`
+        const dlKey = LavaSimulation._k(gx-1, gy+1), drKey = LavaSimulation._k(gx+1, gy+1)
         const dl = this.cells.get(dlKey), dr = this.cells.get(drKey)
         const canL = dl && !dl.static && dl.amount < MAX_AMOUNT - MIN_FLOW
         const canR = dr && !dr.static && dr.amount < MAX_AMOUNT - MIN_FLOW
@@ -563,7 +579,7 @@ export class LavaSimulation {
       // Горизонталь
       for (const dx of [-1, 1]) {
         if (cell.amount < MIN_FLOW) break
-        const sideKey = `${gx+dx},${gy}`
+        const sideKey = LavaSimulation._k(gx+dx, gy)
         const side = this.cells.get(sideKey)
         if (!side || side.static) continue
         const diff = cell.amount - side.amount
@@ -579,12 +595,17 @@ export class LavaSimulation {
       const cell = this.cells.get(key)
       if (cell) cell.amount = Math.max(0, Math.min(MAX_AMOUNT, cell.amount))
     }
+    this._renderDirty = true
     this.dirty.clear()
   }
 
   // ── Рендер ────────────────────────────────────────────────────────────────
 
   private _render() {
+    if (!this._renderDirty) return
+    this._renderDirty = false
+    this._lastRenderCamX = this._camX
+    this._lastRenderCamY = this._camY
     this.blobGfx.clear()
     this.glowGfx.clear()
     this._texMaskGfx.clear()
@@ -595,10 +616,10 @@ export class LavaSimulation {
     const minGY = Math.floor((this._camY - padPx) / SIM_CELL)
     const maxGY = Math.ceil ((this._camY + this._viewH + padPx) / SIM_CELL)
 
-    for (const [key, cell] of this.cells) {
+    for (const [_key, cell] of this.cells) {
       if (cell.amount < MIN_FLOW) continue
-      const [gx, gy] = key.split(',').map(Number)
-      if (gx < minGX || gx > maxGX || gy < minGY || gy > maxGY) continue
+      if (cell.gx < minGX || cell.gx > maxGX || cell.gy < minGY || cell.gy > maxGY) continue
+      const gx = cell.gx, gy = cell.gy
       const cx = gx * SIM_CELL + SIM_CELL / 2
       const cy = gy * SIM_CELL + SIM_CELL / 2
       const r  = SIM_CELL * (0.6 + cell.amount * 0.25)
@@ -625,7 +646,7 @@ export class LavaSimulation {
     const cr = Math.ceil(charRadius / SIM_CELL) + 1
     for (let dy = -cr; dy <= cr; dy++) {
       for (let dx = -cr; dx <= cr; dx++) {
-        const cell = this.cells.get(`${gx+dx},${gy+dy}`)
+        const cell = this.cells.get(LavaSimulation._k(gx+dx, gy+dy))
         if (!cell || cell.amount < 0.5) continue
         const cx  = (gx+dx) * SIM_CELL + SIM_CELL / 2
         const cy2 = (gy+dy) * SIM_CELL + SIM_CELL / 2
@@ -669,10 +690,9 @@ export class LavaSimulation {
     const sx1 = Math.ceil ((camX + viewW + statPadX) / SIM_CELL)
     const sy0 = Math.floor((camY - statPadY) / SIM_CELL)
     const sy1 = Math.ceil ((camY + viewH + statPadY) / SIM_CELL)
-    for (const key of this.cells.keys()) {
-      const [gx, gy] = key.split(',').map(Number)
-      const cell = this.cells.get(key)
-      if (cell?.static) {
+    for (const [key, cell] of this.cells) {
+      const gx = cell.gx, gy = cell.gy
+      if (cell.static) {
         if (gx >= sx0 && gx <= sx1 && gy >= sy0 && gy <= sy1) continue
         this.cells.delete(key)
         continue
