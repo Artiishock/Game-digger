@@ -194,7 +194,7 @@ export const GameConfig = {
   // ─── Герой (Spine): калибровка ─────────────────────────────────────────────
   hero: {
     idleRootOffsetXPx: 0,
-    idleRootOffsetYPx: -100,
+    idleRootOffsetYPx: 40,
 
     tunnelOffsetAlongPx: 0,
     tunnelOffsetAcrossPx: 0,
