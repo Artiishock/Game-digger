@@ -721,47 +721,95 @@ export class TileWorld {
     }
   }
 
-  scratchAt(sx: number, sy: number, camX: number, camY: number, tnx = 0, tny = 1) {
+  scratchAt(
+    sx: number,
+    sy: number,
+    camX: number,
+    camY: number,
+    tnx = 0,
+    tny = 1,
+    forcedRx?: number,
+    forcedRy?: number,
+  ) {
     if (!this.renderer) return
     const ts = GameConfig.tunnelScratch
-    const rx = ts.ellipseRadiusXPx
-    const ry = ts.ellipseRadiusYPx
-    const wxEnd = sx + camX, wyEnd = sy + camY
+    const useForcedShape = forcedRx != null || forcedRy != null
+    const baseRx = forcedRx ?? ts.ellipseRadiusXPx
+    const baseRy = forcedRy ?? ts.ellipseRadiusYPx
+    const wxEnd = sx + camX
+    const wyEnd = sy + camY
 
     // Если персонаж почти не сдвинулся — пропускаем (экономит десятки GPU-вызовов)
     if (this.lastPt) {
-      const dx = wxEnd - this.lastPt.x, dy = wyEnd - this.lastPt.y
+      const dx = wxEnd - this.lastPt.x
+      const dy = wyEnd - this.lastPt.y
       if (dx * dx + dy * dy < 1.0) return
     }
 
-    const spacingMul = ts.segmentSpacingMul ?? 0.22
-    const spacing = Math.min(rx, ry) * spacingMul
-
     const ax = this.lastPt?.x ?? wxEnd
     const ay = this.lastPt?.y ?? wyEnd
-    const segdx = wxEnd - ax, segdy = wyEnd - ay
+    const segdx = wxEnd - ax
+    const segdy = wyEnd - ay
     const segLen = Math.hypot(segdx, segdy)
-    let ftx = tnx, fty = tny
-    const tl = Math.hypot(ftx, fty)
-    if (tl < 1e-3) {
-      ftx = 0
-      fty = 1
-    } else {
-      ftx /= tl
-      fty /= tl
-    }
-    const stampUx = ftx
-    const stampUy = fty
 
-    const nSteps = segLen < 0.5 ? 1 : Math.max(2, Math.ceil(segLen / spacing))
+    let fallbackUx = tnx
+    let fallbackUy = tny
+    const tl = Math.hypot(fallbackUx, fallbackUy)
+    if (tl < 1e-3) {
+      fallbackUx = 0
+      fallbackUy = 1
+    } else {
+      fallbackUx /= tl
+      fallbackUy /= tl
+    }
+
+    const spacingMul = ts.segmentSpacingMul ?? 0.14
+    const spacingBase = Math.max(1, Math.min(baseRx, baseRy) * spacingMul)
+    const nSteps = segLen < 0.5 ? 1 : Math.max(3, Math.ceil(segLen / spacingBase))
 
     let prev: { x: number; y: number } | null = null
+    let prevUx = fallbackUx
+    let prevUy = fallbackUy
+
     for (let i = 0; i <= nSteps; i++) {
       const t = i / nSteps
       const wx = ax + segdx * t
       const wy = ay + segdy * t
-      this._scratchWorldTunnelStamp(wx, wy, rx, ry, stampUx, stampUy, prev)
-      prev = { x: wx, y: wy }
+
+      let ux = fallbackUx
+      let uy = fallbackUy
+      if (prev) {
+        const dx = wx - prev.x
+        const dy = wy - prev.y
+        const len = Math.hypot(dx, dy)
+        if (len > 1e-6) {
+          ux = dx / len
+          uy = dy / len
+        }
+      }
+
+      const dot = Math.max(-1, Math.min(1, prevUx * ux + prevUy * uy))
+      const turnAmountRaw = 1 - Math.abs(dot)
+      const turnAmount = Math.pow(turnAmountRaw, ts.turnSharpnessPow ?? 1.2)
+
+      const rx = useForcedShape
+        ? baseRx
+        : baseRx +
+          (ts.turnInflateXPx ?? 0) * turnAmount +
+          (ts.noseMarginPx ?? 0)
+
+      const ry = useForcedShape
+        ? baseRy
+        : baseRy +
+          (ts.turnInflateYPx ?? 0) * turnAmount
+
+      const cx = wx
+      const cy = wy
+
+      this._scratchWorldTunnelStamp(cx, cy, rx, ry, ux, uy, prev)
+      prev = { x: cx, y: cy }
+      prevUx = ux
+      prevUy = uy
     }
 
     if (!this.lastPt) this.lastPt = { x: wxEnd, y: wyEnd }

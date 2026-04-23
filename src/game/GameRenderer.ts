@@ -138,12 +138,8 @@ function pickupTextureScale(type: EventType): number {
 // ─── SpriteCharacter (PNG hero) ──────────────────────────────────────────────
 
 /**
- * Масштаб героя: `HERO_MAX_SIDE_PX` из GameConfig (= TILE×1.1) — та же величина, что полная ширина выкопа.
- * Раньше якорь был у ног (0.88); после смены на центр компенсируем сдвигом, чтобы ноги остались у корня.
- */
-const HERO_LEGACY_FEET_ANCHOR_Y = 0.88
-/**
- * PNG: вид сбоку, бур снизу. Вращение вокруг центра текстуры; «вперёд по копанию» по-прежнему вдоль локального +Y.
+ * Spine: вид сбоку, бур снизу. Вращение вокруг настроенной точки опоры;
+ * «вперёд по копанию» по-прежнему вдоль локального +Y.
  * Угол касательной (nx,ny): atan2(ny,nx) + offset — см. HERO_DRILL_FACING_OFFSET.
  */
 const HERO_DRILL_FACING_OFFSET = -Math.PI / 2
@@ -188,10 +184,7 @@ async function loadCharacterSpineInstance(): Promise<Spine | null> {
 class SpriteCharacter {
   root: PIXI.Container
   chunkParent: PIXI.Container | null = null
-  private _spr: PIXI.Sprite | null = null
   private _spine: Spine | null = null
-  /** Сдвиг по Y: центр текстуры → прежняя точка у ног остаётся в origin корня. */
-  private _pivotFootCompensateY = 0
   /** Текущий поворот (рад). */
   private _facingRad = 0
   private _mode: 'idle' | 'start2' | 'loop2' = 'idle'
@@ -200,45 +193,25 @@ class SpriteCharacter {
     this.root = new PIXI.Container()
   }
 
-  setHeroTexture(tex: PIXI.Texture | null) {
-    if (this._spr) {
-      this.root.removeChild(this._spr)
-      this._spr.destroy()
-      this._spr = null
-    }
-    if (!tex || this._spine) return
-    const s = new PIXI.Sprite(tex)
-    s.anchor.set(0.5, 0.5)
-    const sc = HERO_MAX_SIDE_PX / Math.max(tex.width, tex.height)
-    s.scale.set(sc)
-    const h = tex.height * sc
-    this._pivotFootCompensateY = (HERO_LEGACY_FEET_ANCHOR_Y - 0.5) * h
-    s.y = this._pivotFootCompensateY + GameConfig.hero.spriteIdleYOffsetPx
-    s.visible = true
-    this._spr = s
-    this.root.addChild(s)
-  }
-
   setHeroSpine(spine: Spine | null) {
     if (this._spine) {
       this.root.removeChild(this._spine)
       this._spine.destroy({ children: true })
       this._spine = null
     }
-    if (this._spr) {
-      this.root.removeChild(this._spr)
-      this._spr.destroy()
-      this._spr = null
-    }
     if (!spine) return
     spine.autoUpdate = false
     const bounds = spine.getLocalBounds()
     const maxSide = Math.max(bounds.width, bounds.height, 1)
-    const sc = HERO_MAX_SIDE_PX / maxSide
+    const scaleMul = GameConfig.hero.spineScaleMul ?? 1
+    const pivotXFrac = GameConfig.hero.spinePivotXFrac ?? 0.5
+    const pivotYFrac = GameConfig.hero.spinePivotYFrac ?? 0.88
+    const sc = (HERO_MAX_SIDE_PX / maxSide) * scaleMul
     spine.scale.set(sc)
-    const footY = bounds.y + bounds.height * HERO_LEGACY_FEET_ANCHOR_Y
-    spine.pivot.set(bounds.x + bounds.width * 0.5, footY)
-    spine.position.set(0, GameConfig.hero.spriteIdleYOffsetPx)
+    const pivotX = bounds.x + bounds.width * pivotXFrac
+    const pivotY = bounds.y + bounds.height * pivotYFrac
+    spine.pivot.set(pivotX, pivotY)
+    spine.position.set(0, GameConfig.hero.spineIdleYOffsetPx)
     spine.visible = true
     this._spine = spine
     this.root.addChild(spine)
@@ -250,12 +223,10 @@ class SpriteCharacter {
   }
 
   private _setVisualY(y: number) {
-    if (this._spr) this._spr.y = this._pivotFootCompensateY + y
     if (this._spine) this._spine.position.y = y
   }
 
   private _setVisualRotation(angle: number) {
-    if (this._spr) this._spr.rotation = angle
     if (this._spine) this._spine.rotation = angle
   }
 
@@ -271,7 +242,7 @@ class SpriteCharacter {
 
   playIdleAnimation() {
     this._mode = 'idle'
-    this._setVisualY(GameConfig.hero.spriteIdleYOffsetPx)
+    this._setVisualY(GameConfig.hero.spineIdleYOffsetPx)
     this._setVisualRotation(0)
     if (this._spine) this._playSpineAnimation(CHARACTER_SPINE_ANIM.idle, true, 'idle')
   }
@@ -279,7 +250,7 @@ class SpriteCharacter {
   playStartDigAnimation() {
     if (!this._spine) return
     this._mode = 'start2'
-    this._setVisualY(GameConfig.hero.spriteIdleYOffsetPx)
+    this._setVisualY(GameConfig.hero.spineIdleYOffsetPx)
     this._setVisualRotation(0)
     this._playSpineAnimation(CHARACTER_SPINE_ANIM.start2, false, 'start2')
   }
@@ -287,7 +258,7 @@ class SpriteCharacter {
   playDigLoopAnimation() {
     if (!this._spine) return
     this._mode = 'loop2'
-    this._setVisualY(GameConfig.hero.spriteRunYOffsetPx)
+    this._setVisualY(GameConfig.hero.spineRunYOffsetPx)
     this._playSpineAnimation(CHARACTER_SPINE_ANIM.loop2, true, 'loop2')
   }
 
@@ -301,11 +272,7 @@ class SpriteCharacter {
   }
 
   setIdleMode(idle: boolean) {
-    if (idle) {
-      this.playIdleAnimation()
-    } else if (!this._spine) {
-      this._setVisualY(GameConfig.hero.spriteRunYOffsetPx)
-    }
+    if (idle) this.playIdleAnimation()
   }
 
   resetFacing() {
@@ -345,22 +312,38 @@ class SpriteCharacter {
 
   update(dt: number, _spd: number, digging: boolean) {
     const modeY = this._mode === 'loop2'
-      ? GameConfig.hero.spriteRunYOffsetPx
-      : GameConfig.hero.spriteIdleYOffsetPx
-    if (this._spine) {
-      this._setVisualY(modeY)
-      this._spine.update(dt)
-      if (!digging && this._mode === 'loop2') this.playIdleAnimation()
-    } else if (this._spr) {
-      this._spr.y =
-        this._pivotFootCompensateY +
-        (digging ? GameConfig.hero.spriteRunYOffsetPx : GameConfig.hero.spriteIdleYOffsetPx)
+      ? GameConfig.hero.spineRunYOffsetPx
+      : GameConfig.hero.spineIdleYOffsetPx
+    if (!this._spine) return
+    this._setVisualY(modeY)
+    this._spine.update(dt)
+    if (!digging && this._mode === 'loop2') this.playIdleAnimation()
+  }
+
+  getTunnelStampScreen(): { sx: number; sy: number; rx: number; ry: number } | null {
+    if (!this._spine) return null
+    const ts = GameConfig.tunnelScratch as any
+    if (!ts.useCharacterBoundsTunnel) return null
+
+    const b = this._spine.getBounds()
+    const sx = b.x + b.width * 0.5
+    const sy = b.y + b.height * 0.5
+    const halfDiag = Math.hypot(b.width, b.height) * 0.5
+    const r = Math.max(
+      ts.minCharacterRadiusPx ?? 0,
+      halfDiag * (ts.characterRadiusScale ?? 1) + (ts.characterPaddingPx ?? 0),
+    )
+
+    return {
+      sx,
+      sy,
+      rx: r + (ts.characterExtraXPx ?? 0),
+      ry: r + (ts.characterExtraYPx ?? 0),
     }
   }
 
   destroy() {
     if (this._spine) this._spine.destroy({ children: true })
-    if (this._spr) this._spr.destroy()
     this.root.destroy({ children: true })
   }
 }
@@ -882,13 +865,16 @@ export class GameRenderer {
 
   private _updateTunnel(sx: number, sy: number){
     if (this.tileWorld) {
+      const stamp = this.miner.getTunnelStampScreen()
       this.tileWorld.scratchAt(
-        sx,
-        sy,
+        stamp?.sx ?? sx,
+        stamp?.sy ?? sy,
         this.camX,
         this.camY,
         this._pathTangentNx,
         this._pathTangentNy,
+        stamp?.rx,
+        stamp?.ry,
       )
     }
   }
@@ -1322,12 +1308,6 @@ export class GameRenderer {
         } catch {
           console.warn(`[GameRenderer] Failed to load texture: ${url}`)
         }
-      }
-      try {
-        const heroTex = await PIXI.Texture.fromURL(GameAssets.hero)
-        this.miner.setHeroTexture(heroTex)
-      } catch {
-        console.warn('[GameRenderer] Failed to load hero texture')
       }
       const heroSpine = await loadCharacterSpineInstance()
       if (heroSpine) this.miner.setHeroSpine(heroSpine)
