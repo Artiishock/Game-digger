@@ -326,9 +326,11 @@ export function buildTunnel(
   roadTargets: RoadPoint[],
   /** Раунд с лавой — меньше синусов, без резких зигзагов */
   calmPath = false,
+  /** Стартовая X-точка туннеля. Нужна, чтобы вход в бурение начинался из текущей idle-позиции героя без бокового скачка. */
+  startX = 0,
 ): PathPoint[] {
   const path: PathPoint[] = []
-  let curX = 0
+  let curX = Math.max(X_MIN, Math.min(X_MAX, startX))
   const targets = [...roadTargets].sort((a, b) => a.worldY - b.worldY)
   let tIdx = 0
 
@@ -751,6 +753,8 @@ export function buildRoundPath(
   surfY:     number,
   ppm:       number,
   events:    RoundEvent[],
+  /** X, из которого физически начинается туннель. По умолчанию старая логика: 0. */
+  startX = 0,
 ): FullPathResult {
   const roadEventsOrdered = events.filter(ev => ev.type !== 'LAVA')
   const roadEvents = roadEventsOrdered.map(ev => ({
@@ -769,7 +773,7 @@ export function buildRoundPath(
   )
 
   // Pass 1: путь без road items (случайное блуждание)
-  const roughPath  = buildTunnel(surfY, terminalY, worldSeed, [], isLoss)
+  const roughPath  = buildTunnel(surfY, terminalY, worldSeed, [], isLoss, startX)
 
   // Pass 2: road items на грубом пути
   const roughRoad = placeRoadItems(roadEvents, roughPath, surfY)
@@ -779,7 +783,7 @@ export function buildRoundPath(
   const tunnelTargets = [...roughRoad, ...ghostTargets].sort((a, b) => a.worldY - b.worldY)
 
   // Pass 3: финальный туннель через реальные + призрачные цели
-  const path = buildTunnel(surfY, terminalY, worldSeed, tunnelTargets, isLoss)
+  const path = buildTunnel(surfY, terminalY, worldSeed, tunnelTargets, isLoss, startX)
 
   // Pass 4: road items точно на финальном туннеле + на оси туннеля (проекция на полилинию)
   let roadPoints = placeRoadItems(roadEvents, path, surfY)
