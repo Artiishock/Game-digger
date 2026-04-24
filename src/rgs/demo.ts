@@ -61,11 +61,11 @@ async function ensureProbTables(): Promise<void> {
   _tablesLoading = (async () => {
     try {
       const [win, loss] = await Promise.all([
-        fetch('/math/coeff_probabilities.json').then(async r => {
+        fetch('./math/coeff_probabilities.json').then(async r => {
           if (!r.ok) throw new Error(`HTTP ${r.status}`)
           return r.json() as Promise<Record<string, number>>
         }),
-        fetch('/math/coeff_probabilities_loss.json').then(async r => {
+        fetch('./math/coeff_probabilities_loss.json').then(async r => {
           if (!r.ok) throw new Error(`HTTP ${r.status}`)
           return r.json() as Promise<Record<string, number>>
         }),
@@ -120,12 +120,12 @@ function coeffToFilename(coeff: number): string {
   return 'coeff_' + coeff.toFixed(2).replace('.', '_') + '.jsonl'
 }
 
-async function loadRoad(coeff: number, isLoss: boolean): Promise<string[]> {
+async function loadRoad(coeff: number, isLoss: boolean, rng: () => number): Promise<string[]> {
   const dir  = isLoss
     ? 'road_by_coeff_from_losses_merged'
     : 'road_by_coeff_merged_nonzero'
   const file = coeffToFilename(coeff)
-  const url  = `/math/${dir}/${file}`
+  const url  = `./math/${dir}/${file}`
 
   try {
     const res = await fetch(url)
@@ -133,7 +133,7 @@ async function loadRoad(coeff: number, isLoss: boolean): Promise<string[]> {
     const text = await res.text()
     const lines = text.trim().split('\n').filter(l => l.trim())
     if (!lines.length) throw new Error('empty road file')
-    const idx  = Math.floor(Math.random() * lines.length)
+    const idx  = Math.floor(rng() * lines.length)
     const road = JSON.parse(lines[idx]) as string[]
 
     console.log(
@@ -142,9 +142,8 @@ async function loadRoad(coeff: number, isLoss: boolean): Promise<string[]> {
 
     return road
   } catch (err) {
-    console.warn('[demo] road load failed:', err, '— using fallback')
-    // Fallback road tokens: [coin, coin, diamond, gold, home]
-    return isLoss ? ['1', '/2', '1'] : ['1', '2', '*3', 'g5', '1']
+    console.warn('[demo] road load failed:', err, '— using procedural fallback')
+    return generateProceduralRoad(isLoss, rng)
   }
 }
 
@@ -247,6 +246,35 @@ function roadToEvents(
   return events
 }
 
+function generateProceduralRoad(isLoss: boolean, rng: () => number): string[] {
+  const tokens: string[] = []
+  const numItems = 4 + Math.floor(rng() * 5)
+
+  for (let i = 0; i < numItems; i++) {
+    const r = rng()
+    if (isLoss) {
+      if (r < 0.25) tokens.push('1')
+      else if (r < 0.5) tokens.push('2')
+      else if (r < 0.7) tokens.push('/2')
+      else if (r < 0.85) tokens.push('/3')
+      else tokens.push('*' + (2 + Math.floor(rng() * 3)))
+    } else {
+      if (r < 0.3) tokens.push('1')
+      else if (r < 0.5) tokens.push('2')
+      else if (r < 0.65) tokens.push('*2')
+      else if (r < 0.75) tokens.push('*3')
+      else if (r < 0.9) tokens.push('g' + (2 + Math.floor(rng() * 5)))
+      else tokens.push('/2')
+    }
+  }
+
+  if (!isLoss) {
+    tokens.push('g' + (3 + Math.floor(rng() * 4)))
+  }
+
+  return tokens
+}
+
 // ─── PRNG ─────────────────────────────────────────────────────────────────────
 
 function makePrng(seed: number): () => number {
@@ -300,11 +328,11 @@ export async function demoPlay(betDisplay: number): Promise<PlayResponse> {
   let lossCoeff = 0
   if (!isLoss) {
     // WIN: road из папки nonzero
-    road = await loadRoad(baseCoeff, false)
+    road = await loadRoad(baseCoeff, false, rng)
   } else {
     // LOSS: сэмплируем loss_coeff, road из папки losses
     lossCoeff = sampleTable(_lossTable!)
-    road = await loadRoad(lossCoeff, true)
+    road = await loadRoad(lossCoeff, true, rng)
   }
 
   const events  = roadToEvents(road, isLoss, rng)

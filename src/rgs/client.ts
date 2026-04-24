@@ -94,7 +94,7 @@ export interface RgsConfig {
 }
 
 /** A single event in a game round — Deep Rush flavour */
-export type EventType = 'COIN' | 'GOLD' | 'DIAMOND' | 'BOMB' | 'STONE' | 'HOME' | 'LAVA'
+export type EventType = 'COIN' | 'GOLD' | 'DIAMOND' | 'BOMB' | 'STONE' | 'HOME' | 'LAVA' | 'finalWin'
 
 export interface RoundEvent {
   type:           EventType
@@ -102,13 +102,20 @@ export interface RoundEvent {
   distance:       number   // path distance metres
   multiplierSnap: number   // multiplier value AFTER this event
   durationMs?:    number   // GOLD / STONE: time to destroy
+  index?:         number   // RGS state format index
+  amount?:        number   // finalWin: payout amount
 }
 
 export interface RgsRound {
   roundID:          string
   payoutMultiplier: number
+  payout?:          number    // payout amount (RGS state format)
+  betID?:            number    // bet ID (RGS state format)
+  amount?:          number    // bet amount (RGS state format)
   isActive:         boolean
+  active?:          boolean   // RGS state format
   events:           RoundEvent[]
+  state?:           RoundEvent[] // RGS state format
 }
 
 export interface AuthResponse {
@@ -120,6 +127,41 @@ export interface AuthResponse {
 export interface PlayResponse {
   balance: MoneyAmount
   round:   RgsRound
+}
+
+// Helper: extract events from RGS response (handles both events and state formats)
+export function extractRgsEvents(response: PlayResponse): RoundEvent[] {
+  // Try events first
+  if (response.round.events && response.round.events.length > 0) {
+    return response.round.events
+  }
+  // Fallback: RGS might return state instead
+  if ('state' in response.round) {
+    const state = (response.round as { state: RoundEvent[] }).state
+    if (state && state.length > 0) {
+      // Map "finalWin" to proper terminal event
+      return state.map((ev: RoundEvent) => {
+        if (ev.type === 'finalWin') {
+          return {
+            ...ev,
+            type: ev.amount && ev.amount > 0 ? 'HOME' : 'LAVA' as EventType,
+          }
+        }
+        return ev
+      })
+    }
+  }
+  return []
+}
+
+// Check if round needs to be ended
+export function roundNeedsEndRound(response: PlayResponse): boolean {
+  return response.round.active === true
+}
+
+// Get payout multiplier from response
+export function getPayoutMultiplier(response: PlayResponse): number {
+  return response.round.payoutMultiplier ?? 0
 }
 
 export interface EndRoundResponse {
@@ -183,13 +225,17 @@ async function post<T>(path: string, body: Record<string, unknown>): Promise<T> 
 
   if (!res.ok) {
     let code = `HTTP_${res.status}`
+    let extra = ''
     try {
-      const data = await res.json() as { statusCode?: string }
+      const data = await res.json() as { statusCode?: string; error?: string }
       if (data.statusCode) code = data.statusCode
+      if (data.error) { code = data.error; extra = data.error }
     } catch { /* ignore */ }
+    console.error('[RGS] post failed', path, 'HTTP', res.status, 'code:', code)
     throw new RgsError(code, res.status)
   }
 
+  console.log('[RGS] post success:', path)
   return res.json() as Promise<T>
 }
 
@@ -217,8 +263,11 @@ export async function play(betDisplay: number): Promise<PlayResponse> {
 }
 
 export async function endRound(): Promise<EndRoundResponse> {
-  const { sessionID } = getUrlParams()
-  return post<EndRoundResponse>('/wallet/end-round', { sessionID })
+  const { sessionID, rgsUrl } = getUrlParams()
+  console.log('[RGS] endRound called, rgsUrl:', rgsUrl, 'sessionID:', sessionID)
+  const result = post<EndRoundResponse>('/wallet/end-round', { sessionID })
+  console.log('[RGS] endRound result:', result)
+  return result
 }
 
 /** Track mid-round state (allows resume on disconnect) */

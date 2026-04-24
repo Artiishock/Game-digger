@@ -211,6 +211,7 @@ export function roadItemTouchesTunnelAxis(
 
 /** Притягивает каждый road-предмет к ближайшей точке на оси туннеля. */
 export function snapRoadPointsOntoTunnelAxis(roadPoints: RoadPoint[], path: PathPoint[]): RoadPoint[] {
+  if (path.length === 0) return roadPoints
   return roadPoints.map(rp => {
     const n = nearestPointOnTunnelPolyline(rp.worldX, rp.worldY, path)
     return { ...rp, worldX: n.x, worldY: n.y }
@@ -389,6 +390,8 @@ export function placeRoadItems(
   path:       PathPoint[],
   surfY:      number,
 ): RoadPoint[] {
+  if (path.length === 0) return []
+
   const out: RoadPoint[] = []
   let minIdx = 0
 
@@ -504,6 +507,8 @@ export function placeObstacles(
   worldSeed: number,
   roadPoints: RoadPoint[] = [],
 ): SafeObject[] {
+  if (path.length === 0) return []
+
   const objects:  SafeObject[] = []
   const SPAWN_INTERVAL = TILE * GameConfig.spawn.decorIntervalTiles
   const maxRow = Math.ceil((terminalY + TILE * 8) / TILE)
@@ -752,20 +757,32 @@ export function buildRoundPath(
   ppm:       number,
   events:    RoundEvent[],
 ): FullPathResult {
+  const isLoss = events.some(ev => ev.type === 'LAVA')
+  
+  // For loss: filter LAVA, but include in roadEvents so terminal is placed
+  // For win: keep HOME as terminal
   const roadEventsOrdered = events.filter(ev => ev.type !== 'LAVA')
-  const roadEvents = roadEventsOrdered.map(ev => ({
+  const roadEvents = roadEventsOrdered.map((ev, idx) => ({
     type:     ev.type,
     worldY:   surfY + ev.depth * ppm,
-    terminal: ev.type === 'HOME',
+    // Last item is terminal for both win and loss cases
+    terminal: idx === roadEventsOrdered.length - 1,
   }))
 
-  const deepestY  = roadEvents.reduce((m, r) => Math.max(m, r.worldY), surfY)
+const deepestY  = roadEvents.reduce((m, r) => Math.max(m, r.worldY), surfY)
   const homeEv    = roadEvents.find(r => r.terminal)
-  const isLoss    = events.some(ev => ev.type === 'LAVA')
-  /** Ниже последнего предмета LOSS добавляются ghost-точки (до ~6 TILE); иначе buildTunnel обрежет путь на HOME/ deepest. */
+  
+  // Ensure minimum depth for interesting gameplay (at least 15m)
+  const minDepthM = 15 // meters
+  const minDepthWorldY = surfY + minDepthM * ppm
+  const effectiveDeepestY = Math.max(deepestY, minDepthWorldY)
+  
+  console.log('[WorldMap] isLoss:', isLoss, 'deepestY:', deepestY, 'effectiveDeepestY:', effectiveDeepestY)
+  
+  // Extend path beyond deepest item for proper terminal area
   const terminalY = Math.max(
-    homeEv?.worldY ?? (deepestY + TILE * 10),
-    isLoss ? deepestY + TILE * 8 : surfY,
+    homeEv?.worldY ?? (effectiveDeepestY + TILE * 10),
+    isLoss ? effectiveDeepestY + TILE * 8 : minDepthWorldY,
   )
 
   // Pass 1: путь без road items (случайное блуждание)
@@ -779,7 +796,12 @@ export function buildRoundPath(
   const tunnelTargets = [...roughRoad, ...ghostTargets].sort((a, b) => a.worldY - b.worldY)
 
   // Pass 3: финальный туннель через реальные + призрачные цели
-  const path = buildTunnel(surfY, terminalY, worldSeed, tunnelTargets, isLoss)
+  let path = buildTunnel(surfY, terminalY, worldSeed, tunnelTargets, isLoss)
+
+  if (path.length === 0) {
+    console.warn('[WorldMap] buildRoundPath: empty path, creating fallback')
+    path = [{ x: 0, y: surfY }]
+  }
 
   // Pass 4: road items точно на финальном туннеле + на оси туннеля (проекция на полилинию)
   let roadPoints = placeRoadItems(roadEvents, path, surfY)

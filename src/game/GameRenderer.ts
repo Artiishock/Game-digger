@@ -579,6 +579,8 @@ export class GameRenderer {
   // Idle
   private idleActive=true
   private idleX=0; private idleDir=1; private _bounceT=0
+  private _shake = 0 // Screen shake timer
+  private _shakeIntensity = 0 // Screen shake intensity
 
   // Round
   private running=false
@@ -719,6 +721,14 @@ export class GameRenderer {
     this.app.stage.addChild(this._worldMask)
     this.skyLayer.mask = this._worldMask
     this._updateWorldMask(w, h)
+    
+    // Enable culling on all container layers for better performance
+    this.skyLayer.cullable = true
+    this.worldBgLayer.cullable = true
+    this.worldChunkLayer.cullable = true
+    this.objectsLayer.cullable = true
+    this.minerLayer.cullable = true
+    this._sceneryLayer.cullable = true
 
     this.charScreenY=h*0.42
     this._buildSky()
@@ -741,7 +751,14 @@ export class GameRenderer {
   }
 
   private _syncLayerScroll() {
-    const x = -this.camX, y = -this.camY
+    // Apply screen shake
+    let sx = 0, sy = 0
+    if (this._shake > 0) {
+      sx = (Math.random() - 0.5) * this._shakeIntensity * 2
+      sy = (Math.random() - 0.5) * this._shakeIntensity * 2
+      this._shake -= 0.016 // Approximate 60fps frame time
+    }
+    const x = -this.camX + sx, y = -this.camY + sy
     this.worldBgLayer.position.set(x, y)
     this._sceneryLayer.position.set(x, y)
     this.worldChunkLayer.position.set(x, y)
@@ -919,6 +936,7 @@ export class GameRenderer {
     this.rgsQueue=[...events]
     this.rgsEvents=events
     this._lossRound = events.some(e => e.type === 'LAVA')
+    console.log('[GameRenderer] LAVA detection:', { hasLava: this._lossRound, events: events.map(e => e.type) })
     this.stoneBreakActive = false;
     this.stoneBreakRemainingTime = 0;
     this.stoneBreakTotalDuration = 0;
@@ -1023,6 +1041,7 @@ export class GameRenderer {
     // LOSS: терминальная пещера с лавой у конца полилинии туннеля.
     // Делаем fallback, если WorldMap по какой-то причине не вернул terminalCave.
     if (this._lossRound && this.tileWorld) {
+      console.log('[GameRenderer] Loss round detected, spawning terminal cave')
       const pe = this._tunnelPath[this._tunnelPath.length - 1]
       const tc = this._roundPath.terminalCave ?? (
         pe
@@ -1582,6 +1601,7 @@ export class GameRenderer {
       this.running=false
       gameAudio.playSfx('sfx_lava.ogg')
       this._burst(this.charX,this.charY,C.lava,20)
+      this._triggerShake(20, 0.4) // Big screen shake on lava
       // Потребляем LAVA-ивент из rgsQueue — исход тот же (поражение),
       // просто физическая лава догнала раньше чем SpawnedObj терминал
       const lavaIdx = this.rgsQueue.findIndex(e => e.type === 'LAVA')
@@ -1779,6 +1799,15 @@ export class GameRenderer {
       this.running=false
       obj.gfx.visible=false
 
+      // Screen shake for terminal!
+      if (type === 'HOME') {
+        this._triggerShake(25, 0.5) // Big win celebration shake
+        this._burst(obj.worldX, obj.worldY, 0xFFD700, 30) // Gold explosion
+      } else if (type === 'LAVA') {
+        this._triggerShake(25, 0.5) // Big lose shake
+        this._burst(obj.worldX, obj.worldY, 0xFF4500, 25) // Lava explosion
+      }
+
       // Фактический исход определяет RGS — ищем HOME или LAVA в очереди
       const rgsTermIdx = obj.rgsEventRef
         ? this.rgsQueue.findIndex(e => e === obj.rgsEventRef)
@@ -1922,16 +1951,38 @@ export class GameRenderer {
       const a=Math.random()*Math.PI*2,s=Math.random()*100+60
       this.particles.push({gfx:g,vx:Math.cos(a)*s,vy:Math.sin(a)*s-80,life:1})
     }
+    // Add screen shake for big impacts
+    if (n >= 10) {
+      this._shake = 0.15
+      this._shakeIntensity = Math.min(15, n * 0.8)
+    }
+  }
+
+  private _triggerShake(intensity: number, duration: number) {
+    this._shake = duration
+    this._shakeIntensity = intensity
   }
 
   private _animCollect(gfx:PIXI.Graphics, spine: import('pixi-spine').Spine | null = null){
     SpineAnimator.remove(spine)
-    let t=0
+    // Bounce animation with spring effect
+    let t=0, bounceDir = -1, bounceScale = 1.2
     const tick=()=>{
-      t+=0.1;gfx.scale.set(1.5-t*0.5);gfx.alpha=1-t
+      t+=0.12
+      // Bounce effect: scale up then down with overshoot
+      if (t < 0.5) {
+        bounceScale = 1 + t * 0.8 * bounceDir
+        if (t >= 0.4) bounceDir = 1 // Start bouncing back
+      } else {
+        bounceScale = 1.0 + Math.sin(t * 8) * 0.15 * Math.exp(-t * 3)
+      }
+      gfx.scale.set(bounceScale)
+      gfx.alpha = Math.max(0, 1 - t * 1.5)
       if(t>=1){gfx.visible=false;this.app.ticker.remove(tick)}
     }
     this.app.ticker.add(tick)
+    // Extra particle burst for collect effect
+    this._burst(gfx.x, gfx.y, 0xFFD700, 8)
   }
 
   private _pUpdate(dt:number){
