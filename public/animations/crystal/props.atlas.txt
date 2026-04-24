@@ -1,0 +1,12 @@
+props.png
+size:592,308
+filter:Linear,Linear
+pma:true
+gem
+bounds:319,13,293,269
+rotate:90
+magnet
+bounds:2,2,315,304
+magnetfx
+bounds:319,7,4,36
+rotate:90

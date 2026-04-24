@@ -1,0 +1,10 @@
+props.png
+size:828,412
+filter:Linear,Linear
+pma:true
+bomb Copy
+bounds:478,2,407,347
+rotate:90
+warning
+bounds:2,6,474,403
+offsets:3,1,479,408
