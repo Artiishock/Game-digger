@@ -126,7 +126,7 @@ const PICKUP_SPRITE_SCALE = 0.150
  * gold.png / stone.png — холст 220×249; у coin/bomb/gem шире/выше → при одном scale золото и камень мельче.
  * Крути здесь, чтобы визуально догнать остальные пикапы.
  */
-const PICKUP_SCALE_GOLD_STONE_MUL = 1.74
+const PICKUP_SCALE_GOLD_STONE_MUL = 2.6
 
 function pickupTextureScale(type: EventType): number {
   if (type === 'GOLD' || type === 'STONE') return PICKUP_SPRITE_SCALE * PICKUP_SCALE_GOLD_STONE_MUL
