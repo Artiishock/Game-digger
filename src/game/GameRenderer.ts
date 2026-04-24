@@ -735,6 +735,7 @@ export class GameRenderer {
     this._syncLayerScroll()
     this._buildTunnel()
     this._loadTextures()
+    void SpineAnimator.load()
     SpineAnimator.loadGoldStone()   // грузим параллельно с текстурами, не ждём
     this.app.ticker.add(this._tick.bind(this))
   }
