@@ -164,7 +164,7 @@
   bottom: 0; left: 0; right: 0;
   height: var(--hud-h);
   background: linear-gradient(to top, rgba(6, 6, 6, 0.833) 30%, rgba(6,6,6,0) 100%);
-  border-top: 1px solid var(--border-gold);
+  /* border-top: 1px solid var(--border-gold); */
   display: flex; align-items: center;
   padding: 0 16px;
   z-index: 50;
