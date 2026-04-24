@@ -14,6 +14,7 @@ import { Spine, TextureAtlas } from "pixi-spine";
 import { SkeletonJson, AtlasAttachmentLoader } from "@pixi-spine/runtime-4.1";
 import type { EventType } from "../rgs/client";
 import { TILE } from "./Tileworld";
+import { GameConfig } from "./GameConfig";
 
 /** Отключить Spine: пикапы и персонаж — PNG из public/assets */
 const USE_SPINE = true;
@@ -81,13 +82,15 @@ export const BREAK_ACTION_DURATION = 1.0;
 // coin в Spine ≈ 480 ед. при scale=1, coin_main.scaleX=0.5 → ~240 ед.
 // Нам нужно ~50px → scale ≈ 0.20
 
-const ITEM_SCALE: Partial<Record<EventType, number>> = {
-  COIN: 0.15,
-  GOLD: 0.08,
-  DIAMOND: 0.15,
-  BOMB: 0.15,
-  STONE: 0.08,
-};
+/**
+ * Масштаб пропов читаем из GameConfig.itemScale — единая точка настройки.
+ * Этот объект — прокси-геттер, чтобы изменения подхватывались без перезапуска.
+ */
+const ITEM_SCALE: Partial<Record<EventType, number>> = new Proxy({} as any, {
+  get(_, prop: string) {
+    return GameConfig.itemScale[prop];
+  },
+});
 
 // Компенсация смещения origin-кости в Spine-скелете.
 // coin_main: x=-1368.4 от origin → монета рендерится левее центра контейнера.

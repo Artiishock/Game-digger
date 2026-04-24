@@ -251,6 +251,7 @@ interface SpawnedObj {
   width:       number
   height:      number
   roadMarker?: PIXI.Graphics   // пульсирующий маркер на road-предмете
+  valueLabel?: PIXI.Text       // надпись со значением (+N / ×N) для COIN/DIAMOND
   /** Соответствующее событие RGS (тот же объект, что в rgsQueue) */
   rgsEventRef?: RoundEvent
 }
@@ -332,6 +333,7 @@ class ObjectSpawner {
         obj.isRoadItem = true
         obj.rgsEventRef = roadEventsOrdered[i]
         this._attachMarker(obj)
+        this._attachValueLabel(obj)
         this._roadItems.push(obj)
       }
     }
@@ -380,6 +382,10 @@ class ObjectSpawner {
           if (o.roadMarker.parent) o.roadMarker.parent.removeChild(o.roadMarker)
           o.roadMarker.destroy()
         }
+        if (o.valueLabel) {
+          if (o.valueLabel.parent) o.valueLabel.parent.removeChild(o.valueLabel)
+          o.valueLabel.destroy()
+        }
         if (o.gfx.parent) o.gfx.parent.removeChild(o.gfx)
         o.gfx.destroy()
         return false
@@ -424,6 +430,10 @@ class ObjectSpawner {
       if (o.roadMarker) {
         if (o.roadMarker.parent) o.roadMarker.parent.removeChild(o.roadMarker)
         o.roadMarker.destroy()
+      }
+      if (o.valueLabel) {
+        if (o.valueLabel.parent) o.valueLabel.parent.removeChild(o.valueLabel)
+        o.valueLabel.destroy()
       }
       if (o.gfx.parent) o.gfx.parent.removeChild(o.gfx)
       o.gfx.destroy()
@@ -480,12 +490,14 @@ class ObjectSpawner {
       gfx.addChild(spineInst)
       this.layer.addChild(gfx)
       this.objects.push({ type, gfx, spine: spineInst, worldX, worldY, collected: false, terminal: false, isRoadItem: false, width: size.w, height: size.h })
+      this._attachValueLabel(this.objects[this.objects.length - 1])
       return
     }
     this.drawPickup(gfx, type)
     gfx.x = worldX; gfx.y = worldY
     this.layer.addChild(gfx)
     this.objects.push({ type, gfx, spine: null, worldX, worldY, collected: false, terminal: false, isRoadItem: false, width: size.w, height: size.h })
+    this._attachValueLabel(this.objects[this.objects.length - 1])
   }
 
   private _attachMarker(obj: SpawnedObj): void {
@@ -496,6 +508,52 @@ class ObjectSpawner {
     m.drawCircle(0, 0, r)
     this.layer.addChild(m)
     obj.roadMarker = m
+  }
+
+  private _attachValueLabel(obj: SpawnedObj): void {
+    let value: number | null = null
+    let prefix = ''
+    const eff = obj.rgsEventRef?.effect
+    if (eff) {
+      if (obj.type === 'COIN' && eff.op === 'add')         { value = eff.value; prefix = '+' }
+      else if (obj.type === 'DIAMOND' && eff.op === 'mul') { value = eff.value; prefix = '×' }
+    } else if (obj.type === 'COIN') {
+      const v = GameConfig.items.COIN.addValues
+      value = v[Math.floor(Math.random() * v.length)]; prefix = '+'
+    } else if (obj.type === 'DIAMOND') {
+      const v = GameConfig.items.DIAMOND.multValues
+      value = v[Math.floor(Math.random() * v.length)]; prefix = '×'
+    }
+    if (value == null) return
+
+    const cfg  = GameConfig.valueLabel
+    const size = Math.max(obj.width, obj.height)
+    const sh   = cfg.shadow
+    const dx   = sh.offsetX, dy = sh.offsetY
+    const dist = Math.hypot(dx, dy)
+    const angle = dist > 0 ? Math.atan2(dy, dx) : 0
+    const tier = cfg.tiers[`${obj.type}:${value}`] ?? cfg.fallback
+    const label = new PIXI.Text(`${prefix}${value}`, {
+      fontFamily:         cfg.fontFamily,
+      fontSize:           tier.fontSize,
+      fontWeight:         cfg.fontWeight as PIXI.TextStyleFontWeight,
+      fill:               tier.color,
+      stroke:             cfg.strokeColor,
+      strokeThickness:    cfg.strokeThickness,
+      align:              'center',
+      dropShadow:         sh.enabled,
+      dropShadowColor:    sh.color,
+      dropShadowAngle:    angle,
+      dropShadowDistance: dist,
+      dropShadowBlur:     sh.blur,
+      dropShadowAlpha:    sh.alpha,
+    })
+    label.anchor.set(0.5, 0.5)
+    label.rotation = (cfg.rotationDeg * Math.PI) / 180
+    label.x = obj.worldX + size * cfg.offsetXFactor
+    label.y = obj.worldY + size * cfg.offsetYFactor
+    this.layer.addChild(label)
+    obj.valueLabel = label
   }
 
   private _sizeForType(type: EventType): { w: number; h: number } {
@@ -1648,19 +1706,18 @@ export class GameRenderer {
         ? this.rgsQueue.findIndex(e => e === obj.rgsEventRef)
         : this.rgsQueue.findIndex(e => e.type === 'STONE')
       let duration = GameConfig.items.STONE.durationMin + Math.random() * (GameConfig.items.STONE.durationMax - GameConfig.items.STONE.durationMin)
+      let stoneSub: number | null = null
       if (rgsIdx >= 0) {
         const ev = this.rgsQueue.splice(rgsIdx, 1)[0]
         if (ev.durationMs) duration = ev.durationMs / 1000
-        // Relative-эффект: ratio snap/prevSnap применяем к текущему multiplier
-        const evIdx    = this.rgsEvents.indexOf(ev)
-        const prevSnap = evIdx > 0 ? this.rgsEvents[evIdx - 1].multiplierSnap : 0
-        const ratio    = ev.multiplierSnap / Math.max(prevSnap, 0.001)
-        this.multiplier = Math.max(GameConfig.multiplier.floor, this.multiplier * ratio)
-      } else {
-        // Нет RGS-события — применяем локальный эффект из GameConfig
-        const secs = duration
-        this.multiplier = Math.max(GameConfig.multiplier.floor, this.multiplier * Math.pow(1 - GameConfig.items.STONE.lossPerSec, secs))
+        if (ev.effect && ev.effect.op === 'sub') stoneSub = ev.effect.value
       }
+      if (stoneSub == null) {
+        stoneSub = GameConfig.items.STONE.subValues[
+          Math.floor(Math.random() * GameConfig.items.STONE.subValues.length)
+        ]
+      }
+      this.multiplier = Math.max(GameConfig.multiplier.floor, this.multiplier - stoneSub)
       this._logCollect('STONE', multBefore, this.multiplier, duration)
       this.stoneBreakTotalDuration = duration
       this.stoneBreakRemainingTime = duration
@@ -1692,18 +1749,18 @@ export class GameRenderer {
         ? this.rgsQueue.findIndex(e => e === obj.rgsEventRef)
         : this.rgsQueue.findIndex(e => e.type === 'GOLD')
       let duration = GameConfig.items.GOLD.durationMin + Math.random() * (GameConfig.items.GOLD.durationMax - GameConfig.items.GOLD.durationMin)
+      let goldAdd: number | null = null
       if (rgsIdx >= 0) {
         const ev = this.rgsQueue.splice(rgsIdx, 1)[0]
         if (ev.durationMs) duration = ev.durationMs / 1000
-        // Relative-эффект: delta snap-prevSnap — аддитивный прирост
-        const evIdx    = this.rgsEvents.indexOf(ev)
-        const prevSnap = evIdx > 0 ? this.rgsEvents[evIdx - 1].multiplierSnap : 0
-        const delta    = ev.multiplierSnap - prevSnap
-        this.multiplier = Math.max(GameConfig.multiplier.floor, this.multiplier + delta)
-      } else {
-        // Нет RGS-события — применяем локальный эффект из GameConfig
-        this.multiplier = this.multiplier + GameConfig.items.GOLD.gainPerSec * duration
+        if (ev.effect && ev.effect.op === 'add') goldAdd = ev.effect.value
       }
+      if (goldAdd == null) {
+        goldAdd = GameConfig.items.GOLD.addValues[
+          Math.floor(Math.random() * GameConfig.items.GOLD.addValues.length)
+        ]
+      }
+      this.multiplier = this.multiplier + goldAdd
       this._logCollect('GOLD', multBefore, this.multiplier, duration)
       this.goldBreakRemainingTime = duration
       this.goldBreakTotalDuration = duration
@@ -1730,27 +1787,23 @@ export class GameRenderer {
     const rgsMatch = obj.rgsEventRef
       ? this.rgsQueue.findIndex(e => e === obj.rgsEventRef)
       : this.rgsQueue.findIndex(e => e.type === type)
+    let rgsEffect: { op: 'add'|'sub'|'mul'|'div', value: number } | null = null
     if(rgsMatch>=0){
-      const ev=this.rgsQueue.splice(rgsMatch,1)[0]
-      if(type!=='HOME'&&type!=='LAVA'){
-        // multiplierSnap — абсолютное значение для конкретного порядка событий.
-        // Игрок может собирать предметы в другом порядке, поэтому используем
-        // относительный эффект: отношение snap этого события к snap предыдущего.
-        const evIdx    = this.rgsEvents.indexOf(ev)
-        const prevSnap = evIdx > 0 ? this.rgsEvents[evIdx - 1].multiplierSnap : 0
-        const curSnap  = ev.multiplierSnap
-        if(type === 'COIN'){
-          // Монета — аддитивный эффект
-          const delta = curSnap - prevSnap
-          this.multiplier = Math.max(GameConfig.multiplier.floor, this.multiplier + delta)
-        } else {
-          // DIAMOND, BOMB — мультипликативный эффект
-          const ratio = curSnap / Math.max(prevSnap, 0.001)
-          this.multiplier = Math.max(GameConfig.multiplier.floor, this.multiplier * ratio)
+      const ev = this.rgsQueue.splice(rgsMatch,1)[0]
+      if (ev.effect) rgsEffect = ev.effect
+    }
+    if(type!=='HOME'&&type!=='LAVA'){
+      const { floor } = GameConfig.multiplier
+      if (rgsEffect) {
+        switch (rgsEffect.op) {
+          case 'add': this.multiplier = this.multiplier + rgsEffect.value; break
+          case 'sub': this.multiplier = Math.max(floor, this.multiplier - rgsEffect.value); break
+          case 'mul': this.multiplier = this.multiplier * rgsEffect.value; break
+          case 'div': this.multiplier = Math.max(floor, this.multiplier / rgsEffect.value); break
         }
+      } else {
+        this.multiplier = this._applyEffect(type, this.multiplier)
       }
-    }else{
-      this.multiplier=this._applyEffect(type,this.multiplier)
     }
     this._logCollect(type, multBefore, this.multiplier)
     useGameStore.getState().updateStats({multiplier:Math.round(this.multiplier*100)/100})
@@ -1788,6 +1841,11 @@ export class GameRenderer {
         this._returnToIdle()
       },won ? GameConfig.round.winDelayMs : GameConfig.round.loseDelayMs)
     }else{
+      if (obj.valueLabel) {
+        if (obj.valueLabel.parent) obj.valueLabel.parent.removeChild(obj.valueLabel)
+        obj.valueLabel.destroy()
+        obj.valueLabel = undefined
+      }
       this._animCollect(obj.gfx, obj.spine)
       // Перестраиваем путь к следующему реальному предмету
       this._rebuildPathToNext()
@@ -1830,12 +1888,13 @@ export class GameRenderer {
 
   private _applyEffect(type:EventType, m:number):number{
     const { floor } = GameConfig.multiplier
+    const pick = (arr:number[]) => arr[Math.floor(Math.random() * arr.length)]
     switch(type){
-      case 'COIN':    return m + GameConfig.items.COIN.addMin + Math.random() * (GameConfig.items.COIN.addMax - GameConfig.items.COIN.addMin)
+      case 'COIN':    return m + pick(GameConfig.items.COIN.addValues)
       case 'GOLD':    return m  // обрабатывается через goldBreak
-      case 'DIAMOND': return m * (GameConfig.items.DIAMOND.multMin + Math.random() * (GameConfig.items.DIAMOND.multMax - GameConfig.items.DIAMOND.multMin))
+      case 'DIAMOND': return m * pick(GameConfig.items.DIAMOND.multValues)
       case 'BOMB':    return Math.max(floor, m / GameConfig.items.BOMB.divisor)
-      case 'STONE':   return m
+      case 'STONE':   return m  // обрабатывается через stoneBreak
       default:        return m
     }
   }

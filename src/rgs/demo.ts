@@ -12,7 +12,7 @@
 
 import type {
   AuthResponse, PlayResponse, EndRoundResponse,
-  RgsConfig, RgsRound, RoundEvent,
+  RgsConfig, RgsRound, RoundEvent, EventEffect,
 } from './client'
 import { MONEY_SCALE } from './client'
 
@@ -131,49 +131,43 @@ function tokenToType(token: string): PickupType {
   return 'COIN'
 }
 
-/**
- * Вычисляет новое x и возвращает дополнительные данные токена.
- * x — значение пути (road value, начинается с 0).
- */
-function applyToken(token: string, x: number): {
-  x: number
+/** Парсит токен дорожки в явный эффект на множитель. */
+function parseToken(token: string): {
+  type:       PickupType
+  effect:     EventEffect
   durationMs?: number
 } {
   const type = tokenToType(token)
-
   if (type === 'COIN') {
     const n = parseInt(token, 10)
-    return { x: x + n }
+    return { type, effect: { op: 'add', value: n } }
   }
   if (type === 'DIAMOND') {
     const k = parseInt(token.slice(1), 10)
-    return { x: x * k }
+    return { type, effect: { op: 'mul', value: k } }
   }
   if (type === 'BOMB') {
     const d = parseInt(token.slice(1), 10)
-    return { x: x / d }
+    return { type, effect: { op: 'div', value: d } }
   }
   if (type === 'GOLD') {
     // gN: +N за N*0.5 секунд
     const t = parseInt(token.slice(1), 10)
-    return { x: x + t, durationMs: t * 500 }
+    return { type, effect: { op: 'add', value: t }, durationMs: t * 500 }
   }
-  if (type === 'STONE') {
-    // sN: -N (min 0) за N*700мс
-    const t = parseInt(token.toLowerCase().slice(1), 10)
-    return { x: Math.max(0, x - t), durationMs: Math.max(1000, t * 700) }
-  }
-  return { x }
+  // STONE
+  const t = parseInt(token.toLowerCase().slice(1), 10)
+  return { type, effect: { op: 'sub', value: t }, durationMs: Math.max(1000, t * 700) }
 }
+
 
 // ─── Road → RoundEvent[] ─────────────────────────────────────────────────────
 
 /**
  * Конвертирует массив токенов road в список ивентов для рендерера.
- *
- * multiplierSnap = значение x (road) после каждого токена.
- * Рендерер работает с ОТНОСИТЕЛЬНЫМИ изменениями между снапами,
- * поэтому при initial multiplier=0 и prevSnap=0 финальный multiplier = base_coeff.
+ * Каждое событие несёт явный `effect` — клиент применяет его детерминированно
+ * при сборе; порядок сбора не влияет на смысл эффекта (но влияет на итог
+ * из-за неассоциативности add/mul — payout определяется серверным base_coeff).
  */
 function roadToEvents(
   road: string[],
@@ -181,37 +175,31 @@ function roadToEvents(
   rng: () => number,
 ): RoundEvent[] {
   const events: RoundEvent[] = []
-  let x        = 0
   let depth    = 0
   let distance = 0
 
   for (const token of road) {
-    const type   = tokenToType(token)
-    const result = applyToken(token, x)
-    x = result.x
+    const parsed = parseToken(token)
 
-    // Ставим собираемые предметы чаще, чтобы раунд проходил быстрее.
     depth    += 1.2 + rng() * 1.8   // 1.2–3.0 м на предмет
     distance += 1.8 + rng() * 2.8   // 1.8–4.6 м пути
 
     const ev: RoundEvent = {
-      type,
-      depth:          Math.round(depth * 10) / 10,
-      distance:       Math.round(distance * 10) / 10,
-      multiplierSnap: x,
+      type:     parsed.type,
+      depth:    Math.round(depth * 10) / 10,
+      distance: Math.round(distance * 10) / 10,
+      effect:   parsed.effect,
     }
-    if (result.durationMs) ev.durationMs = result.durationMs
+    if (parsed.durationMs) ev.durationMs = parsed.durationMs
     events.push(ev)
   }
 
-  // Терминальный ивент
   depth    += 2 + rng() * 2.4
   distance += 2.6 + rng() * 3.4
   events.push({
-    type:           isLoss ? 'LAVA' : 'HOME',
-    depth:          Math.round(depth * 10) / 10,
-    distance:       Math.round(distance * 10) / 10,
-    multiplierSnap: x,
+    type:     isLoss ? 'LAVA' : 'HOME',
+    depth:    Math.round(depth * 10) / 10,
+    distance: Math.round(distance * 10) / 10,
   })
 
   return events

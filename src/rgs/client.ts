@@ -63,12 +63,20 @@ export interface RgsConfig {
 /** A single event in a game round — Deep Rush flavour */
 export type EventType = 'COIN' | 'GOLD' | 'DIAMOND' | 'BOMB' | 'STONE' | 'HOME' | 'LAVA'
 
+/** Детерминированный эффект события на множитель — единственный источник правды. */
+export interface EventEffect {
+  op:    'add' | 'sub' | 'mul' | 'div'
+  value: number
+}
+
 export interface RoundEvent {
-  type:           EventType
-  depth:          number   // metres from surface
-  distance:       number   // path distance metres
-  multiplierSnap: number   // multiplier value AFTER this event
-  durationMs?:    number   // GOLD / STONE: time to destroy
+  type:            EventType
+  depth:           number   // metres from surface
+  distance:        number   // path distance metres
+  effect?:         EventEffect   // явный эффект на множитель (для COIN/GOLD/DIAMOND/BOMB/STONE)
+  durationMs?:     number   // GOLD / STONE: time to destroy
+  /** @deprecated используется `effect`. Оставлено для совместимости старых рекордов. */
+  multiplierSnap?: number
 }
 
 export interface RgsRound {
