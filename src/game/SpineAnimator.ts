@@ -52,6 +52,23 @@ export const GOLD_ANIM = {
   action: 'gold/gold_action',
 }
 
+// Анимации из отдельных Spine-файлов (animations/Gold/GOLD.json и animations/Stone/Stone.json)
+// Используем только стейты 1, 2 и 4:
+//   stage_01 — дефолтное состояние (idle)
+//   stage_02 — персонаж начинает бурить
+//   stage_04 — персонаж пробурил
+export const GOLD_STAGE = {
+  idle:  'stage_01',
+  drill: 'stage_02',
+  done:  'stage_04',
+}
+
+export const STONE_STAGE = {
+  idle:  'stage_01',
+  drill: 'stage_02',
+  done:  'stage_04',
+}
+
 export const DIRT_ANIM = {
   show: 'dirt_show',
   idle: 'dirt_idle',
@@ -107,7 +124,12 @@ const ANIM_NULL_SLOTS: Record<string, string[]> = {
 export class SpineAnimator {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private static _skeletonData: any = null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private static _goldSkeletonData: any = null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private static _stoneSkeletonData: any = null
   private static _loading: Promise<boolean> | null = null
+  private static _goldStoneLoading: Promise<boolean> | null = null
   private static _instances: Spine[] = []
   // Spine слоты которые нужно держать null для каждого инстанса (по имени анимации)
   private static _instanceNullSlots: Map<Spine, any[]> = new Map()
@@ -118,6 +140,41 @@ export class SpineAnimator {
   static load(): Promise<boolean> {
     if (!this._loading) this._loading = this._doLoad()
     return this._loading
+  }
+
+  /** Загрузить отдельные Spine-скелеты для Gold и Stone */
+  static loadGoldStone(): Promise<boolean> {
+    if (!this._goldStoneLoading) this._goldStoneLoading = this._doLoadGoldStone()
+    return this._goldStoneLoading
+  }
+
+  private static async _doLoadGoldStone(): Promise<boolean> {
+    const load = async (atlasUrl: string, jsonUrl: string, pngUrl: string) => {
+      const [atlasText, spineJson, texture] = await Promise.all([
+        fetch(atlasUrl).then(r => { if (!r.ok) throw new Error(`${atlasUrl} (${r.status})`); return r.text() }),
+        fetch(jsonUrl).then(r => { if (!r.ok) throw new Error(`${jsonUrl} (${r.status})`); return r.json() }),
+        PIXI.Texture.fromURL(pngUrl),
+      ])
+      const atlas = new TextureAtlas(atlasText, (_p: string, cb: (t: PIXI.BaseTexture) => void) => cb(texture.baseTexture))
+      if (typeof spineJson.skeleton?.spine === 'string' && spineJson.skeleton.spine.startsWith('4.2'))
+        spineJson.skeleton.spine = '4.1.24'
+      const skelJson = new SkeletonJson(new AtlasAttachmentLoader(atlas))
+      skelJson.scale = 1
+      return skelJson.readSkeletonData(spineJson)
+    }
+    try {
+      const [goldData, stoneData] = await Promise.all([
+        load('./animations/Gold/GOLD.atlas.txt', './animations/Gold/GOLD.json', './animations/Gold/GOLD.png'),
+        load('./animations/Stone/Stone.atlas.txt', './animations/Stone/Stone.json', './animations/Stone/Stone.png'),
+      ])
+      this._goldSkeletonData  = goldData
+      this._stoneSkeletonData = stoneData
+      console.log('[SpineAnimator] ✓ Gold/Stone loaded OK')
+      return true
+    } catch (e) {
+      console.warn('[SpineAnimator] loadGoldStone failed:', e)
+      return false
+    }
   }
 
   private static async _doLoad(): Promise<boolean> {
@@ -163,6 +220,8 @@ export class SpineAnimator {
   /** Создать анимированный Spine-спрайт для пикапа */
   static createItem(type: EventType): Spine | null {
     if (!USE_SPINE) return null
+    if (type === 'GOLD')  return this.createGold()
+    if (type === 'STONE') return this.createStone()
     const animName = ANIM_MAP[type]
     if (!animName) return null
     const scale = ITEM_SCALE[type] ?? 0.20
@@ -170,11 +229,23 @@ export class SpineAnimator {
     if (spine) {
       const off = ITEM_SPINE_OFFSET[type]
       if (off) {
-        spine.x = -off.x * scale  // компенсируем смещение кости
+        spine.x = -off.x * scale
         spine.y = -off.y * scale
       }
     }
     return spine
+  }
+
+  /** Создать Spine-спрайт золота из animations/Gold/GOLD.json */
+  static createGold(scale = 0.45): Spine | null {
+    if (!USE_SPINE || !this._goldSkeletonData) return null
+    return this._makeFromData(this._goldSkeletonData, GOLD_STAGE.idle, scale)
+  }
+
+  /** Создать Spine-спрайт камня из animations/Stone/Stone.json */
+  static createStone(scale = 0.45): Spine | null {
+    if (!USE_SPINE || !this._stoneSkeletonData) return null
+    return this._makeFromData(this._stoneSkeletonData, STONE_STAGE.idle, scale)
   }
 
   /** Создать Spine-персонажа (character_idle / character_action) */
@@ -275,6 +346,12 @@ export class SpineAnimator {
           this._applyCoinConstraint(inst)
         }
 
+        // pixi-spine не применяет slot color (rgba timeline) к slotContainers.
+        // Применяем вручную — нужно для dust/glow_vfx в Gold и Stone stage_02.
+        if (curAnim === 'stage_02' || curAnim === 'stage_04') {
+          this._applySlotColors(inst)
+        }
+
       } catch { /* ignore */ }
       return true
     })
@@ -299,6 +376,24 @@ export class SpineAnimator {
    *   • Переход бесшовный: монета сжата до 15% → ребро с теми же 15% → seamless
    */
   private static readonly SIDE_SCALE = 0.15
+
+  /**
+   * Применяет slot.color.a (rgba timeline) к PIXI slotContainers.
+   * pixi-spine не делает это автоматически — нужно для dust/glow_vfx в Gold/Stone.
+   */
+  private static _applySlotColors(inst: Spine): void {
+    try {
+      const skel = inst.skeleton
+      const containers = (inst as any).slotContainers as PIXI.Container[] | undefined
+      if (!containers) return
+      for (let i = 0; i < skel.slots.length; i++) {
+        const slot = skel.slots[i]
+        if (!slot || !containers[i]) continue
+        const alpha = (slot as any).color?.a ?? 1
+        containers[i].alpha = alpha
+      }
+    } catch { /* ignore */ }
+  }
 
   private static _applyCoinConstraint(inst: Spine): void {
     try {
@@ -362,8 +457,31 @@ export class SpineAnimator {
   }
 
   static get ready(): boolean { return !!this._skeletonData }
+  static get goldStoneReady(): boolean { return !!(this._goldSkeletonData && this._stoneSkeletonData) }
 
   // ── Внутреннее ───────────────────────────────────────────────────────────────
+
+  /**
+   * Создать Spine из отдельного скелета (Gold/Stone) — без ANIM_NULL_SLOTS,
+   * т.к. в этих файлах нет лишних слотов чужих объектов.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private static _makeFromData(skelData: any, animName: string, scale: number): Spine | null {
+    try {
+      const spine = new Spine(skelData)
+      if (spine.spineData.findAnimation(animName)) {
+        spine.state.setAnimation(0, animName, true)
+      }
+      spine.scale.set(scale)
+      spine.autoUpdate = false
+      spine.update(0)
+      this._instances.push(spine)
+      return spine
+    } catch (e) {
+      console.warn('[SpineAnimator] _makeFromData failed:', animName, e)
+      return null
+    }
+  }
 
   private static _make(animName: string, scale: number): Spine | null {
     if (!this._skeletonData) return null

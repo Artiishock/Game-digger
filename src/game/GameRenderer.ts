@@ -5,7 +5,7 @@ import { useGameStore } from '../store/gameStore'
 import type { RoundEvent, EventType } from '../rgs/client'
 import { TileWorld, TILE } from './Tileworld'
 import { LavaSimulation } from './LavaSimulation'
-import { SpineAnimator, ROCK_ANIM, GOLD_ANIM, BREAK_ACTION_DURATION, getSpineItemSize } from './SpineAnimator'
+import { SpineAnimator, ROCK_ANIM, GOLD_ANIM, GOLD_STAGE, STONE_STAGE, BREAK_ACTION_DURATION, getSpineItemSize } from './SpineAnimator'
 import type { Spine } from 'pixi-spine'
 import { GameConfig, HERO_MAX_SIDE_PX } from './GameConfig'
 import { gameAudio } from '../audio/GameAudio'
@@ -735,6 +735,7 @@ export class GameRenderer {
     this._syncLayerScroll()
     this._buildTunnel()
     this._loadTextures()
+    SpineAnimator.loadGoldStone()   // грузим параллельно с текстурами, не ждём
     this.app.ticker.add(this._tick.bind(this))
   }
 
@@ -1310,18 +1311,13 @@ export class GameRenderer {
         store.updateStats({ multiplier: Math.round(this.stoneBreakDisplayMult * 100) / 100 })
       }
 
-      // Переключение стадий анимации:
-      // T = stoneBreakTotalDuration, action фиксирован = BREAK_ACTION_DURATION
-      // state1: от T до (T+action)/2, state2: до action, action: последние 1 сек
+      // Переключение стадий анимации камня:
+      // stage_02 — бурение (выставляется при коллекте)
+      // stage_04 — последние BREAK_ACTION_DURATION сек (пробурено)
       if (this._breakSpine) {
-        const elapsed = this.stoneBreakTotalDuration - this.stoneBreakRemainingTime
-        const stageTime = (this.stoneBreakTotalDuration - BREAK_ACTION_DURATION) / 2
         if (this.stoneBreakRemainingTime <= BREAK_ACTION_DURATION && this._breakStage < 3) {
           this._breakStage = 3
-          SpineAnimator.setAnimation(this._breakSpine, ROCK_ANIM.action, false)
-        } else if (elapsed >= stageTime && this._breakStage < 2) {
-          this._breakStage = 2
-          SpineAnimator.setAnimation(this._breakSpine, ROCK_ANIM.state2, true)
+          SpineAnimator.setAnimation(this._breakSpine, STONE_STAGE.done, false)
         }
       }
 
@@ -1359,16 +1355,13 @@ export class GameRenderer {
         this._burst(this.charX, this.charY, C.gold, 3)
       }
 
-      // Переключение стадий анимации золота
+      // Переключение стадий анимации золота:
+      // stage_02 — бурение (выставляется при коллекте)
+      // stage_04 — последние BREAK_ACTION_DURATION сек (пробурено)
       if (this._breakSpine) {
-        const elapsed = this.goldBreakTotalDuration - this.goldBreakRemainingTime
-        const stageTime = (this.goldBreakTotalDuration - BREAK_ACTION_DURATION) / 2
         if (this.goldBreakRemainingTime <= BREAK_ACTION_DURATION && this._breakStage < 3) {
           this._breakStage = 3
-          SpineAnimator.setAnimation(this._breakSpine, GOLD_ANIM.action, false)
-        } else if (elapsed >= stageTime && this._breakStage < 2) {
-          this._breakStage = 2
-          SpineAnimator.setAnimation(this._breakSpine, GOLD_ANIM.state3, true)
+          SpineAnimator.setAnimation(this._breakSpine, GOLD_STAGE.done, false)
         }
       }
 
@@ -1674,10 +1667,13 @@ export class GameRenderer {
       this.stoneBreakTickTimer     = 1.0           // первый тик через 1 сек
       this._breakStage = 1
       if (obj.spine) {
-        SpineAnimator.setAnimation(obj.spine, ROCK_ANIM.state1, true)
+        console.log('[DEBUG STONE] spine exists, setting stage_02, goldStoneReady=', SpineAnimator.goldStoneReady)
+        SpineAnimator.setAnimation(obj.spine, STONE_STAGE.drill, true)
+        console.log('[DEBUG STONE] current anim after set:', (obj.spine.state as any).tracks?.[0]?.animation?.name)
         this._breakSpine = obj.spine
         this._breakGfx   = obj.gfx
       } else {
+        console.log('[DEBUG STONE] NO spine (null), goldStoneReady=', SpineAnimator.goldStoneReady)
         this._breakSpine = null
         this._breakGfx   = obj.gfx
       }
@@ -1715,10 +1711,13 @@ export class GameRenderer {
       this._breakStage = 1
       this._burst(obj.worldX, obj.worldY, C.gold, 12)
       if (obj.spine) {
-        SpineAnimator.setAnimation(obj.spine, GOLD_ANIM.state2, true)
+        console.log('[DEBUG GOLD] spine exists, setting stage_02, goldStoneReady=', SpineAnimator.goldStoneReady)
+        SpineAnimator.setAnimation(obj.spine, GOLD_STAGE.drill, true)
+        console.log('[DEBUG GOLD] current anim after set:', (obj.spine.state as any).tracks?.[0]?.animation?.name)
         this._breakSpine = obj.spine
         this._breakGfx   = obj.gfx
       } else {
+        console.log('[DEBUG GOLD] NO spine (null), goldStoneReady=', SpineAnimator.goldStoneReady)
         this._breakSpine = null
         this._breakGfx   = obj.gfx
       }
