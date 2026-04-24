@@ -16,7 +16,7 @@ import type { EventType } from '../rgs/client'
 import { TILE } from './Tileworld'
 
 /** Отключить Spine: пикапы и персонаж — PNG из public/assets */
-const USE_SPINE = false
+const USE_SPINE = true
 
 // ─── Маппинг EventType → имя анимации ────────────────────────────────────────
 
