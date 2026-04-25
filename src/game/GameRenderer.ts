@@ -133,6 +133,17 @@ function pickupTextureScale(type: EventType): number {
   return PICKUP_SPRITE_SCALE
 }
 
+const LIVE_WIN_BADGE_OFFSET_Y = -20
+const LIVE_WIN_AMOUNT_OFFSET_Y = 21
+
+function formatLiveWinAmount(value: number, currency: string): string {
+  const safeValue = Number.isFinite(value) ? Math.max(0, value) : 0
+  const display = safeValue >= 100
+    ? safeValue.toFixed(0)
+    : safeValue.toFixed(2)
+  return `${display} ${currency || 'FUN'}`
+}
+
 // ─── SpriteCharacter (PNG hero) ──────────────────────────────────────────────
 
 /**
@@ -622,6 +633,26 @@ export class GameRenderer {
   private _sceneryLayer: PIXI.Container = new PIXI.Container()
   private minerLayer:   PIXI.Container = new PIXI.Container()
   private miner: SpriteCharacter
+  private liveWinBadge: PIXI.Container = new PIXI.Container()
+  private liveWinTitleText: PIXI.Text = new PIXI.Text('WIN', {
+    fontFamily: 'Arial Black, Arial, sans-serif',
+    fontSize: 14,
+    fontWeight: '800',
+    fill: 0xFFFFFF,
+    stroke: 0x000000,
+    strokeThickness: 2,
+    align: 'center',
+  })
+  private liveWinAmountText: PIXI.Text = new PIXI.Text('', {
+    fontFamily: 'Arial Black, Arial, sans-serif',
+    fontSize: 25,
+    fontWeight: '900',
+    fill: 0xFACB32,
+    stroke: 0x000000,
+    strokeThickness: 2,
+    align: 'center',
+  })
+  private liveWinAmountCached = ''
   private _cloudT = 0
   private spawner:ObjectSpawner|null=null
   private tunnelActive = false
@@ -781,13 +812,14 @@ export class GameRenderer {
     this._makeIdleWorld()
     this.miner=new SpriteCharacter()
     this.miner.chunkParent=this.worldChunkLayer
+    this._createLiveWinBadge()
     this.idleX=0
     {
       const hi = GameConfig.hero
       this.miner.root.x = this.idleX + hi.idleRootOffsetXPx
       this.miner.root.y = this.surfY + hi.idleRootOffsetYPx
     }
-    this.minerLayer.addChild(this.miner.root)
+    this.minerLayer.addChild(this.miner.root, this.liveWinBadge)
     this.camX = this.idleX + GameConfig.hero.idleRootOffsetXPx - w / 2
     this.camY = this.idleCamY
     this._syncLayerScroll()
@@ -796,6 +828,42 @@ export class GameRenderer {
     void SpineAnimator.load()
     SpineAnimator.loadGoldStone()   // грузим параллельно с текстурами, не ждём
     this.app.ticker.add(this._tick.bind(this))
+  }
+
+  private _createLiveWinBadge(): void {
+    this.liveWinBadge.visible = false
+    this.liveWinBadge.zIndex = 10
+    this.liveWinBadge.addChild(this.liveWinTitleText, this.liveWinAmountText)
+    this.liveWinTitleText.anchor.set(0.5)
+    this.liveWinAmountText.anchor.set(0.5)
+    this.liveWinTitleText.position.set(0, 0)
+    this.liveWinAmountText.position.set(0, LIVE_WIN_AMOUNT_OFFSET_Y)
+  }
+
+  private _updateLiveWinBadge(): void {
+    const store = useGameStore.getState()
+    if (!this.running || this.idleActive || this._ended) {
+      this.liveWinBadge.visible = false
+      return
+    }
+
+    const visibleMultiplier = this.stoneBreakActive
+      ? this.stoneBreakDisplayMult
+      : this.goldBreakActive
+        ? this.goldBreakDisplayMult
+        : this.multiplier
+    const liveWin = store.bet * Math.max(0, visibleMultiplier)
+    const amount = formatLiveWinAmount(liveWin, store.currency)
+
+    if (amount !== this.liveWinAmountCached) {
+      this.liveWinAmountCached = amount
+      this.liveWinAmountText.text = amount
+    }
+
+    this.liveWinBadge.position.set(this.miner.root.x, this.miner.root.y + LIVE_WIN_BADGE_OFFSET_Y)
+    this.liveWinBadge.rotation = 0
+    this.liveWinBadge.scale.set(1)
+    this.liveWinBadge.visible = true
   }
 
   private _syncLayerScroll() {
@@ -1126,7 +1194,9 @@ export class GameRenderer {
     }
 
     this.tileWorld.update(this.camX,this.camY,this.W,this.H)
-    this.minerLayer.addChild(this.miner.root)
+    this.minerLayer.addChild(this.miner.root, this.liveWinBadge)
+    this.liveWinAmountCached = ''
+    this._updateLiveWinBadge()
     this.miner.chunkParent=this.worldChunkLayer
     this.miner.root.x=this.charX;this.miner.root.y=this.charY
     this.miner.root.scale.x=1
@@ -1341,6 +1411,7 @@ export class GameRenderer {
       this._updateWorldMask(this.W, this.H)
       if(this.tileWorld)this.tileWorld.update(this.camX,this.camY,this.W,this.H)
       this.miner.update(dt,0.9,false)
+      this._updateLiveWinBadge()
       this._pUpdate(dt);return
     }
 
@@ -1595,6 +1666,7 @@ export class GameRenderer {
     if(this.spawner)this.spawner.update(this.charX,this.charY,this.H*5)
 
     this.miner.update(gameDt, 1, true)
+    this._updateLiveWinBadge()
 
     store.updateStats({
       depth:    Math.max(0,Math.round(this.depth*10)/10),

@@ -53,9 +53,9 @@ export const GameConfig = {
   // Меняйте, чтобы увеличить/уменьшить визуальный размер предметов.
   // Ориентир: 0.25 ≈ 125 px. Подбирайте на глаз, запустив раунд.
   itemScale: {
-    COIN:    0.25,
-    DIAMOND: 0.25,
-    BOMB:    0.25,
+    COIN:    0.2,
+    DIAMOND: 0.2,
+    BOMB:    0.2,
     GOLD:    0.08,
     STONE:   0.08,
   } as Record<string, number>,
@@ -89,14 +89,14 @@ export const GameConfig = {
      * Ключ — строка `${TYPE}:${value}`. Значение — размер шрифта в px и цвет.
      */
     tiers: {
-      'COIN:1':     { fontSize: 32, color: 0xD9D9D9 },
-      'COIN:2':     { fontSize: 40, color: 0xD9D9D9 },
-      'COIN:5':     { fontSize: 55, color: 0xA2F9FF },
-      'COIN:10':    { fontSize: 55, color: 0xFFC300 },
-      'DIAMOND:2':  { fontSize: 32, color: 0xD9D9D9 },
-      'DIAMOND:3':  { fontSize: 40, color: 0xD9D9D9 },
-      'DIAMOND:4':  { fontSize: 55, color: 0xA2F9FF },
-      'DIAMOND:5':  { fontSize: 55, color: 0xFFC300 },
+      'COIN:1':     { fontSize: 26, color: 0xD9D9D9 },
+      'COIN:2':     { fontSize: 32, color: 0xD9D9D9 },
+      'COIN:5':     { fontSize: 40, color: 0xA2F9FF },
+      'COIN:10':    { fontSize: 40, color: 0xFFC300 },
+      'DIAMOND:2':  { fontSize: 26, color: 0xD9D9D9 },
+      'DIAMOND:3':  { fontSize: 32, color: 0xD9D9D9 },
+      'DIAMOND:4':  { fontSize: 40, color: 0xA2F9FF },
+      'DIAMOND:5':  { fontSize: 40, color: 0xFFC300 },
     } as Record<string, { fontSize: number; color: number }>,
     /** Фоллбэк-стиль, если значения нет в `tiers`. */
     fallback: { fontSize: 36, color: 0xFFFFFF },
