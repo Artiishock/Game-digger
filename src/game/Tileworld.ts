@@ -756,6 +756,38 @@ export class TileWorld {
 
   resetScratch() { this.lastPt = null }
 
+  /**
+   * Полный сброс следов копания/пещер на текущих чанках без пересоздания TileWorld.
+   * Используется при возврате в idle, чтобы старый туннель не оставался на экране.
+   */
+  clearRuntimeDigging(): void {
+    this.lastPt = null
+    this._pendingCaves = []
+    this._lastCavePath = null
+    this._cavesByPosition.clear()
+    this._decorLavaCaveCount = 0
+    this.overrides.clear()
+    this.invalidateOverrides()
+
+    // Сбрасываем маски чанков в "цельный грунт" (white) и очищаем лаву (black).
+    if (!this.renderer) return
+    for (const chunk of this.chunks.values()) {
+      const maskRT = (chunk as any).maskRT as PIXI.RenderTexture | undefined
+      const darkMaskRT = (chunk as any).darkMaskRT as PIXI.RenderTexture | undefined
+      const lavaRT = (chunk as any).lavaRT as PIXI.RenderTexture | undefined
+      if (!maskRT || !darkMaskRT || !lavaRT) continue
+      const w = maskRT.width
+      const h = maskRT.height
+      const wh = new PIXI.Graphics().beginFill(0xffffff).drawRect(0, 0, w, h).endFill()
+      const bl = new PIXI.Graphics().beginFill(0x000000).drawRect(0, 0, w, h).endFill()
+      this.renderer.render(wh, { renderTexture: maskRT, clear: true })
+      this.renderer.render(wh, { renderTexture: darkMaskRT, clear: true })
+      this.renderer.render(bl, { renderTexture: lavaRT, clear: true })
+      wh.destroy()
+      bl.destroy()
+    }
+  }
+
   // ── Пещеры ─────────────────────────────────────────────────────────────────
 
   private _generateCavePath(
@@ -928,14 +960,15 @@ export class TileWorld {
       content.addChild(fb)
     }
 
-    // Одна полоса на весь чанк (растяжение). TilingSprite + мелкий tileScale давал узкие повторы по X.
+    let topGrassSpr: PIXI.Sprite | null = null
+    // Верхнюю траву держим ВНЕ content.mask, иначе верх травинок режется границей маски на y=0.
     if (row===0 && TileWorld.grassTex) {
       const spr = new PIXI.Sprite(TileWorld.grassTex)
       spr.x = 0
       spr.y = GRASS_SPRITE_Y_OFFSET
       spr.width = CPW
       spr.height = TILE
-      content.addChild(spr)
+      topGrassSpr = spr
     }
 
     const maskRT  = PIXI.RenderTexture.create({width:CPW, height:CPH})
@@ -980,6 +1013,7 @@ export class TileWorld {
     container.addChild(darkBg)
     container.addChild(darkMaskSpr)
     container.addChild(content)
+    if (topGrassSpr) container.addChild(topGrassSpr)
     container.addChild(maskSpr)
     container.addChild(lavaMaskSpr)
 

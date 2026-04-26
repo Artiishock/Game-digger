@@ -85,6 +85,7 @@ export class LavaSimulation {
   private _blurFilter:   PIXI.BlurFilter
   private _threshFilter: PIXI.Filter
   private time = 0
+  private _destroyed = false
 
   constructor() {
     this.container = new PIXI.Container()
@@ -484,6 +485,7 @@ export class LavaSimulation {
   }
 
   update(dt: number) {
+    if (this._destroyed) return
     let hasFlowing = false
     for (const c of this.cells.values()) {
       if (!c.static && c.amount >= MIN_FLOW) {
@@ -498,6 +500,7 @@ export class LavaSimulation {
       this._texOffY += dt * 3.5
     }
     this._render()
+    if (this._destroyed) return
     this._threshFilter.uniforms.uTime = this.time
     if (this._tilingSprite) {
       // Спрайт следует за камерой — всегда покрывает видимую область
@@ -585,6 +588,7 @@ export class LavaSimulation {
   // ── Рендер ────────────────────────────────────────────────────────────────
 
   private _render() {
+    if (this._destroyed) return
     this.blobGfx.clear()
     this.glowGfx.clear()
     this._texMaskGfx.clear()
@@ -687,6 +691,8 @@ export class LavaSimulation {
   }
 
   destroy() {
+    if (this._destroyed) return
+    this._destroyed = true
     this._blurFilter.destroy()
     this._threshFilter.destroy()
     this._texMaskGfx.destroy()

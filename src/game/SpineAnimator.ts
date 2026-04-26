@@ -75,6 +75,15 @@ export const DIRT_ANIM = {
   idle: "dirt_idle",
 };
 
+export const HERO_ANIM = {
+  idle: "idle",
+  digLoop: "loop_1",
+  digAltLoop: "loop_2",
+  start: "start_2",
+  startAlt: "start_1",
+  die: "die",
+};
+
 // Длительность финальной action-анимации (фиксированная)
 export const BREAK_ACTION_DURATION = 1.0;
 
@@ -1801,8 +1810,11 @@ export class SpineAnimator {
   private static _goldSkeletonData: any = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private static _stoneSkeletonData: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private static _heroSkeletonData: any = null;
   private static _loading: Promise<boolean> | null = null;
   private static _goldStoneLoading: Promise<boolean> | null = null;
+  private static _heroLoading: Promise<boolean> | null = null;
   private static _instances: Spine[] = [];
   // Spine слоты которые нужно держать null для каждого инстанса (по имени анимации)
   private static _instanceNullSlots: Map<Spine, any[]> = new Map();
@@ -1820,6 +1832,12 @@ export class SpineAnimator {
     if (!this._goldStoneLoading)
       this._goldStoneLoading = this._doLoadGoldStone();
     return this._goldStoneLoading;
+  }
+
+  /** Загружает отдельный Spine-скелет героя из public/animations/hero. */
+  static loadHero(): Promise<boolean> {
+    if (!this._heroLoading) this._heroLoading = this._doLoadHero();
+    return this._heroLoading;
   }
 
   private static async _doLoadGoldStone(): Promise<boolean> {
@@ -1868,6 +1886,47 @@ export class SpineAnimator {
       return true;
     } catch (e) {
       console.warn("[SpineAnimator] loadGoldStone failed:", e);
+      return false;
+    }
+  }
+
+  private static async _doLoadHero(): Promise<boolean> {
+    const load = async (atlasUrl: string, jsonUrl: string, pngUrl: string) => {
+      const [atlasText, spineJson, texture] = await Promise.all([
+        fetch(atlasUrl).then((r) => {
+          if (!r.ok) throw new Error(`${atlasUrl} (${r.status})`);
+          return r.text();
+        }),
+        fetch(jsonUrl).then((r) => {
+          if (!r.ok) throw new Error(`${jsonUrl} (${r.status})`);
+          return r.json();
+        }),
+        PIXI.Texture.fromURL(pngUrl),
+      ]);
+      const atlas = new TextureAtlas(
+        atlasText,
+        (_p: string, cb: (t: PIXI.BaseTexture) => void) => cb(texture.baseTexture),
+      );
+      if (
+        typeof spineJson.skeleton?.spine === "string" &&
+        spineJson.skeleton.spine.startsWith("4.2")
+      )
+        spineJson.skeleton.spine = "4.1.24";
+      const skelJson = new SkeletonJson(new AtlasAttachmentLoader(atlas));
+      skelJson.scale = 1;
+      return skelJson.readSkeletonData(spineJson);
+    };
+
+    try {
+      this._heroSkeletonData = await load(
+        "./animations/hero/character_1.atlas.txt",
+        "./animations/hero/character_1.json",
+        "./animations/hero/character_1.png",
+      );
+      console.log("[SpineAnimator] ✓ Hero loaded OK");
+      return true;
+    } catch (e) {
+      console.warn("[SpineAnimator] loadHero failed:", e);
       return false;
     }
   }
@@ -1980,6 +2039,12 @@ export class SpineAnimator {
   static createCharacter(scale = 0.3): Spine | null {
     if (!USE_SPINE) return null;
     return this._make(CHAR_ANIM.idle, scale);
+  }
+
+  /** Создать Spine-персонажа из отдельного hero-скелета. */
+  static createHero(scale = 0.3): Spine | null {
+    if (!USE_SPINE || !this._heroSkeletonData) return null;
+    return this._makeFromData(this._heroSkeletonData, HERO_ANIM.idle, scale);
   }
 
   /** Создать эффект грязи в точке входа (dirt_show → dirt_idle) */
@@ -2223,6 +2288,9 @@ export class SpineAnimator {
   }
   static get goldStoneReady(): boolean {
     return !!(this._goldSkeletonData && this._stoneSkeletonData);
+  }
+  static get heroReady(): boolean {
+    return !!this._heroSkeletonData;
   }
 
   // ── Внутреннее ───────────────────────────────────────────────────────────────

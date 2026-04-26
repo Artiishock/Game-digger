@@ -207,35 +207,40 @@ export const GameConfig = {
     depthSpreadScreenFactor: 3.25,
   },
 
-  // ─── Герой (PNG): калибровка ───────────────────────────────────────────────
+  // ─── Герой: калибровка (px; углы — радианы) ────────────────────────────────
   hero: {
     /**
-     * Сдвиг `miner.root` в idle (до старта раунда / на главном экране).
-     * База: (idleX, surfY), surfY = линия травы (TILE). +Y вниз по экрану.
+     * Высота Spine-скелета при scale=1. Масштаб на экране: `HERO_MAX_SIDE_PX / spineRefHeightPx`.
      */
-    idleRootOffsetXPx: 0,
-    idleRootOffsetYPx: -100,
+    spineRefHeightPx: 746,
     /**
-     * Сдвиг `miner.root` от (charX, charY) вдоль касательной туннеля, px.
-     * «Вперёд» = к концу пути / в сторону копания (+ = к носу коридора).
+     * Добавка к atan2(ny,nx) касательной туннеля: локальный +Y героя = «вперёд по копанию».
      */
-    tunnelOffsetAlongPx: -10,
+    drillFacingOffsetRad: -Math.PI / 2,
+
     /**
-     * Сдвиг поперёк касательной, px. Базис «влево» от копания: (-ty, tx).
-     * При tx < 0 знак в GameRenderer инвертируется, иначе вместе с tunnelOffsetAlongPx
-     * смещение по X становится несимметричным для «влево» и «вправо» по диагонали.
+     * До старта раунда и в idle (главный экран): `miner.root` от точки (idleX, surfY).
+     * surfY — линия травы (= TILE), +Y вниз.
      */
-    tunnelOffsetAcrossPx: 4,
+    idle: {
+      rootOffsetXPx: 0,
+      rootOffsetYPx: 0,
+      /** Смещение Spine/PNG внутри root, пока персонаж не копает */
+      spriteOffsetYPx: -100,
+    },
+
     /**
-     * Доп. сдвиг корня в мире только при копании по полилинии (без гравитации).
-     * Отрицательный Y — вверх по экрану (центрировать спрайт в «капсуле» туннеля).
+     * Во время копания: к (charX, charY) добавляются смещения вдоль/поперёк касательной
+     * и `tunnelWorldOffset*`. Логика знака `tunnelOffsetAcrossPx` при tx < 0 — в GameRenderer.
      */
-    tunnelWorldOffsetXPx: 0,
-    tunnelWorldOffsetYPx: -80,
-    /** Смещение текстуры внутри корня: idle / туннель */
-    spriteIdleYOffsetPx: -100,
-    /** В туннеле чуть меньше, чем было при якоре у ног — персонаж визуально выше оси скретча */
-    spriteRunYOffsetPx: 24,
+    dig: {
+      tunnelOffsetAlongPx: 40,
+      tunnelOffsetAcrossPx: 4,
+      tunnelWorldOffsetXPx: 0,
+      tunnelWorldOffsetYPx: -30,
+      /** Смещение Spine/PNG внутри root при активном бурении */
+      spriteOffsetYPx: 24,
+    },
   },
 
   // ─── Коллизии ────────────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ import { useGameStore } from '../store/gameStore'
 import type { RoundEvent, EventType } from '../rgs/client'
 import { TileWorld, TILE } from './Tileworld'
 import { LavaSimulation } from './LavaSimulation'
-import { SpineAnimator, ROCK_ANIM, GOLD_ANIM, GOLD_STAGE, STONE_STAGE, BREAK_ACTION_DURATION, getSpineItemSize } from './SpineAnimator'
+import { SpineAnimator, HERO_ANIM, ROCK_ANIM, GOLD_ANIM, GOLD_STAGE, STONE_STAGE, BREAK_ACTION_DURATION, getSpineItemSize } from './SpineAnimator'
 import type { Spine } from 'pixi-spine'
 import { GameConfig, HERO_MAX_SIDE_PX } from './GameConfig'
 import { gameAudio } from '../audio/GameAudio'
@@ -20,6 +20,11 @@ const PATH_VARIANT: 'V2' | 'V3' = 'V2'
 const buildRoundPath = PATH_VARIANT === 'V2' ? buildRoundPathV2 : buildRoundPathV3
 
 const STEP_PATH_Y = TILE * GameConfig.spawn.intervalTiles
+/** На сколько тайлов ниже стартового экрана начинаем спавнить предметы. */
+const START_SPAWN_OFFSCREEN_TILES = 1.5
+/** Стартовые точки туннеля должны быть близко к месту начала копания. */
+const START_PATH_SOFTEN_POINTS = 8
+const START_PATH_MAX_DX_PX = TILE * 0.85
 
 /** X на оси туннеля для произвольной глубины (линейная интерполяция по сегментам path). */
 function pathXAtWorldY(wy: number, path: PathPoint[], surfY: number): number {
@@ -38,6 +43,27 @@ function pathXAtWorldY(wy: number, path: PathPoint[], surfY: number): number {
     }
   }
   return pl.x
+}
+
+/** Длина дуги до заданной глубины Y (монотонно по пути сверху вниз). */
+function tunnelArcLengthAtWorldY(wy: number, path: PathPoint[], cum: number[]): number {
+  if (path.length === 0 || cum.length === 0) return 0
+  if (path.length === 1) return 0
+  const p0 = path[0]!
+  if (wy <= p0.y) return 0
+  const lastIdx = path.length - 1
+  const pl = path[lastIdx]!
+  if (wy >= pl.y) return cum[lastIdx] ?? 0
+  for (let i = 0; i < path.length - 1; i++) {
+    const a = path[i]!, b = path[i + 1]!
+    if (wy <= b.y) {
+      const dy = b.y - a.y
+      const t = dy > 1e-6 ? (wy - a.y) / dy : 0
+      const segLen = (cum[i + 1] ?? cum[i] ?? 0) - (cum[i] ?? 0)
+      return (cum[i] ?? 0) + segLen * t
+    }
+  }
+  return cum[lastIdx] ?? 0
 }
 
 /** Префиксные длины вдоль полилинии: cum[i] = длина от path[0] до path[i]. */
@@ -153,24 +179,81 @@ function formatLiveWinAmount(value: number, currency: string): string {
 const HERO_LEGACY_FEET_ANCHOR_Y = 0.88
 /**
  * PNG: вид сбоку, бур снизу. Вращение вокруг центра текстуры; «вперёд по копанию» по-прежнему вдоль локального +Y.
- * Угол касательной (nx,ny): atan2(ny,nx) + offset — см. HERO_DRILL_FACING_OFFSET.
+ * Угол касательной (nx,ny): atan2(ny,nx) + GameConfig.hero.drillFacingOffsetRad.
  */
-const HERO_DRILL_FACING_OFFSET = -Math.PI / 2
+const HERO_SPINE_SCALE = HERO_MAX_SIDE_PX / GameConfig.hero.spineRefHeightPx
 
 class SpriteCharacter {
   root: PIXI.Container
   chunkParent: PIXI.Container | null = null
   private _spr: PIXI.Sprite | null = null
+  private _spine: Spine | null = null
   /** Сдвиг по Y: центр текстуры → прежняя точка у ног остаётся в origin корня. */
   private _pivotFootCompensateY = 0
   /** Текущий поворот (рад). */
   private _facingRad = 0
+  private _activeAnim = ''
+  private _animHoldSec = 0
+  private _dieLocked = false
 
   constructor() {
     this.root = new PIXI.Container()
   }
 
+  private _setAnim(name: string, loop = true): void {
+    if (!this._spine) return
+    if (this._activeAnim === name) return
+    if (!this._spine.spineData.findAnimation(name)) return
+    SpineAnimator.setAnimation(this._spine, name, loop)
+    this._activeAnim = name
+  }
+
+  private _setYOffset(active: boolean): void {
+    if (this._spr) {
+      this._spr.y =
+        this._pivotFootCompensateY +
+        (active ? GameConfig.hero.dig.spriteOffsetYPx : GameConfig.hero.idle.spriteOffsetYPx)
+    }
+    if (this._spine) {
+      this._spine.y = active ? GameConfig.hero.dig.spriteOffsetYPx : GameConfig.hero.idle.spriteOffsetYPx
+    }
+  }
+
+  setHeroSpine(spine: Spine | null): boolean {
+    if (!spine) return false
+    if (this._spr) {
+      this.root.removeChild(this._spr)
+      this._spr.destroy()
+      this._spr = null
+    }
+    if (this._spine) {
+      this.root.removeChild(this._spine)
+      SpineAnimator.remove(this._spine)
+      this._spine.destroy()
+      this._spine = null
+    }
+    spine.scale.set(HERO_SPINE_SCALE)
+    spine.rotation = this._facingRad
+    this._spine = spine
+    this._activeAnim = ''
+    this._dieLocked = false
+    this._animHoldSec = 0
+    this._setYOffset(false)
+    this._setAnim(HERO_ANIM.idle, true)
+    this.root.addChild(spine)
+    return true
+  }
+
   setHeroTexture(tex: PIXI.Texture | null) {
+    if (this._spine) {
+      this.root.removeChild(this._spine)
+      SpineAnimator.remove(this._spine)
+      this._spine.destroy()
+      this._spine = null
+      this._activeAnim = ''
+      this._animHoldSec = 0
+      this._dieLocked = false
+    }
     if (this._spr) {
       this.root.removeChild(this._spr)
       this._spr.destroy()
@@ -183,46 +266,70 @@ class SpriteCharacter {
     s.scale.set(sc)
     const h = tex.height * sc
     this._pivotFootCompensateY = (HERO_LEGACY_FEET_ANCHOR_Y - 0.5) * h
-    s.y = this._pivotFootCompensateY + GameConfig.hero.spriteIdleYOffsetPx
+    this._setYOffset(false)
     this._spr = s
     this.root.addChild(s)
+    this._spr.y = this._pivotFootCompensateY + GameConfig.hero.idle.spriteOffsetYPx
   }
 
   setIdleMode(idle: boolean) {
-    if (this._spr) {
-      this._spr.y =
-        this._pivotFootCompensateY +
-        (idle ? GameConfig.hero.spriteIdleYOffsetPx : GameConfig.hero.spriteRunYOffsetPx)
+    const active = !idle
+    this._setYOffset(active)
+    if (this._spine && !this._dieLocked) {
+      this._animHoldSec = 0
+      this._setAnim(idle ? HERO_ANIM.idle : HERO_ANIM.digLoop, true)
     }
+  }
+
+  playStartDigTransition() {
+    if (!this._spine || this._dieLocked) return
+    const startAnim = this._spine.spineData.findAnimation(HERO_ANIM.start)
+    if (!startAnim) {
+      this._setAnim(HERO_ANIM.digLoop, true)
+      return
+    }
+    this._animHoldSec = Math.max(0.05, startAnim.duration)
+    this._activeAnim = HERO_ANIM.start
+    this._spine.state.setAnimation(0, HERO_ANIM.start, false)
+    this._spine.state.addAnimation(0, HERO_ANIM.digLoop, true, 0)
+  }
+
+  playDie() {
+    if (!this._spine || this._dieLocked) return
+    this._dieLocked = true
+    this._animHoldSec = 999
+    this._setAnim(HERO_ANIM.die, false)
   }
 
   resetFacing() {
     this._facingRad = 0
     if (this._spr) this._spr.rotation = 0
+    if (this._spine) this._spine.rotation = 0
   }
 
   /**
    * Мгновенно: локальный +Y спрайта (ось «тело → бур») совпадает с направлением (dx,dy) в мире.
    */
   snapFacingToWorldDir(dx: number, dy: number) {
-    if (!this._spr) return
+    if (!this._spr && !this._spine) return
     const len = Math.hypot(dx, dy)
     if (len < 1e-6) return
     const nx = dx / len, ny = dy / len
-    let t = Math.atan2(ny, nx) + HERO_DRILL_FACING_OFFSET
+    let t = Math.atan2(ny, nx) + GameConfig.hero.drillFacingOffsetRad
     while (t > Math.PI) t -= Math.PI * 2
     while (t < -Math.PI) t += Math.PI * 2
     this._facingRad = t
-    this._spr.rotation = this._facingRad
+    if (this._spr) this._spr.rotation = this._facingRad
+    if (this._spine) this._spine.rotation = this._facingRad
   }
 
   /** Плавный поворот вдоль единичного направления (или ненормализованного вектора скорости). */
   orientAlongWorldDir(dx: number, dy: number, dt: number, strength = 12) {
-    if (!this._spr) return
+    if (!this._spr && !this._spine) return
     const len = Math.hypot(dx, dy)
     if (len < 1e-4) return
     const nx = dx / len, ny = dy / len
-    let target = Math.atan2(ny, nx) + HERO_DRILL_FACING_OFFSET
+    let target = Math.atan2(ny, nx) + GameConfig.hero.drillFacingOffsetRad
     while (target > Math.PI) target -= Math.PI * 2
     while (target < -Math.PI) target += Math.PI * 2
     let da = target - this._facingRad
@@ -230,18 +337,44 @@ class SpriteCharacter {
     while (da < -Math.PI) da += Math.PI * 2
     const k = Math.min(1, strength * dt)
     this._facingRad += da * k
-    this._spr.rotation = this._facingRad
+    if (this._spr) this._spr.rotation = this._facingRad
+    if (this._spine) this._spine.rotation = this._facingRad
+  }
+
+  /** Есть клип старта копания в hero Spine — тогда раунд ждёт его конца. */
+  heroHasStartDigClip(): boolean {
+    if (!this._spine || this._dieLocked) return false
+    return !!this._spine.spineData.findAnimation(HERO_ANIM.start)
+  }
+
+  /** true пока не истёк hold после playStartDigTransition (анимация старта ещё идёт). */
+  isHeroStartIntroPlaying(): boolean {
+    return this._animHoldSec > 0
   }
 
   update(_dt: number, _spd: number, digging: boolean) {
-    if (!this._spr) return
-    const active = digging
-    this._spr.y =
-      this._pivotFootCompensateY +
-      (active ? GameConfig.hero.spriteRunYOffsetPx : GameConfig.hero.spriteIdleYOffsetPx)
+    if (!this._spr && !this._spine) return
+    const inHeroStartIntro =
+      !!this._spine &&
+      !this._dieLocked &&
+      !!this._spine.spineData.findAnimation(HERO_ANIM.start) &&
+      this._activeAnim === HERO_ANIM.start &&
+      this._animHoldSec > 0
+
+    if (this._animHoldSec > 0) this._animHoldSec = Math.max(0, this._animHoldSec - _dt)
+    const active = digging && !inHeroStartIntro
+    this._setYOffset(active)
+    if (this._spine && !this._dieLocked && this._animHoldSec <= 0) {
+      this._setAnim(active ? HERO_ANIM.digLoop : HERO_ANIM.idle, true)
+    }
   }
 
   destroy() {
+    if (this._spine) {
+      SpineAnimator.remove(this._spine)
+      this._spine.destroy()
+      this._spine = null
+    }
     if (this._spr) this._spr.destroy()
     this.root.destroy({ children: true })
   }
@@ -432,6 +565,18 @@ class ObjectSpawner {
       const so = this._safeObjects[this._safeSpawnedIdx]
       if (so.kind === 'lava') this.onLavaDecorObstacle?.(so)
       this._safeSpawnedIdx++
+    }
+  }
+
+  /** Сдвигает все координаты спавнера по X (очередь + уже созданные объекты/лейблы/маркеры). */
+  shiftWorldX(dx: number): void {
+    if (Math.abs(dx) < 1e-6) return
+    for (const so of this._safeObjects) so.x += dx
+    for (const o of this.objects) {
+      o.worldX += dx
+      o.gfx.x += dx
+      if (o.roadMarker) o.roadMarker.x += dx
+      if (o.valueLabel) o.valueLabel.x += dx
     }
   }
 
@@ -654,6 +799,7 @@ export class GameRenderer {
   })
   private liveWinAmountCached = ''
   private _cloudT = 0
+  private _treeRunDx: [number, number, number] = [...TREE_X_RUN_DX]
   private spawner:ObjectSpawner|null=null
   private tunnelActive = false
   private W=0; private H=0
@@ -669,6 +815,12 @@ export class GameRenderer {
 
   // Round
   private running=false
+  /** Spine start_2 играет до первого кадра с running=true (копание ещё не началось). */
+  private _awaitingStartAnim=false
+  /** Во время стартовой анимации фиксируем X, чтобы герой шёл строго вниз. */
+  private _startIntroX=0
+  /** Во время стартовой анимации текущий экранный Y корня героя. */
+  private _startIntroY=0
   private charX=0; private charY=0
   private charScreenY=0
   private multiplier=1; private depth=0; private distance=0
@@ -815,17 +967,22 @@ export class GameRenderer {
     this._createLiveWinBadge()
     this.idleX=0
     {
-      const hi = GameConfig.hero
-      this.miner.root.x = this.idleX + hi.idleRootOffsetXPx
-      this.miner.root.y = this.surfY + hi.idleRootOffsetYPx
+      const hi = GameConfig.hero.idle
+      this.miner.root.x = this.idleX + hi.rootOffsetXPx
+      this.miner.root.y = this.surfY + hi.rootOffsetYPx
     }
     this.minerLayer.addChild(this.miner.root, this.liveWinBadge)
-    this.camX = this.idleX + GameConfig.hero.idleRootOffsetXPx - w / 2
+    this.camX = this.idleX + GameConfig.hero.idle.rootOffsetXPx - w / 2
     this.camY = this.idleCamY
     this._syncLayerScroll()
     this._buildTunnel()
     this._loadTextures()
     void SpineAnimator.load()
+    void SpineAnimator.loadHero().then(() => {
+      if (!this.app) return
+      const heroSpine = SpineAnimator.createHero(HERO_SPINE_SCALE)
+      if (heroSpine) this.miner.setHeroSpine(heroSpine)
+    })
     SpineAnimator.loadGoldStone()   // грузим параллельно с текстурами, не ждём
     this.app.ticker.add(this._tick.bind(this))
   }
@@ -992,12 +1149,13 @@ export class GameRenderer {
     this._sceneryLayer.removeChildren()
     const keys = ['tree1', 'tree2', 'tree3'] as const
     const xs = this.running
-      ? TREE_X_RUN_DX.map(dx => this.charX + dx) as [number, number, number]
+      ? this._treeRunDx.map(dx => this.charX + dx) as [number, number, number]
       : [...TREE_X_IDLE]
     for (let i = 0; i < 3; i++) {
       const tex = this._textures.get(keys[i])
       if (!tex) continue
       const s = new PIXI.Sprite(tex)
+      s.name = keys[i]
       s.anchor.set(0.5, 1)
       s.x = xs[i]!
       const targetH = TREE_HEIGHTS_PX[i]!
@@ -1036,10 +1194,76 @@ export class GameRenderer {
     }
   }
 
+  /** Фиксирует смещения деревьев от героя в момент старта, чтобы сцена не прыгала. */
+  private _captureTreeRunOffsets(startX: number): void {
+    const offsets: number[] = []
+    for (const ch of this._sceneryLayer.children) {
+      const spr = ch as PIXI.Sprite
+      if (!(spr.name ?? '').startsWith('tree')) continue
+      offsets.push(spr.x - startX)
+    }
+    if (offsets.length >= 3) {
+      this._treeRunDx = [offsets[0]!, offsets[1]!, offsets[2]!]
+    } else {
+      this._treeRunDx = [...TREE_X_RUN_DX]
+    }
+  }
+
+  /** Сдвигает весь предрассчитанный маршрут по X, чтобы старт совпал с текущей позицией героя. */
+  private _shiftRoundPathX(dx: number): void {
+    if (Math.abs(dx) < 1e-6) return
+    const rp = this._roundPath
+    if (!rp) return
+    for (const p of rp.pathPoints) p.x += dx
+    for (const rpt of rp.roadPoints) rpt.worldX += dx
+    for (const o of rp.obstacles) o.x += dx
+    if (rp.terminalCave) rp.terminalCave.x += dx
+    for (let i = 0; i < rp.waypoints.length; i++) {
+      rp.waypoints[i] = rp.waypoints[i]! + dx
+    }
+    // Если активные массивы пути уже собраны — сдвигаем и их, чтобы не было X-рывка в момент старта.
+    for (const p of this._tunnelPath) p.x += dx
+    for (let i = 0; i < this._waypoints.length; i++) {
+      this._waypoints[i] = this._waypoints[i]! + dx
+    }
+  }
+
+  /**
+   * Смягчает старт маршрута: первые точки пути держим близко к X старта,
+   * чтобы вход в обычное копание был без резкого бокового рывка.
+   */
+  private _softenRoundPathStart(startX: number): void {
+    const rp = this._roundPath
+    if (!rp || rp.pathPoints.length === 0) return
+    const n = Math.min(START_PATH_SOFTEN_POINTS, rp.pathPoints.length)
+    for (let i = 0; i < n; i++) {
+      const p = rp.pathPoints[i]!
+      const t = n <= 1 ? 1 : i / (n - 1)
+      const maxDx = START_PATH_MAX_DX_PX * t
+      const minX = startX - maxDx
+      const maxX = startX + maxDx
+      const clampedX = Math.max(minX, Math.min(maxX, p.x))
+      p.x = clampedX
+      if (i < rp.waypoints.length) rp.waypoints[i] = clampedX
+    }
+    // После смягчения старта обязательно привязываем road points к финальному пути,
+    // иначе первый предмет может оказаться вне траектории движения персонажа.
+    for (const rpPoint of rp.roadPoints) {
+      rpPoint.worldX = pathXAtWorldY(rpPoint.worldY, rp.pathPoints, this.surfY)
+    }
+  }
+
   // ─── Round ────────────────────────────────────────────────────────────────
 
   startRound(events:RoundEvent[],_spd:number){
+    const startX = this.miner.root.x
+    const startY = this.miner.root.y
+    const startCamX = this.camX
+    const startCamY = this.camY
+    this._captureTreeRunOffsets(startX)
+
     this.running=false;this.idleActive=false;this._ended=false
+    this._awaitingStartAnim=false
     this.multiplier=0;this.depth=0;this.distance=0
     this.particles=[]
     this.rgsQueue=[...events]
@@ -1060,10 +1284,7 @@ export class GameRenderer {
     this._breakStage = 0;
     this._destroyBreakObj();
 
-    if(this.tileWorld){this.tileWorld.destroy();this.tileWorld=null}
     this.spawner?.reset()
-    this.worldBgLayer.removeChildren()
-    this.worldChunkLayer.removeChildren()
     this.objectsLayer.removeChildren()  // ← чистим объекты
 
     const lastEv  = events[events.length-1]
@@ -1083,12 +1304,18 @@ export class GameRenderer {
     })()
     // Соль на каждый запуск раунда: даже при одинаковых events маршрут/декор не повторяются.
     this.worldSeed = (baseSeed ^ randSalt) >>> 0
-    TileWorld.loadGrassTex().then(() => {
-      this.tileWorld?.rebuildTunnelBgFromTextures()
-    })
-    this.tileWorld= new TileWorld(this.worldBgLayer, this.worldChunkLayer, this.worldSeed)
-    this.tileWorld.renderer=this.app.renderer as PIXI.Renderer
-    this.tileWorld.initMasks()
+    if (!this.tileWorld) {
+      TileWorld.loadGrassTex().then(() => {
+        this.tileWorld?.rebuildTunnelBgFromTextures()
+      })
+      this.tileWorld = new TileWorld(this.worldBgLayer, this.worldChunkLayer, this.worldSeed)
+      this.tileWorld.renderer = this.app.renderer as PIXI.Renderer
+      this.tileWorld.initMasks()
+    } else {
+      // Единая сцена: не пересоздаём мир, только сбрасываем «копание».
+      this.tileWorld.resetScratch()
+      this.tileWorld.showBg()
+    }
     this._initLavaSimulation()
 
     this._promotedCount=0
@@ -1101,7 +1328,7 @@ export class GameRenderer {
     this._caveZones    = []
     this._digSoundCarry = 0
 
-    this.charY=this.surfY
+    this.charY=startY
     this._lastCaveY = this.surfY + TILE * 3
     this._caveSeed  = this.worldSeed ^ 0xCAFE1234
 
@@ -1119,6 +1346,9 @@ export class GameRenderer {
     )
     // ── Строим полный маршрут ДО спавна объектов ────────────────────────────
     this._roundPath = buildRoundPath(this.worldSeed, this.surfY, this.ppm, events)
+    const initialPathX = pathXAtWorldY(startY, this._roundPath.pathPoints, this.surfY)
+    this._shiftRoundPathX(startX - initialPathX)
+    this._softenRoundPathStart(startX)
     this._waypoints   = this._roundPath.waypoints
     this._tunnelPath  = this._roundPath.pathPoints.map(p => ({ x: p.x, y: p.y }))
     this._lossLavaCenterX =
@@ -1135,8 +1365,8 @@ export class GameRenderer {
       this._pathTangentNy = pt0.ny
       this.miner.snapFacingToWorldDir(pt0.nx, pt0.ny)
     }
-    this.camX = this.charX - this.W / 2
-    this.camY = this.idleCamY
+    this.camX = startCamX
+    this.camY = startCamY
 
     // Передаём путь в TileWorld — лава не генерируется в коридоре
     // (для обоих типов раундов — персонаж не должен случайно попасть в лаву)
@@ -1177,8 +1407,9 @@ export class GameRenderer {
       this._roundPath.obstacles,
       this._roundPath.roadEventsOrdered,
     )
-    // Не спавним объекты в изначально видимой области экрана.
-    this.spawner.skipTo(this.camY + this.H)
+    // Стартовый экран должен быть чистым: первые предметы спавним ниже видимой зоны.
+    // Мы знаем высоту видимой области до старта: [camY, camY + H].
+    this.spawner.skipTo(this.camY + this.H + TILE * START_SPAWN_OFFSCREEN_TILES)
     this.spawner._onPromoted = () => this._promotedCount++
     this.spawner.onLavaDecorObstacle = so => {
       if (!this.tileWorld) return
@@ -1201,15 +1432,25 @@ export class GameRenderer {
     this.miner.root.x=this.charX;this.miner.root.y=this.charY
     this.miner.root.scale.x=1
     this._syncLayerScroll()
-    this.miner.setIdleMode(false)
+
+    const awaitHeroStart = this.miner.heroHasStartDigClip()
+    if (awaitHeroStart) {
+      // Start должен начаться ровно из текущей позиции персонажа на экране.
+      this._startIntroX = this.miner.root.x
+      this._startIntroY = this.miner.root.y
+      this.miner.setIdleMode(true)
+      this.miner.playStartDigTransition()
+      this._awaitingStartAnim = true
+      this.running = false
+    } else {
+      this.miner.playStartDigTransition()
+      this.miner.setIdleMode(false)
+      this._spawnDirtEntry()
+      this.running = true
+      this._syncSurfaceScenery()
+    }
     // skyLayer visibility is managed dynamically in _tick based on camera depth
     this.skyLayer.visible = true
-
-    // ── Эффект грязи в точке входа ─────────────────────────────────────────
-    this._spawnDirtEntry()
-
-    this.running=true
-    this._syncSurfaceScenery()
   }
 
   /**
@@ -1305,11 +1546,16 @@ export class GameRenderer {
           console.warn(`[GameRenderer] Failed to load texture: ${url}`)
         }
       }
-      try {
-        const heroTex = await PIXI.Texture.fromURL(GameAssets.hero)
-        this.miner.setHeroTexture(heroTex)
-      } catch {
-        console.warn('[GameRenderer] Failed to load hero texture')
+      const heroSpine = SpineAnimator.heroReady ? SpineAnimator.createHero(HERO_SPINE_SCALE) : null
+      if (heroSpine) {
+        this.miner.setHeroSpine(heroSpine)
+      } else {
+        try {
+          const heroTex = await PIXI.Texture.fromURL(GameAssets.hero)
+          this.miner.setHeroTexture(heroTex)
+        } catch {
+          console.warn('[GameRenderer] Failed to load hero texture')
+        }
       }
       this.skyLayer.removeChildren()
       this._buildSky()
@@ -1380,6 +1626,25 @@ export class GameRenderer {
     return { w: 160, h: 120 }
   }
 
+  /** Сдвиг корня героя вдоль/поперёк касательной туннеля (как при копании). */
+  private _heroDigRootOffsetPx(): { ox: number; oy: number } {
+    const h = GameConfig.hero.dig
+    let ox = 0, oy = 0
+    if (this._tunnelPath.length > 1) {
+      const tx = this._pathTangentNx, ty = this._pathTangentNy
+      if (Math.hypot(tx, ty) > 0.02) {
+        const px = -ty, py = tx
+        const across =
+          h.tunnelOffsetAcrossPx * (tx < -0.02 ? -1 : 1)
+        ox = tx * h.tunnelOffsetAlongPx + px * across
+        oy = ty * h.tunnelOffsetAlongPx + py * across
+      }
+      ox += h.tunnelWorldOffsetXPx
+      oy += h.tunnelWorldOffsetYPx
+    }
+    return { ox, oy }
+  }
+
   // ─── Tick ─────────────────────────────────────────────────────────────────
 
   private _tick(delta:number){
@@ -1398,9 +1663,9 @@ export class GameRenderer {
       if(this._bounceT<=0){this._bounceT=3+Math.random()*4;this.idleDir*=-1}
       this.miner.resetFacing()
       this.miner.root.scale.x=this.idleDir
-      const hiIdle = GameConfig.hero
-      this.miner.root.x = this.idleX + hiIdle.idleRootOffsetXPx
-      this.miner.root.y = this.surfY + hiIdle.idleRootOffsetYPx
+      const hiIdle = GameConfig.hero.idle
+      this.miner.root.x = this.idleX + hiIdle.rootOffsetXPx
+      this.miner.root.y = this.surfY + hiIdle.rootOffsetYPx
       const tcX = this.miner.root.x - this.W / 2
       this.camX+=(tcX-this.camX)*0.08
       this.camY+=(this.idleCamY-this.camY)*0.08
@@ -1413,6 +1678,57 @@ export class GameRenderer {
       this.miner.update(dt,0.9,false)
       this._updateLiveWinBadge()
       this._pUpdate(dt);return
+    }
+
+    if (this._awaitingStartAnim) {
+      this._startIntroY += CHAR_SPEED * gameDt
+      this.miner.root.scale.x = 1
+      this.miner.orientAlongWorldDir(0, 1, gameDt, 12)
+      this.miner.root.x = this._startIntroX
+      this.miner.root.y = this._startIntroY
+      // Во время интро логическая точка копания следует за реальным положением корня.
+      this.charX = this.miner.root.x
+      this.charY = this.miner.root.y
+      if (!this.tunnelActive) this._showTunnel()
+      const tCX = this.charX - this.W / 2
+      const tCY = this.charY - this.charScreenY
+      const camLerp = Math.min(0.12 * spd, 0.9)
+      this.camX += (tCX - this.camX) * camLerp
+      this.camY += (tCY - this.camY) * camLerp
+      this._syncLayerScroll()
+      this._updateTunnel(this.charX - this.camX, this.charY - this.camY)
+      const skyVisible = this.camY < this.surfY + TILE * 2
+      if (this.skyLayer.visible !== skyVisible) this.skyLayer.visible = skyVisible
+      this._syncSkyBgParallax()
+      this._updateSkyDecor(dt)
+      this._updateWorldMask(this.W, this.H)
+      if (this.tileWorld) this.tileWorld.update(this.camX, this.camY, this.W, this.H)
+      // Декор/предметы должны быть видны уже во время start-интро.
+      // Коллизии остаются выключены, т.к. running=false.
+      if (this.spawner) this.spawner.update(this.charX, this.charY, this.H * 5)
+      this.miner.update(gameDt, 1, true)
+      if (!this.miner.isHeroStartIntroPlaying()) {
+        this._awaitingStartAnim = false
+        // Стартуем running без скачка корня: переводим root -> char через текущий dig-offset.
+        const { ox, oy } = this._heroDigRootOffsetPx()
+        this.charX = this.miner.root.x - ox
+        this.charY = this.miner.root.y - oy
+        this._rebuildTunnelCumLengths()
+        // После start фиксируем arc по текущей глубине Y, чтобы не «подбрасывало» вверх
+        // из-за ближайшей точки на соседнем сегменте.
+        this._pathArcS = tunnelArcLengthAtWorldY(this.charY, this._tunnelPath, this._tunnelCumLen)
+        {
+          const pt = pointOnTunnelAtArcLength(this._tunnelPath, this._tunnelCumLen, this._pathArcS)
+          this._pathTangentNx = pt.nx
+          this._pathTangentNy = pt.ny
+        }
+        this.miner.setIdleMode(false)
+        this._spawnDirtEntry()
+        this.running = true
+        this._syncSurfaceScenery()
+      }
+      this._pUpdate(gameDt)
+      return
     }
 
     if(!this.running){this._pUpdate(dt);return}
@@ -1437,7 +1753,7 @@ export class GameRenderer {
           this.multiplier,
           this.stoneBreakStartMultiplier - stepSize * ticksDone
         )
-        this.stoneBreakTickTimer = 1.0 / spd   // следующий тик через 1 игровую секунду
+        this.stoneBreakTickTimer = 0.5 / spd   // следующий тик через 1 игровую секунду
         store.updateStats({ multiplier: Math.round(this.stoneBreakDisplayMult * 100) / 100 })
       }
 
@@ -1478,7 +1794,7 @@ export class GameRenderer {
           this.multiplier,
           this.goldBreakStartMultiplier + stepSize * ticksDone
         )
-        this.goldBreakTickTimer = 1.0 / spd   // следующий тик через 1 игровую секунду
+        this.goldBreakTickTimer = 0.5 / spd   // следующий тик через 1 игровую секунду
         store.updateStats({ multiplier: Math.round(this.goldBreakDisplayMult * 100) / 100 })
       }
       if (Math.random() < 0.3) {
@@ -1621,21 +1937,7 @@ export class GameRenderer {
       }
     }
 
-    const h = GameConfig.hero
-    let ox = 0, oy = 0
-    if (this._tunnelPath.length > 1) {
-      const tx = this._pathTangentNx, ty = this._pathTangentNy
-      if (Math.hypot(tx, ty) > 0.02) {
-        const px = -ty, py = tx
-        // При заметном копании влево (tx < 0) вклад along*tx + across*px по X не зеркален вправо/влево — зеркалим across.
-        const across =
-          h.tunnelOffsetAcrossPx * (tx < -0.02 ? -1 : 1)
-        ox = tx * h.tunnelOffsetAlongPx + px * across
-        oy = ty * h.tunnelOffsetAlongPx + py * across
-      }
-      ox += h.tunnelWorldOffsetXPx
-      oy += h.tunnelWorldOffsetYPx
-    }
+    const { ox, oy } = this._heroDigRootOffsetPx()
     this.miner.root.x = this.charX + ox
     this.miner.root.y = this.charY + oy
 
@@ -1694,6 +1996,7 @@ export class GameRenderer {
     if (!this._ended && !this.stoneBreakActive && !this.goldBreakActive && this.charY > minDepthForLava && lavaHit) {
       this._ended=true
       this.running=false
+      this.miner.playDie()
       gameAudio.playSfx('sfx_lava.ogg')
       this._burst(this.charX,this.charY,C.lava,20)
       // Потребляем LAVA-ивент из rgsQueue — исход тот же (поражение),
@@ -1794,7 +2097,7 @@ export class GameRenderer {
       this.stoneBreakTotalDuration = duration
       this.stoneBreakRemainingTime = duration
       this.stoneBreakDisplayMult   = multBefore   // начинаем с текущего значения
-      this.stoneBreakTickTimer     = 1.0           // первый тик через 1 сек
+      this.stoneBreakTickTimer     = 0.5           // первый тик через 1 сек
       this._breakStage = 1
       if (obj.spine) {
         console.log('[DEBUG STONE] spine exists, setting stage_02, goldStoneReady=', SpineAnimator.goldStoneReady)
@@ -1892,6 +2195,7 @@ export class GameRenderer {
     if(obj.terminal){
       this._ended=true
       this.running=false
+      if (type === 'LAVA') this.miner.playDie()
       obj.gfx.visible=false
 
       // Фактический исход определяет RGS — ищем HOME или LAVA в очереди
@@ -2009,22 +2313,25 @@ export class GameRenderer {
       this.lavaSimulation = null
     }
 
-    if(this.tileWorld){this.tileWorld.destroy();this.tileWorld=null}
-    this.worldBgLayer.removeChildren()
-    this.worldChunkLayer.removeChildren()
+    if (this.tileWorld) {
+      this.tileWorld.lavaSimulation = null
+      this.tileWorld.clearRuntimeDigging()
+      // В idle не нужен защитный коридор пути.
+      this.tileWorld.setPathWaypoints([], this.surfY)
+    }
+
     this.objectsLayer.removeChildren()  // ← чистим объекты при возврате
-    this.worldSeed=0xdeadbeef
-    this._makeIdleWorld()
     this.minerLayer.addChild(this.miner.root)
     this.idleX=this.charX;this.idleDir=1;this._bounceT=3
     this.idleActive=true
+    this._awaitingStartAnim = false
     this.miner.setIdleMode(true)
     this.miner.resetFacing()
     this.skyLayer.visible = true    // показываем фон в idle
     {
-      const hi = GameConfig.hero
-      this.miner.root.x = this.idleX + hi.idleRootOffsetXPx
-      this.miner.root.y = this.surfY + hi.idleRootOffsetYPx
+      const hi = GameConfig.hero.idle
+      this.miner.root.x = this.idleX + hi.rootOffsetXPx
+      this.miner.root.y = this.surfY + hi.rootOffsetYPx
     }
     this.camX = this.miner.root.x - this.W / 2
     this.camY = this.idleCamY
