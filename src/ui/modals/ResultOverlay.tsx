@@ -11,9 +11,8 @@ export const ResultOverlay: React.FC = () => {
   const autoplay = useGameStore(s => s.autoplay)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const isWin  = phase === 'WIN'
-  const isLose = phase === 'LOSE'
-  const show   = isWin || isLose
+  // Экран поражения (ПРОВАЛ) убран — после LAVA сразу IDLE (см. App.tsx).
+  const show = phase === 'WIN'
 
   useEffect(() => {
     if (show && autoplay.active) {
@@ -34,9 +33,8 @@ export const ResultOverlay: React.FC = () => {
 
   const multiplier = lastWin > 0 ? (lastWin / bet) : 0
   const bgStyle = {
-    background: isWin
-      ? 'radial-gradient(ellipse at center, rgba(76,175,80,0.25) 0%, rgba(0,0,0,0.7) 70%)'
-      : 'radial-gradient(ellipse at center, rgba(255,69,0,0.25) 0%, rgba(0,0,0,0.75) 70%)',
+    background:
+      'radial-gradient(ellipse at center, rgba(76,175,80,0.25) 0%, rgba(0,0,0,0.7) 70%)',
   }
 
   return (
@@ -45,22 +43,16 @@ export const ResultOverlay: React.FC = () => {
       style={bgStyle}
       onClick={dismissOverlayOnly}
     >
-      <div className="ui-result-emoji">{isWin ? '🛏️' : '🌋'}</div>
+      <div className="ui-result-emoji">🛏️</div>
 
-      <div className={`ui-result-title ${isWin ? 'ui-result-title--win' : 'ui-result-title--lose'}`}>
-        {isWin ? 'ПОБЕДА!' : 'ПРОВАЛ!'}
-      </div>
+      <div className="ui-result-title ui-result-title--win">ПОБЕДА!</div>
 
-      {isWin && lastWin > 0 && (
+      {lastWin > 0 && (
         <div className="ui-result-win-info">
           <div className="ui-result-win-sub">Выигрыш</div>
           <div className="ui-result-win-amt">{lastWin.toFixed(2)} {currency}</div>
           <div className="ui-result-win-mult">×{multiplier.toFixed(2)} от ставки</div>
         </div>
-      )}
-
-      {isLose && (
-        <div className="ui-result-lose-sub">Ставка {bet.toFixed(2)} {currency} сгорела</div>
       )}
 
       {!autoplay.active && (

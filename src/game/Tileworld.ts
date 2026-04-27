@@ -39,6 +39,14 @@ function tunnelEllipsePolyRotatedLocal(
 
 /** Верхняя полоса травы в локальных координатах чанка: меньше Y → выше на экране (смотри маску чанка при сильном отрицании). */
 const GRASS_SPRITE_Y_OFFSET = -13
+/** Стирание травы по круглому hitbox персонажа. */
+const GRASS_ERASE_R = TILE * GameConfig.collision.radiusTiles
+/** Доп. усиление стирания верхней «шапки» травы у поверхности. */
+const GRASS_ERASE_TOP_EXTRA_R = GRASS_ERASE_R * 1.2
+const GRASS_ERASE_TOP_SHIFT_PX = TILE * 0.70
+const GRASS_ERASE_TOP_REACH_PX = TILE * 0.78
+/** Запас сверху для grass-mask, чтобы верх травы не клипался при отрицательном Y. */
+const GRASS_MASK_HEADROOM = 24
 
 /**
  * Фиксированная лавовая пещера — строгий axis-aligned прямоугольник (маска + лава по `rect`).
@@ -433,6 +441,8 @@ export class TileWorld {
   private _scratchDb = new PIXI.Graphics()
   private _scratchWb = new PIXI.Graphics()
   private _scratchDl = new PIXI.Graphics()
+  private _scratchGb = new PIXI.Graphics()
+  private _scratchGl = new PIXI.Graphics()
   private lastPt: {x:number,y:number}|null = null
   renderer: PIXI.Renderer|null = null
 
@@ -650,6 +660,7 @@ export class TileWorld {
     ux: number,
     uy: number,
     lineFrom: { x: number; y: number } | null,
+    carveGrass: boolean,
   ) {
     if (!this.renderer) return
     const ts = GameConfig.tunnelScratch
@@ -687,6 +698,29 @@ export class TileWorld {
           this._scratchWb.beginFill(0xffffff).drawPolygon(poly).endFill()
           this.renderer.render(this._scratchWb, { renderTexture: (chunk as any).lavaRT, clear: false })
         }
+        const grassMaskRT = (chunk as any).grassMaskRT as PIXI.RenderTexture | undefined
+        if (grassMaskRT && carveGrass) {
+          // Для травы используем центр hitbox персонажа (не ось туннеля/бура).
+          const dig = GameConfig.hero.dig
+          const px = -uy, py = ux
+          const across = dig.tunnelOffsetAcrossPx * (ux < -0.02 ? -1 : 1)
+          const gx = lx + ux * dig.tunnelOffsetAlongPx + px * across + dig.tunnelWorldOffsetXPx
+          const gy = ly + uy * dig.tunnelOffsetAlongPx + py * across + dig.tunnelWorldOffsetYPx + GRASS_MASK_HEADROOM
+          this._scratchGb.clear()
+          this._scratchGb.beginFill(0x000000).drawCircle(gx, gy, GRASS_ERASE_R).endFill()
+          if (row === 0) {
+            // Доп. штампы у поверхности: добиваем верхнюю шапку травы.
+            this._scratchGb.beginFill(0x000000).drawCircle(
+              gx,
+              gy - GRASS_ERASE_TOP_SHIFT_PX,
+              GRASS_ERASE_TOP_EXTRA_R,
+            ).endFill()
+            this._scratchGb.lineStyle(Math.max(2, GRASS_ERASE_TOP_EXTRA_R * 2), 0x000000)
+            this._scratchGb.moveTo(gx, gy)
+            this._scratchGb.lineTo(gx, gy - GRASS_ERASE_TOP_REACH_PX)
+          }
+          this.renderer.render(this._scratchGb, { renderTexture: grassMaskRT, clear: false })
+        }
 
         if (this.lavaSimulation) {
           this.lavaSimulation.openAreaIfNearLava(wx, wy, rx, ry, ux, uy)
@@ -706,6 +740,19 @@ export class TileWorld {
             this._scratchDl.moveTo(plx, ply).lineTo(lx, ly)
             this.renderer.render(this._scratchDl, { renderTexture: (chunk as any).darkMaskRT, clear: false })
           }
+          if (grassMaskRT && carveGrass) {
+            const dig = GameConfig.hero.dig
+            const px = -uy, py = ux
+            const across = dig.tunnelOffsetAcrossPx * (ux < -0.02 ? -1 : 1)
+            const gx = lx + ux * dig.tunnelOffsetAlongPx + px * across + dig.tunnelWorldOffsetXPx
+            const gy = ly + uy * dig.tunnelOffsetAlongPx + py * across + dig.tunnelWorldOffsetYPx + GRASS_MASK_HEADROOM
+            const pgx = plx + ux * dig.tunnelOffsetAlongPx + px * across + dig.tunnelWorldOffsetXPx
+            const pgy = ply + uy * dig.tunnelOffsetAlongPx + py * across + dig.tunnelWorldOffsetYPx + GRASS_MASK_HEADROOM
+            this._scratchGl.clear()
+            this._scratchGl.lineStyle(Math.max(2, GRASS_ERASE_R * 2), 0x000000)
+            this._scratchGl.moveTo(pgx, pgy).lineTo(gx, gy)
+            this.renderer.render(this._scratchGl, { renderTexture: grassMaskRT, clear: false })
+          }
         }
       }
     }
@@ -720,10 +767,6 @@ export class TileWorld {
     const spacingMul = ts.segmentSpacingMul ?? 0.22
     const spacing = Math.min(rx, ry) * spacingMul
 
-    const ax = this.lastPt?.x ?? wxEnd
-    const ay = this.lastPt?.y ?? wyEnd
-    const segdx = wxEnd - ax, segdy = wyEnd - ay
-    const segLen = Math.hypot(segdx, segdy)
     let ftx = tnx, fty = tny
     const tl = Math.hypot(ftx, fty)
     if (tl < 1e-3) {
@@ -737,21 +780,44 @@ export class TileWorld {
     // овал поворачивается «не туда» и ширина коридора на экране меняется с направлением.
     const stampUx = ftx
     const stampUy = fty
+    // Первый кадр копания: короткий ретро-сегмент, чтобы сразу прорезать верхний слой травы,
+    // но без глубокого «провала» старта (как было при большом startPad).
+    const startPad = TILE * 0.92
+    const ax = this.lastPt?.x ?? (wxEnd - stampUx * startPad)
+    const ay = this.lastPt?.y ?? (wyEnd - stampUy * startPad)
+    const toEndDx = wxEnd - ax, toEndDy = wyEnd - ay
+    const toEndLen = Math.hypot(toEndDx, toEndDy)
+    // Не прорезаем большой стартовый сегмент мгновенно:
+    // ограничиваем продвижение маски за один тик.
+    const maxAdvancePerTick = Math.max(spacing * 2.2, TILE * 0.16)
+    let wxTarget = wxEnd
+    let wyTarget = wyEnd
+    if (toEndLen > maxAdvancePerTick && toEndLen > 1e-6) {
+      const k = maxAdvancePerTick / toEndLen
+      wxTarget = ax + toEndDx * k
+      wyTarget = ay + toEndDy * k
+    }
+    const segdx = wxTarget - ax, segdy = wyTarget - ay
+    const segLen = Math.hypot(segdx, segdy)
 
     const nSteps = segLen < 0.5 ? 1 : Math.max(2, Math.ceil(segLen / spacing))
 
+    const hadLastPt = this.lastPt != null
     let prev: { x: number; y: number } | null = null
     for (let i = 0; i <= nSteps; i++) {
       const t = i / nSteps
       const wx = ax + segdx * t
       const wy = ay + segdy * t
-      this._scratchWorldTunnelStamp(wx, wy, rx, ry, stampUx, stampUy, prev)
+      // Траву режем по всему стартовому сегменту: круг + линия.
+      // Иначе остаётся «крышка» травы над первым шагом туннеля.
+      const carveGrass = true
+      this._scratchWorldTunnelStamp(wx, wy, rx, ry, stampUx, stampUy, prev, carveGrass)
       prev = { x: wx, y: wy }
     }
 
-    if (!this.lastPt) this.lastPt = { x: wxEnd, y: wyEnd }
-    this.lastPt.x = wxEnd
-    this.lastPt.y = wyEnd
+    if (!this.lastPt) this.lastPt = { x: wxTarget, y: wyTarget }
+    this.lastPt.x = wxTarget
+    this.lastPt.y = wyTarget
   }
 
   resetScratch() { this.lastPt = null }
@@ -775,6 +841,7 @@ export class TileWorld {
       const maskRT = (chunk as any).maskRT as PIXI.RenderTexture | undefined
       const darkMaskRT = (chunk as any).darkMaskRT as PIXI.RenderTexture | undefined
       const lavaRT = (chunk as any).lavaRT as PIXI.RenderTexture | undefined
+      const grassMaskRT = (chunk as any).grassMaskRT as PIXI.RenderTexture | undefined
       if (!maskRT || !darkMaskRT || !lavaRT) continue
       const w = maskRT.width
       const h = maskRT.height
@@ -782,6 +849,14 @@ export class TileWorld {
       const bl = new PIXI.Graphics().beginFill(0x000000).drawRect(0, 0, w, h).endFill()
       this.renderer.render(wh, { renderTexture: maskRT, clear: true })
       this.renderer.render(wh, { renderTexture: darkMaskRT, clear: true })
+      if (grassMaskRT) {
+        const whGrass = new PIXI.Graphics()
+          .beginFill(0xffffff)
+          .drawRect(0, 0, grassMaskRT.width, grassMaskRT.height)
+          .endFill()
+        this.renderer.render(whGrass, { renderTexture: grassMaskRT, clear: true })
+        whGrass.destroy()
+      }
       this.renderer.render(bl, { renderTexture: lavaRT, clear: true })
       wh.destroy()
       bl.destroy()
@@ -961,7 +1036,8 @@ export class TileWorld {
     }
 
     let topGrassSpr: PIXI.Sprite | null = null
-    // Верхнюю траву держим ВНЕ content.mask, иначе верх травинок режется границей маски на y=0.
+    // Верхнюю траву рисуем отдельным спрайтом, но маскируем тем же maskRT,
+    // чтобы она стиралась вместе с грунтом при прокапывании туннеля/пещер.
     if (row===0 && TileWorld.grassTex) {
       const spr = new PIXI.Sprite(TileWorld.grassTex)
       spr.x = 0
@@ -982,11 +1058,27 @@ export class TileWorld {
     const lavaRT      = PIXI.RenderTexture.create({width:CPW, height:CPH})
     const lavaMaskSpr = new PIXI.Sprite(lavaRT)
     lavaMaskSpr.renderable = false
+    let grassMaskRT: PIXI.RenderTexture | null = null
+    let grassMaskSpr: PIXI.Sprite | null = null
+    if (topGrassSpr) {
+      grassMaskRT = PIXI.RenderTexture.create({width: CPW, height: CPH + GRASS_MASK_HEADROOM})
+      grassMaskSpr = new PIXI.Sprite(grassMaskRT)
+      grassMaskSpr.y = -GRASS_MASK_HEADROOM
+      grassMaskSpr.renderable = false
+    }
 
     if (this.renderer) {
       const wh = new PIXI.Graphics().beginFill(0xffffff).drawRect(0,0,CPW,CPH).endFill()
       this.renderer.render(wh, {renderTexture:maskRT, clear:true})
       this.renderer.render(wh, {renderTexture:darkMaskRT, clear:true})
+      if (grassMaskRT) {
+        const whGrass = new PIXI.Graphics()
+          .beginFill(0xffffff)
+          .drawRect(0, 0, CPW, CPH + GRASS_MASK_HEADROOM)
+          .endFill()
+        this.renderer.render(whGrass, {renderTexture:grassMaskRT, clear:true})
+        whGrass.destroy()
+      }
       wh.destroy()
       const bl = new PIXI.Graphics().beginFill(0x000000).drawRect(0,0,CPW,CPH).endFill()
       this.renderer.render(bl, {renderTexture:lavaRT, clear:true})
@@ -1006,6 +1098,7 @@ export class TileWorld {
     }
 
     content.mask = maskSpr
+    if (topGrassSpr && grassMaskSpr) topGrassSpr.mask = grassMaskSpr
 
     const container = new PIXI.Container()
     container.x = offX; container.y = offY
@@ -1015,10 +1108,11 @@ export class TileWorld {
     container.addChild(content)
     if (topGrassSpr) container.addChild(topGrassSpr)
     container.addChild(maskSpr)
+    if (grassMaskSpr) container.addChild(grassMaskSpr)
     container.addChild(lavaMaskSpr)
 
     this.chunkContainer.addChild(container)
-    this.chunks.set(key, {gfx:container, col, row, ...{maskRT, darkMaskRT, lavaRT}} as any)
+    this.chunks.set(key, {gfx:container, col, row, ...{maskRT, darkMaskRT, lavaRT, grassMaskRT}} as any)
   }
 
   private _applyCavePathToChunk(
@@ -1143,6 +1237,7 @@ export class TileWorld {
       ;(c as any).maskRT?.destroy(true)
       ;(c as any).darkMaskRT?.destroy(true)
       ;(c as any).lavaRT?.destroy(true)
+      ;(c as any).grassMaskRT?.destroy(true)
     }
     this.chunks.clear()
     this._earthVariant.clear()
@@ -1150,6 +1245,7 @@ export class TileWorld {
     this._decorLavaCaveCount = 0
     this.brush.destroy(); this.line.destroy()
     this._scratchDb.destroy(); this._scratchWb.destroy(); this._scratchDl.destroy()
+    this._scratchGb.destroy(); this._scratchGl.destroy()
     this._caveGfx.destroy()
     this._tunnelBgTiles.clear()
     this._tunnelBgGroundTiling = null

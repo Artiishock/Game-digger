@@ -14,6 +14,7 @@ import { useWindowSize }   from './hooks/useWindowSize'
 import { gameEngine }      from './game/GameEngine'
 import { addReplayRound }  from './ui/menus/InfoAndReplay'
 import { toDisplay }       from './rgs/client'
+import { preloadStartupAssets } from './game/gameAssets'
 import './ui/ui.css'
 
 // Import Bebas Neue from Google Fonts
@@ -27,19 +28,58 @@ export const App: React.FC = () => {
   const phase    = useGameStore(s => s.phase)
   const settings = useGameStore(s => s.settings, shallow)
   const prevPhase = useRef<string>('')
+  const [assetsReady, setAssetsReady] = React.useState(false)
 
   // ── Boot ─────────────────────────────────────────────────────────────────────
   useEffect(() => {
-    gameEngine.boot()
+    let cancelled = false
+    ;(async () => {
+      await preloadStartupAssets()
+      if (cancelled) return
+      setAssetsReady(true)
+      gameEngine.boot()
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
     gameAudio.syncPhase(phase)
   }, [phase])
 
+  // Нет оверлея «ПРОВАЛ» — сразу выход в меню (ставка уже списана в движке).
+  useEffect(() => {
+    if (phase === 'LOSE') {
+      useGameStore.getState().setPhase('IDLE')
+    }
+  }, [phase])
+
   useEffect(() => {
     gameAudio.refreshFromStore()
   }, [settings])
+
+  // Блокируем браузерный zoom, чтобы масштаб игры не менялся от Ctrl-комбинаций.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!e.ctrlKey) return
+      const k = e.key
+      if (k === '+' || k === '-' || k === '=' || k === '_' || k === '0') {
+        e.preventDefault()
+      }
+    }
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return
+      e.preventDefault()
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('wheel', onWheel, { passive: false })
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('wheel', onWheel)
+    }
+  }, [])
 
   // ── Record round history for Bet Replay ─────────────────────────────────────
   useEffect(() => {
@@ -66,6 +106,22 @@ export const App: React.FC = () => {
   }, [phase])
 
   if (phase === 'ERROR') return <ErrorScreen />
+  if (!assetsReady || phase === 'BOOT') {
+    return (
+      <div style={{
+        position: 'relative',
+        width, height,
+        overflow: 'hidden',
+        background: '#1A0E08',
+        fontFamily: "'Barlow', sans-serif",
+      }}>
+        <div className="ui-boot">
+          <div className="ui-boot-spinner" />
+          <div className="ui-boot-title">DEEP RUSH</div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div style={{
@@ -92,13 +148,6 @@ export const App: React.FC = () => {
       <AutoplayModal />
       <BurgerMenu />
 
-      {/* ── Boot loading spinner ── */}
-      {phase === 'BOOT' && (
-        <div className="ui-boot">
-          <div className="ui-boot-spinner" />
-          <div className="ui-boot-title">DEEP RUSH</div>
-        </div>
-      )}
     </div>
   )
 }

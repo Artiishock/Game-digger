@@ -263,6 +263,26 @@ export function intersectsTunnel(
   return false
 }
 
+/**
+ * `placeObstacles` рассчитан по пути из buildRoundPath, но GameRenderer сдвигает
+ * старт маршрута в `_softenRoundPathStart` — первая часть полилинии смещается по X.
+ * Без этой чистки декор в начале визуально оказывается в коридоре (поверх выкопа).
+ */
+export function pruneDecorObstaclesAfterPathChange(
+  path: PathPoint[],
+  surfY: number,
+  obstacles: SafeObject[],
+): SafeObject[] {
+  if (path.length === 0) return obstacles
+  return obstacles.filter(o => {
+    if (o.kind !== 'decor') return true
+    const type = o.decorVisual ?? 'GOLD'
+    const sz = type === 'HOME' ? DECOR_HOME_PLACE_SZ : (ITEM_SZ[type] ?? 60)
+    const r = type === 'HOME' ? (sz * Math.SQRT1_2) : (sz / 2)
+    return !intersectsTunnel(o.x, o.y, r, path, surfY, DECOR_VISUAL_TUNNEL_MARGIN)
+  })
+}
+
 /** Прямоугольная лавовая пещера (мир): центр + полуразмеры + радиус скругления. */
 export type LavaCaveRect = { cx: number; cy: number; hw: number; hh: number; cr?: number }
 
@@ -503,6 +523,7 @@ export function placeObstacles(
   terminalY: number,
   worldSeed: number,
   roadPoints: RoadPoint[] = [],
+  viewportWidthPx?: number,
 ): SafeObject[] {
   const objects:  SafeObject[] = []
   const SPAWN_INTERVAL = TILE * GameConfig.spawn.decorIntervalTiles
@@ -531,8 +552,24 @@ export function placeObstacles(
   const decorClearance = TILE * 1.2
   /** Декор может появляться чуть шире игрового окна, чтобы не было пустых краёв. */
   const decorSpawnPadX = TILE * 1.4
-  const decorSpawnMinX = X_MIN - decorSpawnPadX
-  const decorSpawnMaxX = X_MAX + decorSpawnPadX
+  const decorGlobalMinX = X_MIN - decorSpawnPadX
+  const decorGlobalMaxX = X_MAX + decorSpawnPadX
+  // Если знаем ширину экрана — спавним декор вокруг оси туннеля в "экранном" диапазоне.
+  const decorHalfScreenSpan =
+    viewportWidthPx && viewportWidthPx > 0
+      ? viewportWidthPx * 0.5 + decorSpawnPadX
+      : (decorGlobalMaxX - decorGlobalMinX) * 0.5
+  const decorBoundsAtY = (worldY: number): { minX: number; maxX: number; midX: number } => {
+    const tunX = tunnelXAtWorldY(path, worldY)
+    let minX = Math.max(decorGlobalMinX, tunX - decorHalfScreenSpan)
+    let maxX = Math.min(decorGlobalMaxX, tunX + decorHalfScreenSpan)
+    if (maxX - minX < TILE * 0.5) {
+      const cx = Math.max(decorGlobalMinX, Math.min(decorGlobalMaxX, tunX))
+      minX = Math.max(decorGlobalMinX, cx - TILE * 0.25)
+      maxX = Math.min(decorGlobalMaxX, cx + TILE * 0.25)
+    }
+    return { minX, maxX, midX: (minX + maxX) * 0.5 }
+  }
 
   const tryDecor = (type: EventType, yRow: number) => {
     const sz = type === 'HOME' ? DECOR_HOME_PLACE_SZ : (ITEM_SZ[type] ?? 60)
@@ -542,7 +579,8 @@ export function placeObstacles(
     const ty = type.charCodeAt(0) ?? 0
 
     const tryPlace = (worldX: number, worldY: number, tunnelMargin = DECOR_TUNNEL_PLACE_MARGIN): boolean => {
-      const x = Math.max(decorSpawnMinX, Math.min(decorSpawnMaxX, worldX))
+      const b = decorBoundsAtY(worldY)
+      const x = Math.max(b.minX, Math.min(b.maxX, worldX))
       if (intersectsTunnel(x, worldY, r, path, surfY, tunnelMargin)) return false
       // Не ставим декор в зонах будущей лавы.
       for (const lv of lavaSpots) {
@@ -588,13 +626,14 @@ export function placeObstacles(
     if (placedAny) return
 
     // Затем заполняем обе половины ширины (правая и левая), чтобы не было пустоты справа.
-    const midX = (decorSpawnMinX + decorSpawnMaxX) * 0.5
+    const bw = decorBoundsAtY(baseY)
+    const midX = bw.midX
     const halfOrder: Array<'right' | 'left'> =
       rng(yRow ^ 0xA11F ^ ty, worldSeed) < 0.5 ? ['right', 'left'] : ['left', 'right']
 
     for (const half of halfOrder) {
-      const minX = half === 'right' ? midX : decorSpawnMinX
-      const maxX = half === 'right' ? decorSpawnMaxX : midX
+      const minX = half === 'right' ? midX : bw.minX
+      const maxX = half === 'right' ? bw.maxX : midX
       for (let i = 0; i < 12; i++) {
         const u = rng(yRow ^ 0x3111 ^ i * 73 ^ ty ^ (half === 'right' ? 0x51 : 0x19), worldSeed)
         const xWide = minX + u * (maxX - minX)
@@ -613,12 +652,13 @@ export function placeObstacles(
       const wy =
         yRow + (rng(yRow ^ 0x41AA + k * 31 + ty, worldSeed) - 0.5) * SPAWN_INTERVAL * 0.92
       const tx = tunnelXAtWorldY(path, wy)
+      const by = decorBoundsAtY(wy)
       const u = rng(yRow ^ 0x51AA + k * 37, worldSeed)
       const v = rng(yRow ^ 0x61AA + k * 41, worldSeed)
       const side = v < 0.5 ? -1 : 1
       const off = minOffV + u * (maxOffV - minOffV)
       const jLat = (rng(yRow ^ 0x71AA + k * 43, worldSeed) - 0.5) * TILE * 0.35
-      const x = tx + side * off + jLat
+      const x = Math.max(by.minX, Math.min(by.maxX, tx + side * off + jLat))
       if (tryPlace(x, wy, vm)) {
         placedAny = true
         break
@@ -626,8 +666,9 @@ export function placeObstacles(
     }
 
     if (!placedAny) {
+      const bw = decorBoundsAtY(baseY)
       const u = rng(yRow ^ 0x8BAD ^ ty, worldSeed)
-      const xWide = decorSpawnMinX + u * (decorSpawnMaxX - decorSpawnMinX)
+      const xWide = bw.minX + u * (bw.maxX - bw.minX)
       tryPlace(xWide, baseY)
     }
   }
@@ -751,6 +792,7 @@ export function buildRoundPath(
   surfY:     number,
   ppm:       number,
   events:    RoundEvent[],
+  viewportWidthPx?: number,
 ): FullPathResult {
   const roadEventsOrdered = events.filter(ev => ev.type !== 'LAVA')
   const roadEvents = roadEventsOrdered.map(ev => ({
@@ -792,7 +834,7 @@ export function buildRoundPath(
   }
 
   // Pass 5: объекты вне туннеля (капсульная проверка)
-  const obstacles  = placeObstacles(path, surfY, terminalY, worldSeed, roadPoints)
+  const obstacles  = placeObstacles(path, surfY, terminalY, worldSeed, roadPoints, viewportWidthPx)
 
   // Waypoints для GameRenderer (только X)
   const waypoints  = path.map(p => p.x)

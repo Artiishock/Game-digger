@@ -9,7 +9,7 @@ export type GamePhase =
   | 'BETTING'    // placing bet with RGS
   | 'RUNNING'    // character digging
   | 'WIN'        // HOME reached — show result
-  | 'LOSE'       // LAVA reached — show result
+  | 'LOSE'       // LAVA: краткий переход, оверлей нет (сразу → IDLE)
   | 'ERROR'      // RGS or session error
 
 export type SpeedMode = 0.75 | 1 | 2 | 5

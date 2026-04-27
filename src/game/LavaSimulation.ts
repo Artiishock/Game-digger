@@ -495,10 +495,11 @@ export class LavaSimulation {
     }
     if (hasFlowing) {
       this._flow(false)
-      this.time += dt
-      this._texOffX += dt * 6
-      this._texOffY += dt * 3.5
     }
+    // Текстура лавы должна "жить" всегда, даже у статичных источников (пещер).
+    this.time += dt
+    this._texOffX += dt * 6
+    this._texOffY += dt * 3.5
     this._render()
     if (this._destroyed) return
     this._threshFilter.uniforms.uTime = this.time

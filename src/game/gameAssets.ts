@@ -1,3 +1,6 @@
+import * as PIXI from 'pixi.js'
+import { SpineAnimator } from './SpineAnimator'
+
 /**
  * Пути к PNG в public/assets (Vite отдаёт как /assets/...).
  */
@@ -24,3 +27,30 @@ export const GameAssets = {
   stone: './assets/stone.png',
   home: './assets/home.png',
 } as const
+
+let _startupPreloadPromise: Promise<void> | null = null
+
+/**
+ * Предзагрузка ассетов перед показом игры.
+ * Грузим все PNG и все Spine-наборы один раз за сессию.
+ */
+export function preloadStartupAssets(): Promise<void> {
+  if (_startupPreloadPromise) return _startupPreloadPromise
+  _startupPreloadPromise = (async () => {
+    const textureUrls = Object.values(GameAssets)
+    const textureLoads = textureUrls.map(async (url) => {
+      try {
+        await PIXI.Texture.fromURL(url)
+      } catch {
+        console.warn(`[preload] failed texture: ${url}`)
+      }
+    })
+    await Promise.all([
+      ...textureLoads,
+      SpineAnimator.load(),
+      SpineAnimator.loadHero(),
+      SpineAnimator.loadGoldStone(),
+    ])
+  })()
+  return _startupPreloadPromise
+}

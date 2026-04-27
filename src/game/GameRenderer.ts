@@ -10,7 +10,7 @@ import type { Spine } from 'pixi-spine'
 import { GameConfig, HERO_MAX_SIDE_PX } from './GameConfig'
 import { gameAudio } from '../audio/GameAudio'
 import { GameAssets } from './gameAssets'
-import { buildRoundPathV2, buildRoundPathV3, cavePathHitsTunnel } from './WorldMap'
+import { buildRoundPathV2, buildRoundPathV3, cavePathHitsTunnel, distancePointToTunnelPolyline, pruneDecorObstaclesAfterPathChange } from './WorldMap'
 import type { FullPathResult, PathPoint, RoadPoint } from './WorldMap'
 
 // ── Переключение варианта пути ──────────────────────────────────────────────
@@ -25,6 +25,11 @@ const START_SPAWN_OFFSCREEN_TILES = 1.5
 /** Стартовые точки туннеля должны быть близко к месту начала копания. */
 const START_PATH_SOFTEN_POINTS = 8
 const START_PATH_MAX_DX_PX = TILE * 0.85
+/** Задержка старта прорезки туннеля в интро start-анимации (0 = резка сразу у травы). */
+const START_TUNNEL_CARVE_DELAY_SEC = 0
+/** Скорость «призрака» в die-сцене: базово ×2; после любого нажатия клавиши/клика — ещё ×3 (итого ×6 к исходной). */
+const LAVA_GHOST_BASE_SPEED_MUL = 2
+const LAVA_GHOST_INPUT_SPEED_MUL = 3
 
 /** X на оси туннеля для произвольной глубины (линейная интерполяция по сегментам path). */
 function pathXAtWorldY(wy: number, path: PathPoint[], surfY: number): number {
@@ -294,11 +299,43 @@ class SpriteCharacter {
     this._spine.state.addAnimation(0, HERO_ANIM.digLoop, true, 0)
   }
 
-  playDie() {
+  /** LAVA: `loop: true` — `die` крутится, пока идёт подъём. */
+  playDie(opts?: { loop?: boolean }) {
     if (!this._spine || this._dieLocked) return
     this._dieLocked = true
     this._animHoldSec = 999
-    this._setAnim(HERO_ANIM.die, false)
+    this._setAnim(HERO_ANIM.die, opts?.loop === true)
+  }
+
+  /**
+   * Подъём к поверхности: отдельный поворот только у Spine/PNG с die — root (бейдж, контейнер) не вращается.
+   */
+  applyLavaDeathAscentVisual() {
+    this.resetFacing()
+    const a = GameConfig.hero.lavaDieExtraRotationRad ?? 0
+    if (this._spine) this._spine.rotation = a
+    if (this._spr) this._spr.rotation = a
+  }
+
+  clearLavaDeathVisualOverride() {
+    this.root.scale.set(1, 1)
+    this.root.rotation = 0
+    this.resetFacing()
+  }
+
+  /** Сброс после LAVA-концовки: снова idle в главном меню. */
+  resetFromDeath() {
+    this.clearLavaDeathVisualOverride()
+    if (!this._dieLocked) {
+      this._animHoldSec = 0
+      this._setYOffset(false)
+      if (this._spine) this._setAnim(HERO_ANIM.idle, true)
+      return
+    }
+    this._dieLocked = false
+    this._animHoldSec = 0
+    this._setYOffset(false)
+    if (this._spine) this._setAnim(HERO_ANIM.idle, true)
   }
 
   resetFacing() {
@@ -476,7 +513,6 @@ class ObjectSpawner {
       if (obj) {
         obj.isRoadItem = true
         obj.rgsEventRef = roadEventsOrdered[i]
-        this._attachMarker(obj)
         this._attachValueLabel(obj)
         this._roadItems.push(obj)
       }
@@ -502,19 +538,6 @@ class ObjectSpawner {
       } else if (so.kind === 'lava') {
         this.onLavaDecorObstacle?.(so)
       }
-    }
-
-    // Пульсация маркеров road items
-    const pulse = 0.45 + 0.55 * Math.sin(Date.now() * 0.004)
-    for (const obj of this._roadItems) {
-      const m = obj.roadMarker
-      if (!m || obj.collected || (m as any).destroyed) continue
-      try {
-        m.clear()
-        m.lineStyle(3, 0xFFD700, pulse)
-        const r = Math.max(obj.width, obj.height) * 0.55 + 10
-        m.drawCircle(0, 0, r)
-      } catch { obj.roadMarker = undefined }
     }
 
     // Culling
@@ -821,6 +844,8 @@ export class GameRenderer {
   private _startIntroX=0
   /** Во время стартовой анимации текущий экранный Y корня героя. */
   private _startIntroY=0
+  /** Сколько секунд осталось до начала прорезки туннеля в start-интро. */
+  private _startTunnelCarveDelaySec = 0
   private charX=0; private charY=0
   private charScreenY=0
   private multiplier=1; private depth=0; private distance=0
@@ -847,6 +872,27 @@ export class GameRenderer {
   private _lossTerminalDescent = false // end of LOSS path: smooth fall, no tunnel snap
   /** X оси у терминальной лавы (конец предрасчёта туннеля LOSS); `null` если не LOSS */
   private _lossLavaCenterX: number | null = null
+  /** Смерть в лаве: полёт вверх, на поверхности второй герой, смена фокуса камеры. */
+  private _lavaDeathCinematic = false
+  private _lavaDeathX = 0
+  private _lavaDeathRootY = 0
+  private _lavaHeavenPhase = false
+  private _lavaHeavenT = 0
+  private _lavaDeathT = 0
+  /** Скорость подъёма "старого" героя до смены фокуса (px/сек, игровое время). */
+  private _lavaCarryUpSpeed = 0
+  private _lavaSurfaceSurvivor: SpriteCharacter | null = null
+  private _lavaLossTimeoutPending = false
+  /** Любое нажатие (не удержание) в die-сцене — включает «быстрый» множитель до конца сцены. */
+  private _lavaDeathPressBoost = false
+  private _lavaDeathInputListeners = false
+  private _onLavaKbdDown = (e: KeyboardEvent) => {
+    if (e.repeat) return
+    this._lavaDeathPressBoost = true
+  }
+  private _onLavaPtrDown = () => {
+    this._lavaDeathPressBoost = true
+  }
   private _caveZones:   Array<{x:number; y:number; r:number}> = []  // круги всех активных пещер
   /** Позиция вдоль туннеля: длина дуги от начала path; скорость = const вдоль этой дуги */
   private _pathArcS = 0
@@ -1041,6 +1087,8 @@ export class GameRenderer {
 
   private _updateTunnel(sx: number, sy: number){
     if (this.tileWorld) {
+      // В сцене смерти LAVA камера едет вверх — без стирания туннеля (иначе «бурит» за кадром).
+      if (this._lavaDeathCinematic) return
       this.tileWorld.scratchAt(
         sx,
         sy,
@@ -1253,6 +1301,20 @@ export class GameRenderer {
     }
   }
 
+  /** Финальный runtime-filter: декор не должен касаться фактического коридора пути. */
+  private _pruneDecorNearTunnelPath(obstacles: import('./WorldMap').SafeObject[]): import('./WorldMap').SafeObject[] {
+    const path = this._roundPath?.pathPoints
+    if (!path || path.length === 0) return obstacles
+    return obstacles.filter((o) => {
+      if (o.kind !== 'decor') return true
+      const halfW = Math.max(1, o.w * 0.5)
+      const halfH = Math.max(1, o.h * 0.5)
+      const radius = Math.hypot(halfW, halfH)
+      const d = distancePointToTunnelPolyline(o.x, o.y, path)
+      return d > radius + TILE * 0.06
+    })
+  }
+
   // ─── Round ────────────────────────────────────────────────────────────────
 
   startRound(events:RoundEvent[],_spd:number){
@@ -1264,6 +1326,10 @@ export class GameRenderer {
 
     this.running=false;this.idleActive=false;this._ended=false
     this._awaitingStartAnim=false
+    this._startTunnelCarveDelaySec = 0
+    this._cleanupLavaDeathCinematic()
+    this.miner.resetFromDeath()
+    this._lavaLossTimeoutPending = false
     this.multiplier=0;this.depth=0;this.distance=0
     this.particles=[]
     this.rgsQueue=[...events]
@@ -1345,10 +1411,16 @@ export class GameRenderer {
       this._getLavaSize.bind(this),
     )
     // ── Строим полный маршрут ДО спавна объектов ────────────────────────────
-    this._roundPath = buildRoundPath(this.worldSeed, this.surfY, this.ppm, events)
+    this._roundPath = buildRoundPath(this.worldSeed, this.surfY, this.ppm, events, this.W)
     const initialPathX = pathXAtWorldY(startY, this._roundPath.pathPoints, this.surfY)
     this._shiftRoundPathX(startX - initialPathX)
     this._softenRoundPathStart(startX)
+    this._roundPath.obstacles = pruneDecorObstaclesAfterPathChange(
+      this._roundPath.pathPoints,
+      this.surfY,
+      this._roundPath.obstacles,
+    )
+    this._roundPath.obstacles = this._pruneDecorNearTunnelPath(this._roundPath.obstacles)
     this._waypoints   = this._roundPath.waypoints
     this._tunnelPath  = this._roundPath.pathPoints.map(p => ({ x: p.x, y: p.y }))
     this._lossLavaCenterX =
@@ -1441,6 +1513,7 @@ export class GameRenderer {
       this.miner.setIdleMode(true)
       this.miner.playStartDigTransition()
       this._awaitingStartAnim = true
+      this._startTunnelCarveDelaySec = START_TUNNEL_CARVE_DELAY_SEC
       this.running = false
     } else {
       this.miner.playStartDigTransition()
@@ -1645,6 +1718,183 @@ export class GameRenderer {
     return { ox, oy }
   }
 
+  // ─── LAVA: полёт вверх + второй герой на поверхности ───────────────────────
+
+  private _installLavaDeathInputBoost(): void {
+    if (this._lavaDeathInputListeners || typeof window === 'undefined') return
+    this._lavaDeathInputListeners = true
+    this._lavaDeathPressBoost = false
+    window.addEventListener('keydown', this._onLavaKbdDown)
+    window.addEventListener('pointerdown', this._onLavaPtrDown, true)
+  }
+
+  private _uninstallLavaDeathInputBoost(): void {
+    if (!this._lavaDeathInputListeners) return
+    this._lavaDeathInputListeners = false
+    this._lavaDeathPressBoost = false
+    if (typeof window === 'undefined') return
+    window.removeEventListener('keydown', this._onLavaKbdDown)
+    window.removeEventListener('pointerdown', this._onLavaPtrDown, true)
+  }
+
+  private _cleanupLavaDeathCinematic(): void {
+    this._uninstallLavaDeathInputBoost()
+    if (this._lavaSurfaceSurvivor) {
+      if (this._lavaSurfaceSurvivor.root.parent) {
+        this._lavaSurfaceSurvivor.root.parent.removeChild(this._lavaSurfaceSurvivor.root)
+      }
+      this._lavaSurfaceSurvivor.destroy()
+      this._lavaSurfaceSurvivor = null
+    }
+    this._lavaDeathCinematic = false
+    this._lavaHeavenPhase = false
+    this._lavaHeavenT = 0
+    this.miner.clearLavaDeathVisualOverride()
+    this.miner.root.visible = true
+  }
+
+  /** false → вызывать старый setTimeout(lose) сразу. */
+  private _tryStartLavaDeathCinematic(): boolean {
+    if (!SpineAnimator.heroReady) return false
+    const hero = SpineAnimator.createHero(HERO_SPINE_SCALE)
+    if (!hero) return false
+    const sur = new SpriteCharacter()
+    this.minerLayer.addChildAt(sur.root, 0)
+    if (!sur.setHeroSpine(hero)) {
+      sur.destroy()
+      return false
+    }
+    const hi = GameConfig.hero.idle
+    sur.root.x = this.charX + hi.rootOffsetXPx
+    sur.root.y = this.surfY + hi.rootOffsetYPx
+    sur.setIdleMode(true)
+    sur.resetFacing()
+    this._lavaSurfaceSurvivor = sur
+
+    this._lavaDeathCinematic = true
+    this._lavaHeavenPhase = false
+    this._lavaHeavenT = 0
+    this._lavaDeathT = 0
+    this._lavaCarryUpSpeed = 0
+    this._lavaLossTimeoutPending = false
+    this._lavaDeathX = this.charX
+    this._lavaDeathRootY = this.miner.root.y
+    this.miner.root.visible = true
+    this.miner.applyLavaDeathAscentVisual()
+    this._installLavaDeathInputBoost()
+    return true
+  }
+
+  private _scheduleLavaLossResult(): void {
+    if (this._lavaLossTimeoutPending) return
+    this._lavaLossTimeoutPending = true
+    setTimeout(() => {
+      this._lavaLossTimeoutPending = false
+      gameEngine.onRoundComplete(0, false)
+      this._returnToIdle()
+    }, GameConfig.round.loseDelayMs)
+  }
+
+  private _tickLavaDeathCinematic(dt: number): void {
+    // Во время die-сцены игнорируем speed-кнопки/нажатия — темп всегда фиксированный.
+    const spd = 1
+    const m = GameConfig.lava.deathSceneMotionScale ?? 1
+    const gameDtM = dt * m
+    const inputBoost = this._lavaDeathPressBoost
+    const gMul =
+      LAVA_GHOST_BASE_SPEED_MUL *
+      (inputBoost ? LAVA_GHOST_INPUT_SPEED_MUL : 1)
+    const hiIdle = GameConfig.hero.idle
+    const previewIdleX = hiIdle.rootOffsetXPx
+    const previewIdleY = this.surfY + hiIdle.rootOffsetYPx
+    const sur = this._lavaSurfaceSurvivor
+    if (!sur) {
+      this._scheduleLavaLossResult()
+      this._pUpdate(gameDtM)
+      return
+    }
+    const targetY = sur.root.y
+    const minSec = GameConfig.lava.heavenRiseMinSec
+    const needH = GameConfig.lava.heavenRiseHeightPx
+    const maxH = GameConfig.lava.heavenRiseMaxSec
+    const hs = GameConfig.lava.heavenRiseSpeedPx * spd * m
+
+    if (!this._lavaHeavenPhase) {
+      this._lavaDeathT += gameDtM
+      const maxT = GameConfig.lava.deathAscentMaxSec
+      let ascentSpd = GameConfig.lava.deathAscentSpeedPx * spd * m
+      if (this._lavaDeathT >= maxT) {
+        const remain = this._lavaDeathRootY - targetY
+        if (remain > 0.5) {
+          ascentSpd = Math.max(ascentSpd, remain * 1.8)
+        }
+      }
+      this._lavaCarryUpSpeed = ascentSpd
+      this._lavaDeathRootY = Math.max(
+        targetY,
+        this._lavaDeathRootY - ascentSpd * gMul * gameDtM,
+      )
+      if (this._lavaDeathRootY <= targetY + 0.5) {
+        this._lavaDeathRootY = targetY
+        this._lavaHeavenPhase = true
+        this._lavaHeavenT = 0
+        // В верхней фазе показываем ту же "поверхность", что и до старта игры.
+        this.running = false
+        this.idleX = 0
+        this._syncSurfaceScenery()
+        // Тот же зацикленный die + тот же поворот — не переключаем на idle.
+        this.miner.root.x = sur.root.x
+        this.miner.root.y = sur.root.y
+      } else {
+        this.miner.root.x = this._lavaDeathX
+        this.miner.root.y = this._lavaDeathRootY
+      }
+    } else {
+      const surLerp = Math.min(0.12 * spd * m * gMul, 0.45)
+      sur.root.x += (previewIdleX - sur.root.x) * surLerp
+      sur.root.y += (previewIdleY - sur.root.y) * surLerp
+      const ghostUpSpeed =
+        (this._lavaCarryUpSpeed > 0 ? this._lavaCarryUpSpeed : hs) * gMul
+      this.miner.root.x = sur.root.x
+      this.miner.root.y -= ghostUpSpeed * gameDtM
+      this._lavaHeavenT += gameDtM
+      const upDist = sur.root.y - this.miner.root.y
+      if (
+        (this._lavaHeavenT >= minSec && upDist >= needH) ||
+        this._lavaHeavenT >= maxH
+      ) {
+        this.miner.root.visible = false
+        this._scheduleLavaLossResult()
+      }
+    }
+
+    this.charX = this._lavaDeathX
+    this.charY = this._lavaHeavenPhase ? this.surfY : this._lavaDeathRootY
+
+    this.miner.update(gameDtM, 1, false)
+    sur.update(gameDtM, 0.9, false)
+
+    // После встречи с клоном: камера и поверхность как в pre-game idle.
+    const tCX = this._lavaHeavenPhase
+      ? (previewIdleX - this.W / 2)
+      : (this.miner.root.x - this.W / 2)
+    const tCY = this._lavaHeavenPhase
+      ? this.idleCamY
+      : (this.miner.root.y - this.charScreenY)
+    const camLerp = Math.min(0.12 * spd * m, 0.9)
+    this.camX += (tCX - this.camX) * camLerp
+    this.camY += (tCY - this.camY) * camLerp
+    this._syncLayerScroll()
+    this._updateTunnel(this.charX - this.camX, this.charY - this.camY)
+    const skyVisible = this.camY < this.surfY + TILE * 2
+    if (this.skyLayer.visible !== skyVisible) this.skyLayer.visible = skyVisible
+    this._syncSkyBgParallax()
+    this._updateSkyDecor(dt * m)
+    this._updateWorldMask(this.W, this.H)
+    if (this.tileWorld) this.tileWorld.update(this.camX, this.camY, this.W, this.H)
+    this._pUpdate(gameDtM)
+  }
+
   // ─── Tick ─────────────────────────────────────────────────────────────────
 
   private _tick(delta:number){
@@ -1696,7 +1946,10 @@ export class GameRenderer {
       this.camX += (tCX - this.camX) * camLerp
       this.camY += (tCY - this.camY) * camLerp
       this._syncLayerScroll()
-      this._updateTunnel(this.charX - this.camX, this.charY - this.camY)
+      this._startTunnelCarveDelaySec = Math.max(0, this._startTunnelCarveDelaySec - gameDt)
+      if (this._startTunnelCarveDelaySec <= 0) {
+        this._updateTunnel(this.charX - this.camX, this.charY - this.camY)
+      }
       const skyVisible = this.camY < this.surfY + TILE * 2
       if (this.skyLayer.visible !== skyVisible) this.skyLayer.visible = skyVisible
       this._syncSkyBgParallax()
@@ -1728,6 +1981,11 @@ export class GameRenderer {
         this._syncSurfaceScenery()
       }
       this._pUpdate(gameDt)
+      return
+    }
+
+    if (this._lavaDeathCinematic) {
+      this._tickLavaDeathCinematic(dt)
       return
     }
 
@@ -1996,7 +2254,7 @@ export class GameRenderer {
     if (!this._ended && !this.stoneBreakActive && !this.goldBreakActive && this.charY > minDepthForLava && lavaHit) {
       this._ended=true
       this.running=false
-      this.miner.playDie()
+      this.miner.playDie({ loop: true })
       gameAudio.playSfx('sfx_lava.ogg')
       this._burst(this.charX,this.charY,C.lava,20)
       // Потребляем LAVA-ивент из rgsQueue — исход тот же (поражение),
@@ -2004,10 +2262,12 @@ export class GameRenderer {
       const lavaIdx = this.rgsQueue.findIndex(e => e.type === 'LAVA')
       if (lavaIdx >= 0) this.rgsQueue.splice(lavaIdx, 1)
       this._logTerminal('simulation', 'LAVA')
-      setTimeout(()=>{
-        gameEngine.onRoundComplete(0,false)
-        this._returnToIdle()
-      },GameConfig.round.loseDelayMs)
+      if (!this._tryStartLavaDeathCinematic()) {
+        setTimeout(() => {
+          gameEngine.onRoundComplete(0, false)
+          this._returnToIdle()
+        }, GameConfig.round.loseDelayMs)
+      }
     }
 
     this._pUpdate(gameDt)
@@ -2092,7 +2352,9 @@ export class GameRenderer {
           Math.floor(Math.random() * GameConfig.items.STONE.subValues.length)
         ]
       }
-      this.multiplier = Math.max(GameConfig.multiplier.floor, this.multiplier - stoneSub)
+      this.multiplier = this._roundMultiplier(
+        Math.max(GameConfig.multiplier.floor, this.multiplier - stoneSub),
+      )
       this._logCollect('STONE', multBefore, this.multiplier, duration)
       this.stoneBreakTotalDuration = duration
       this.stoneBreakRemainingTime = duration
@@ -2135,7 +2397,7 @@ export class GameRenderer {
           Math.floor(Math.random() * GameConfig.items.GOLD.addValues.length)
         ]
       }
-      this.multiplier = this.multiplier + goldAdd
+      this.multiplier = this._roundMultiplier(this.multiplier + goldAdd)
       this._logCollect('GOLD', multBefore, this.multiplier, duration)
       this.goldBreakRemainingTime = duration
       this.goldBreakTotalDuration = duration
@@ -2171,10 +2433,10 @@ export class GameRenderer {
       const { floor } = GameConfig.multiplier
       if (rgsEffect) {
         switch (rgsEffect.op) {
-          case 'add': this.multiplier = this.multiplier + rgsEffect.value; break
-          case 'sub': this.multiplier = Math.max(floor, this.multiplier - rgsEffect.value); break
-          case 'mul': this.multiplier = this.multiplier * rgsEffect.value; break
-          case 'div': this.multiplier = Math.max(floor, this.multiplier / rgsEffect.value); break
+          case 'add': this.multiplier = this._roundMultiplier(this.multiplier + rgsEffect.value); break
+          case 'sub': this.multiplier = this._roundMultiplier(Math.max(floor, this.multiplier - rgsEffect.value)); break
+          case 'mul': this.multiplier = this._roundMultiplier(this.multiplier * rgsEffect.value); break
+          case 'div': this.multiplier = this._roundMultiplier(Math.max(floor, this.multiplier / rgsEffect.value)); break
         }
       } else {
         this.multiplier = this._applyEffect(type, this.multiplier)
@@ -2195,7 +2457,7 @@ export class GameRenderer {
     if(obj.terminal){
       this._ended=true
       this.running=false
-      if (type === 'LAVA') this.miner.playDie()
+      if (type === 'LAVA') this.miner.playDie({ loop: true })
       obj.gfx.visible=false
 
       // Фактический исход определяет RGS — ищем HOME или LAVA в очереди
@@ -2212,10 +2474,19 @@ export class GameRenderer {
       else if (type === 'LAVA') gameAudio.playCollect('LAVA', { terminal: true })
 
       this._logTerminal('object', won ? 'HOME' : 'LAVA')
-      setTimeout(()=>{
-        gameEngine.onRoundComplete(won?this.multiplier:0,won)
-        this._returnToIdle()
-      },won ? GameConfig.round.winDelayMs : GameConfig.round.loseDelayMs)
+      if (won) {
+        setTimeout(() => {
+          gameEngine.onRoundComplete(this.multiplier, true)
+          this._returnToIdle()
+        }, GameConfig.round.winDelayMs)
+      } else {
+        if (!this._tryStartLavaDeathCinematic()) {
+          setTimeout(() => {
+            gameEngine.onRoundComplete(0, false)
+            this._returnToIdle()
+          }, GameConfig.round.loseDelayMs)
+        }
+      }
     }else{
       if (obj.valueLabel) {
         if (obj.valueLabel.parent) obj.valueLabel.parent.removeChild(obj.valueLabel)
@@ -2262,14 +2533,19 @@ export class GameRenderer {
     this._breakGfx = null
   }
 
+  /** Каноническое округление множителя: все последующие эффекты считаются от отображаемого значения. */
+  private _roundMultiplier(v: number): number {
+    return Math.round((v + Number.EPSILON) * 100) / 100
+  }
+
   private _applyEffect(type:EventType, m:number):number{
     const { floor } = GameConfig.multiplier
     const pick = (arr:number[]) => arr[Math.floor(Math.random() * arr.length)]
     switch(type){
-      case 'COIN':    return m + pick(GameConfig.items.COIN.addValues)
+      case 'COIN':    return this._roundMultiplier(m + pick(GameConfig.items.COIN.addValues))
       case 'GOLD':    return m  // обрабатывается через goldBreak
-      case 'DIAMOND': return m * pick(GameConfig.items.DIAMOND.multValues)
-      case 'BOMB':    return Math.max(floor, m / GameConfig.items.BOMB.divisor)
+      case 'DIAMOND': return this._roundMultiplier(m * pick(GameConfig.items.DIAMOND.multValues))
+      case 'BOMB':    return this._roundMultiplier(Math.max(floor, m / GameConfig.items.BOMB.divisor))
       case 'STONE':   return m  // обрабатывается через stoneBreak
       default:        return m
     }
@@ -2294,6 +2570,8 @@ export class GameRenderer {
   }
 
   private _returnToIdle(){
+    this._cleanupLavaDeathCinematic()
+    this.miner.resetFromDeath()
     this._hideTunnel()
     this.spawner?.reset(); this.spawner=null
 
@@ -2322,8 +2600,22 @@ export class GameRenderer {
 
     this.objectsLayer.removeChildren()  // ← чистим объекты при возврате
     this.minerLayer.addChild(this.miner.root)
-    this.idleX=this.charX;this.idleDir=1;this._bounceT=3
-    this.idleActive=true
+    // Как в конструкторе: не тянем X из charX (после раунда/лавы — герой вдали от стартовой сцены)
+    this.running = false
+    this._ended = false
+    this._lossRound = false
+    this._lossTerminalDescent = false
+    this._lossLavaCenterX = null
+    this.goldBreakActive = false
+    this.goldBreakRemainingTime = 0
+    this.goldBreakTotalDuration = 0
+    this.goldBreakStartMultiplier = 0
+    this.goldBreakTickTimer = 0
+    this.goldBreakDisplayMult = 0
+    this.idleX = 0
+    this.idleDir = 1
+    this._bounceT = 0
+    this.idleActive = true
     this._awaitingStartAnim = false
     this.miner.setIdleMode(true)
     this.miner.resetFacing()
@@ -2333,9 +2625,16 @@ export class GameRenderer {
       this.miner.root.x = this.idleX + hi.rootOffsetXPx
       this.miner.root.y = this.surfY + hi.rootOffsetYPx
     }
-    this.camX = this.miner.root.x - this.W / 2
+    this.charX = 0
+    this.charY = 0
+    this._treeRunDx = [...TREE_X_RUN_DX]
+    this.camX = this.idleX + GameConfig.hero.idle.rootOffsetXPx - this.W / 2
     this.camY = this.idleCamY
     this._syncLayerScroll()
+    this._syncSurfaceScenery()
+    this._syncSkyBgParallax()
+    this._updateWorldMask(this.W, this.H)
+    if (this.tileWorld) this.tileWorld.update(this.camX, this.camY, this.W, this.H)
     this.stoneBreakActive = false
     this._destroyBreakObj()
   }
@@ -2479,6 +2778,7 @@ export class GameRenderer {
   }
 
   destroy(){
+    this._uninstallLavaDeathInputBoost()
     this.skyLayer.mask=null
     this.worldBgLayer.mask=null
     this.worldChunkLayer.mask=null
