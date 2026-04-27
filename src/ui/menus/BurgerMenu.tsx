@@ -3,13 +3,17 @@ import { useGameStore } from '../../store/gameStore'
 import { SettingsPanel } from './SettingsPanel'
 import { InfoPanel, ReplayPanel } from './InfoAndReplay'
 import '../ui.css'
+import infoIcon from '/ui/info.svg'
+import historyIcon from '/ui/history.svg'
+import settingsIcon from '/ui/settings.svg'
+import cross from '/ui/cross.svg'
 
 type Tab = 'settings' | 'info' | 'replay'
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: 'settings', label: 'Настройки', icon: '⚙️' },
-  { id: 'info',     label: 'Инфо',      icon: 'ℹ️' },
-  { id: 'replay',   label: 'История',   icon: '📋' },
+  { id: 'info',     label: 'INFORMATION', icon: infoIcon },
+  { id: 'replay',   label: 'HISTORY',     icon: historyIcon },
+  { id: 'settings', label: 'SETTINGS',    icon: settingsIcon },
 ]
 
 export const BurgerMenu: React.FC = () => {
@@ -26,8 +30,8 @@ export const BurgerMenu: React.FC = () => {
       <div className="ui-modal" onClick={e => e.stopPropagation()}>
 
         <div className="ui-modal-header">
-          <span className="ui-modal-title">⛏ DEEP RUSH</span>
-          <button className="ui-modal-close" onClick={() => setOpen(false)}>✕</button>
+          <span className="ui-modal-title">SYSTEM SETTINGS</span>
+          <button className="ui-modal-close" onClick={() => setOpen(false)}><img src={cross} alt="Close" className="sys-settings-slider-icon" /></button>
         </div>
 
         <div className="ui-tabs">
@@ -37,12 +41,11 @@ export const BurgerMenu: React.FC = () => {
               onClick={() => setTab(t.id)}
               className={`ui-tab ${tab === t.id ? 'ui-tab--active' : ''}`}
             >
-              {t.icon} {t.label}
+              <img className="ui-tab-icon" src={t.icon} alt="" aria-hidden="true" />
+              <span>{t.label}</span>
             </button>
           ))}
         </div>
-
-        <div className="ui-modal-divider" />
 
         <div className="ui-modal-body">
           {tab === 'settings' && <SettingsPanel />}
