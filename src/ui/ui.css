@@ -1766,3 +1766,98 @@
   align-self: flex-start;
   margin: 20px auto 30px;
 }
+/* ═══════════════════════════════════════════════════════
+   MENU MODAL ADAPTIVE — tablet portrait only
+   Desktop styles above are intentionally untouched.
+   ═══════════════════════════════════════════════════════ */
+
+@keyframes fadeTab {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (min-width: 533px) and (max-width: 900px) and (orientation: portrait) {
+  .ui-overlay:has(.ui-menu-modal) {
+    align-items: flex-start;
+  }
+
+  .ui-menu-modal {
+    width: 705px;
+    max-width: calc(100vw - 38px);
+    height: 705px;
+    min-height: 705px;
+    max-height: 705px;
+    margin-top: 185px;
+  }
+
+  .ui-menu-modal .ui-modal-header {
+    width: 705px;
+    max-width: calc(100vw - 38px);
+    height: 130px;
+    display: block;
+    padding: 0;
+    position: fixed;
+    top: 28px;
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    z-index: 220;
+    pointer-events: none;
+  }
+
+  .ui-menu-modal .ui-modal-title {
+    position: absolute;
+    top: 65px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .ui-menu-modal .ui-modal-close {
+    position: absolute;
+    top: 0;
+    right: 20px;
+    padding: 0;
+    pointer-events: auto;
+  }
+
+  .ui-menu-modal .ui-modal-body {
+    justify-content: center;
+    padding-left: 78px;
+    padding-right: 78px;
+    box-sizing: border-box;
+  }
+
+  .ui-menu-modal .ui-tabs {
+    gap: 10px;
+    padding-left: 38px;
+    padding-right: 38px;
+    box-sizing: border-box;
+  }
+
+  .ui-menu-modal .ui-tab {
+    width: calc((100% - 20px) / 3);
+    height: 90px;
+  }
+
+  .ui-menu-modal .sys-settings,
+  .ui-menu-modal .replay-panel {
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: auto;
+    margin-bottom: auto;
+  }
+
+  .ui-menu-modal .info-panel {
+    width: 100%;
+    box-sizing: border-box;
+    align-self: flex-start;
+    margin: 20px auto 30px;
+    animation: fadeTab 0.25s ease;
+  }
+}
