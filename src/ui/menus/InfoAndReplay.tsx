@@ -69,12 +69,14 @@ export const InfoPanel: React.FC = () => (
 
       <div className="info-section-content">
         <p className="info-text">
-          Win: The character successfully reaches the house without touching
-          lava — your result is counted as a win.
+          <span className="info-text-strong">Win:</span> The character
+          successfully reaches the house without touching lava — your result is
+          counted as a win.
         </p>
 
         <p className="info-text">
-          Loss: The round ends in a loss if the character falls into lava.
+          <span className="info-text-strong">Loss:</span> The round ends in a
+          loss if the character falls into lava.
         </p>
       </div>
     </section>
@@ -154,10 +156,12 @@ export const InfoPanel: React.FC = () => (
     <section className="info-section">
       <h3 className="info-section-title">Path Generation</h3>
 
-      <p className="info-text">
-        The character's path is randomly generated each round. Objects are
-        generated at the moment the “Start” button is pressed.
-      </p>
+      <ul className="info-bullet-list">
+        <li>The character's path is randomly generated each round.</li>
+        <li>
+          Objects are generated at the moment the “Start” button is pressed.
+        </li>
+      </ul>
     </section>
 
     {/* EXTRA */}

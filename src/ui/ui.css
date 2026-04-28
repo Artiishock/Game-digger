@@ -1646,6 +1646,10 @@
   color: #dbdbdb;
 }
 
+.info-text-strong {
+  font-weight: 800;
+}
+
 .info-list {
   display: flex;
   flex-direction: column;
@@ -1664,7 +1668,7 @@
   font-size: 20px;
   line-height: 120%;
   font-weight: 800;
-  color: #facb32;
+  color: #dbdbdb;
 }
 
 .info-list-value {
