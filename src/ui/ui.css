@@ -1850,6 +1850,10 @@
     margin: 20px auto 30px;
     animation: fadeTab 0.25s ease;
   }
+
+  .ui-menu-modal .ui-modal-scrollbar {
+    display: none;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -1956,6 +1960,10 @@
   .ui-menu-modal .ui-modal-scrollbar {
     top: 90px;
     bottom: 30px;
+  }
+
+  .ui-menu-modal .ui-modal-scrollbar {
+    display: none;
   }
 }
 
@@ -2187,7 +2195,268 @@
     bottom: 15px;
   }
 
-    .ui-menu-modal:has(.info-panel) .ui-modal-scrollbar {
+  .ui-menu-modal:has(.info-panel) .ui-modal-scrollbar {
+    display: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   MENU MODAL ADAPTIVE — mobile portrait
+   Control point: 400x900
+   Desktop, tablet portrait, tablet landscape and mobile landscape styles above are untouched.
+   ═══════════════════════════════════════════════════════ */
+
+@media (max-width: 532px) and (orientation: portrait) {
+  .ui-overlay:has(.ui-menu-modal) {
+    align-items: flex-start;
+  }
+
+  .ui-menu-modal {
+    width: min(365px, calc(100vw - 16px));
+    max-width: calc(100vw - 16px);
+
+    height: min(522px, calc(100vh - 210px));
+    min-height: min(522px, calc(100vh - 210px));
+    max-height: min(522px, calc(100vh - 210px));
+
+    margin-top: clamp(150px, 17.8vh, 164px);
+    overflow: visible;
+  }
+
+  .ui-menu-modal .ui-modal-header {
+    width: min(365px, calc(100vw - 16px));
+    height: 24px;
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) 24px;
+    align-items: center;
+
+    position: fixed;
+    top: 22px;
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    padding: 0;
+    z-index: 240;
+  }
+
+  .ui-menu-modal .ui-modal-title {
+    grid-column: 2;
+    justify-self: center;
+    font-family: Inter, var(--font-body), sans-serif;
+    font-size: 16px;
+    font-weight: 800;
+    line-height: 100%;
+    letter-spacing: 0;
+  }
+
+  .ui-menu-modal .ui-modal-close {
+    grid-column: 3;
+    justify-self: end;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+  }
+
+  .ui-menu-modal .ui-modal-close img,
+  .ui-menu-modal .ui-modal-close svg {
+    width: 24px;
+    height: 24px;
+    display: block;
+  }
+
+  .ui-menu-modal .ui-tabs {
+    position: absolute;
+    top: -82px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 230;
+
+    width: auto;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    padding: 0;
+  }
+
+  .ui-menu-modal .ui-tab {
+    width: 120px;
+    height: 60px;
+    padding: 0;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    font-size: 0;
+  }
+
+  .ui-menu-modal .ui-tab span,
+  .ui-menu-modal .ui-tab-label {
+    display: none;
+  }
+
+  .ui-menu-modal .ui-tab-icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .ui-menu-modal .ui-modal-body {
+    height: 100%;
+    padding: 42px 44px 42px;
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: center;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .ui-menu-modal .sys-settings {
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
+    gap: 58px;
+    margin: auto 0;
+    animation: fadeTab 0.25s ease;
+  }
+
+  .ui-menu-modal .sys-settings-section {
+    gap: 20px;
+  }
+
+  .ui-menu-modal .sys-settings-section + .sys-settings-section {
+    gap: 25px;
+  }
+
+  .ui-menu-modal .sys-settings-toggle-item {
+    gap: 16px;
+  }
+
+  .ui-menu-modal .sys-settings-toggle-title {
+    margin-bottom: 8px;
+    font-size: 16px;
+    font-weight: 800;
+    line-height: 100%;
+  }
+
+  .ui-menu-modal .sys-settings-toggle-desc {
+    font-size: 16px;
+    font-weight: 500;
+    line-height: 120%;
+    max-width: 225px;
+  }
+
+  .ui-menu-modal .sys-settings-slider-row {
+    grid-template-columns: 24px minmax(0, 1fr) 42px;
+    gap: 8px;
+  }
+
+  .ui-menu-modal .sys-settings-slider-icon {
+    width: 24px;
+    height: 24px;
+    font-size: 24px;
+  }
+
+  .ui-menu-modal .sys-settings-slider-val {
+    font-size: 16px;
+    font-weight: 800;
+    line-height: 100%;
+  }
+
+  .ui-menu-modal .sys-slider-track {
+    height: 10px;
+  }
+
+  .ui-menu-modal .sys-slider-thumb {
+    width: 20px;
+    height: 20px;
+  }
+
+  .ui-menu-modal .sys-toggle {
+    width: 43px;
+    height: 24px;
+  }
+
+  .ui-menu-modal .sys-toggle-knob {
+    top: 2px;
+    left: 2px;
+    width: 20px;
+    height: 20px;
+  }
+
+  .ui-menu-modal .sys-toggle--on .sys-toggle-knob {
+    left: 21px;
+  }
+
+  .ui-menu-modal .info-panel,
+  .ui-menu-modal .replay-panel {
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
+  }
+
+  .ui-menu-modal .info-panel {
+    align-self: flex-start;
+    margin: 0 auto 24px;
+    animation: fadeTab 0.25s ease;
+  }
+
+  .ui-menu-modal .info-section {
+    gap: 10px;
+  }
+
+  .ui-menu-modal .info-section-title {
+    font-size: 16px;
+    font-weight: 800;
+    line-height: 100%;
+  }
+
+  .ui-menu-modal .info-text,
+  .ui-menu-modal .info-list-label,
+  .ui-menu-modal .info-list-value,
+  .ui-menu-modal .info-bullet-list {
+    font-size: 16px;
+    line-height: 125%;
+  }
+
+  .ui-menu-modal .info-text,
+  .ui-menu-modal .info-list-value,
+  .ui-menu-modal .info-bullet-list {
+    font-weight: 500;
+  }
+
+  .ui-menu-modal .info-list-label,
+  .ui-menu-modal .info-text-strong {
+    font-weight: 800;
+  }
+
+  .ui-menu-modal .info-list-row {
+    grid-template-columns: 140px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .ui-menu-modal .info-version {
+    font-size: 14px;
+    line-height: 120%;
+  }
+
+  .ui-menu-modal .replay-panel {
+    margin-top: auto;
+    margin-bottom: auto;
+    animation: fadeTab 0.25s ease;
+  }
+
+  .ui-menu-modal .ui-modal-scrollbar {
+    top: 42px;
+    right: 0;
+    bottom: 15px;
+  }
+
+  .ui-menu-modal .ui-modal-scrollbar {
     display: none;
   }
 }
