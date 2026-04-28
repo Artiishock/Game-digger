@@ -197,7 +197,7 @@ export const GameConfig = {
      */
     worldLavaSpawnMask: 3,
     /** Скорость вылета вверх с анимацией die (px/с, игровое время). */
-    deathAscentSpeedPx: 100,
+    deathAscentSpeedPx: 500,
     /** Макс. длительность подъёма (с) — дальше принудительно переключение на героя наверху. */
     deathAscentMaxSec: 14,
     /**

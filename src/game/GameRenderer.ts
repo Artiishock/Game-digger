@@ -2167,7 +2167,8 @@ export class GameRenderer {
       this._bounceT-=dt
       if(this._bounceT<=0){this._bounceT=3+Math.random()*4;this.idleDir*=-1}
       this.miner.resetFacing()
-      this.miner.root.scale.x=this.idleDir
+      // Idle: не зеркалим персонажа при смене направления, меняем только траекторию движения.
+      this.miner.root.scale.x = 1
       const hiIdle = GameConfig.hero.idle
       this.miner.root.x = this.idleX + hiIdle.rootOffsetXPx
       this.miner.root.y = this.surfY + hiIdle.rootOffsetYPx
