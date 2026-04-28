@@ -504,8 +504,9 @@
 .ui-menu-modal {
   width: 1000px;
   max-width: calc(100vw - 80px);
+  height: 720px;
   min-height: 720px;
-  max-height: calc(100vh - 150px);
+  max-height: 720px;
   margin-top: 70px;
   border: 1px solid #9F9F9F;
   box-shadow: inset 0 10px 0 rgba(0, 0, 0, 0.15);
@@ -614,6 +615,8 @@
 }
 
 .ui-menu-modal .ui-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding: 60px 0 20px;
   scrollbar-width: none;

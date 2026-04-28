@@ -4,61 +4,72 @@ import { useGameStore } from '../../store/gameStore'
 // ─── Info Panel ────────────────────────────────────────────────────────────────
 
 export const InfoPanel: React.FC = () => (
-  <div style={{ display: 'flex', flexDirection: 'column', gap: 16, color: 'rgba(240,230,211,0.75)', fontSize: 16, lineHeight: 1.65 }}>
+  <div className="info-panel">
     <Section title="КАК ИГРАТЬ">
-      Выберите размер ставки и нажмите кнопку <Gold>⛏ DIG</Gold>. Персонаж начинает бурить
-      землю вниз. На пути он встречает бонусы и дебафы, которые меняют ваш выигрыш.
-      <br /><br />
-      Игра заканчивается когда персонаж попадает в <Gold>🛏 Безопасное место</Gold> (победа —
-      весь накопленный выигрыш ваш) или в <Red>🌋 Лаву</Red> (поражение — ставка сгорает).
+      <p className="info-text">
+        Выберите размер ставки и нажмите кнопку <Gold>⛏ DIG</Gold>. Персонаж начинает бурить
+        землю вниз. На пути он встречает бонусы и дебафы, которые меняют ваш выигрыш.
+      </p>
+      <p className="info-text">
+        Игра заканчивается когда персонаж попадает в <Gold>🛏 Безопасное место</Gold> (победа —
+        весь накопленный выигрыш ваш) или в <Red>🌋 Лаву</Red> (поражение — ставка сгорает).
+      </p>
     </Section>
 
     <Section title="ОБЪЕКТЫ">
-      <ObjRow emoji="🪙" name="Монета (Coin)"     desc="+N к ставке. Размер зависит от базовой ставки." color="#FFD700" />
-      <ObjRow emoji="⛏"  name="Самородок (Gold)"  desc="Пока разрушается — ставка растёт ×3/сек. Случайное время." color="#FFB830" />
-      <ObjRow emoji="💎" name="Бриллиант (Diamond)" desc="Мгновенно умножает накопленный выигрыш на X." color="#4ECDC4" />
-      <ObjRow emoji="💣" name="Бомба (Bomb)"       desc="Делит накопленный выигрыш пополам ÷2." color="#FF6B6B" />
-      <ObjRow emoji="🪨" name="Камень (Stone)"     desc="Пока разрушается — сгорает 5%/сек. Случайное время." color="#AAAAAA" />
-      <ObjRow emoji="🌋" name="Лава"               desc="Мгновенное поражение. Весь выигрыш сгорает." color="#FF4500" />
-      <ObjRow emoji="🛏" name="Безопасное место"   desc="Победа! Весь накопленный выигрыш сохраняется." color="#7CFC00" />
+      <div className="info-section-content">
+        <ObjRow emoji="🪙" name="Монета (Coin)" desc="+N к ставке. Размер зависит от базовой ставки." />
+        <ObjRow emoji="⛏" name="Самородок (Gold)" desc="Пока разрушается — ставка растёт ×3/сек. Случайное время." />
+        <ObjRow emoji="💎" name="Бриллиант (Diamond)" desc="Мгновенно умножает накопленный выигрыш на X." />
+        <ObjRow emoji="💣" name="Бомба (Bomb)" desc="Делит накопленный выигрыш пополам ÷2." />
+        <ObjRow emoji="🪨" name="Камень (Stone)" desc="Пока разрушается — сгорает 5%/сек. Случайное время." />
+        <ObjRow emoji="🌋" name="Лава" desc="Мгновенное поражение. Весь выигрыш сгорает." />
+        <ObjRow emoji="🛏" name="Безопасное место" desc="Победа! Весь накопленный выигрыш сохраняется." />
+      </div>
     </Section>
 
     <Section title="АВТОСПИН">
-      Нажмите кнопку <Gold>A</Gold> чтобы открыть меню автоспина. Установите количество
-      раундов и условия автоматической остановки. Нажмите кнопку ещё раз для остановки.
+      <p className="info-text">
+        Нажмите кнопку <Gold>A</Gold> чтобы открыть меню автоспина. Установите количество
+        раундов и условия автоматической остановки. Нажмите кнопку ещё раз для остановки.
+      </p>
     </Section>
 
     <Section title="СКОРОСТЬ">
-      Четыре режима скорости: 🐢 ×0.75 / 🚶 ×1 / 🐇 ×2 / ⚡ ×5. Доступны в любой момент игры.
+      <p className="info-text">
+        Четыре режима скорости: 🐢 ×0.75 / 🚶 ×1 / 🐇 ×2 / ⚡ ×5. Доступны в любой момент игры.
+      </p>
     </Section>
 
     <Section title="RTP И МАКСИМАЛЬНЫЙ ВЫИГРЫШ">
-      <div style={{ color: '#FFB830' }}>RTP: 96.0%</div>
-      <div>Максимальный выигрыш: 10 000× ставки</div>
+      <div className="info-section-content">
+        <p className="info-text"><Gold>RTP: 96.0%</Gold></p>
+        <p className="info-text">Максимальный выигрыш: 10 000× ставки</p>
+      </div>
     </Section>
   </div>
 )
 
 const Section: React.FC<React.PropsWithChildren<{ title: string }>> = ({ title, children }) => (
-  <div>
-    <div style={{ fontSize: 16, letterSpacing: '.16em', textTransform: 'uppercase', color: '#FFB830', fontWeight: 700, marginBottom: 8 }}>{title}</div>
-    <div>{children}</div>
-  </div>
+  <section className="info-section">
+    <h3 className="info-section-title">{title}</h3>
+    <div className="info-section-content">{children}</div>
+  </section>
 )
 
 const Gold: React.FC<React.PropsWithChildren> = ({ children }) => (
-  <span style={{ color: '#FFB830', fontWeight: 700 }}>{children}</span>
+  <span className="info-accent">{children}</span>
 )
 const Red: React.FC<React.PropsWithChildren> = ({ children }) => (
-  <span style={{ color: '#FF4500', fontWeight: 700 }}>{children}</span>
+  <span className="info-danger">{children}</span>
 )
 
-const ObjRow: React.FC<{ emoji: string; name: string; desc: string; color: string }> = ({ emoji, name, desc, color }) => (
-  <div style={{ display: 'flex', gap: 10, marginBottom: 8 }}>
-    <span style={{ fontSize: 18, flexShrink: 0, lineHeight: 1.4 }}>{emoji}</span>
-    <div>
-      <span style={{ color, fontWeight: 700 }}>{name}</span>
-      <span style={{ color: 'rgba(240,230,211,0.6)' }}> — {desc}</span>
+const ObjRow: React.FC<{ emoji: string; name: string; desc: string }> = ({ emoji, name, desc }) => (
+  <div className="info-object-row">
+    <span className="info-object-emoji">{emoji}</span>
+    <div className="info-object-text">
+      <span className="info-object-name">{name}</span>
+      <span className="info-object-desc"> — {desc}</span>
     </div>
   </div>
 )
