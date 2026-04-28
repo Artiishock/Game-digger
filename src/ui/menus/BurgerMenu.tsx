@@ -105,7 +105,7 @@ export const BurgerMenu: React.FC = () => {
 
   return (
     <div className="ui-overlay" onClick={() => setOpen(false)}>
-      <div className="ui-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="ui-modal ui-menu-modal" onClick={(e) => e.stopPropagation()}>
         <div className="ui-modal-header">
           <span className="ui-modal-title">SYSTEM SETTINGS</span>
           <button className="ui-modal-close" onClick={() => setOpen(false)}>
