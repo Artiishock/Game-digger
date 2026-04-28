@@ -26,6 +26,7 @@ export const BurgerMenu: React.FC = () => {
   const phase = useGameStore((s) => s.phase);
 
   const bodyRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
   const dragStartYRef = useRef(0);
   const dragStartScrollTopRef = useRef(0);
@@ -37,8 +38,9 @@ export const BurgerMenu: React.FC = () => {
     const el = bodyRef.current;
     if (!el) return;
 
+    const track = trackRef.current;
     const maxScroll = el.scrollHeight - el.clientHeight;
-    const maxThumbTop = el.clientHeight - THUMB_HEIGHT;
+    const maxThumbTop = (track?.clientHeight ?? el.clientHeight) - THUMB_HEIGHT;
 
     setShowScrollbar(maxScroll > 0);
 
@@ -64,10 +66,11 @@ export const BurgerMenu: React.FC = () => {
 
   const handleThumbPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const el = bodyRef.current;
-    if (!el || !isDraggingRef.current) return;
+    const track = trackRef.current;
+    if (!el || !track || !isDraggingRef.current) return;
 
     const maxScroll = el.scrollHeight - el.clientHeight;
-    const maxThumbTop = el.clientHeight - THUMB_HEIGHT;
+    const maxThumbTop = track.clientHeight - THUMB_HEIGHT;
 
     if (maxScroll <= 0 || maxThumbTop <= 0) return;
 
@@ -133,7 +136,7 @@ export const BurgerMenu: React.FC = () => {
         </div>
 
         {showScrollbar && (
-          <div className="ui-modal-scrollbar">
+          <div className="ui-modal-scrollbar" ref={trackRef}>
             <div
               className="ui-modal-scrollbar-thumb"
               style={{ transform: `translateY(${thumbTop}px)` }}
