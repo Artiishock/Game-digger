@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useGameStore, type SpeedMode } from '../../store/gameStore'
 import { formatMoney, toDisplay } from '../../rgs/client'
+import { gameAudio } from '../../audio/GameAudio'
 import '../ui.css'
 
 // ── Логика прогрессивных шагов ставки (из BottomControlBar) ──────────────────
@@ -93,6 +94,7 @@ export const Hud: React.FC = () => {
   // ── Кнопки + / − ─────────────────────────────────────────────────────────
   const handlePlus = () => {
     if (betDisabled) return
+    gameAudio.playUiClick()
     const nextPress = pressCount + 1
     const step      = getStep(nextPress)
     const target    = bet + step
@@ -107,6 +109,7 @@ export const Hud: React.FC = () => {
 
   const handleMinus = () => {
     if (betDisabled) return
+    gameAudio.playUiClick()
     setPressCount(0)
     const idx = levels.findIndex(l => l >= bet)
     const prev = idx > 0 ? levels[idx - 1] : levels[0]
@@ -133,6 +136,7 @@ export const Hud: React.FC = () => {
   }
 
   const handleBetMax = () => {
+    gameAudio.playUiClick()
     setBet(maxBet)
     setBetValue(maxBet)
     setCoinValue(1)
@@ -148,7 +152,7 @@ export const Hud: React.FC = () => {
         <span className="bet-modal__title">BET MULTIPLIER {betValue}×</span>
         <button
           className="bet-modal__close"
-          onClick={() => { setShowBetModal(false); setPressCount(0) }}
+          onClick={() => { gameAudio.playUiClick(); setShowBetModal(false); setPressCount(0) }}
         >×</button>
       </div>
       <div className="bet-modal__body">
@@ -159,7 +163,7 @@ export const Hud: React.FC = () => {
             <input
               type="range" className="bet-modal__slider"
               min={minBet} max={maxBet} step={0.01} value={betValue}
-              onChange={e => handleModalBetChange(Number(e.target.value))}
+              onChange={e => { gameAudio.playUiSlide(); handleModalBetChange(Number(e.target.value)) }}
             />
             <input
               type="number" className="bet-modal__input"
@@ -175,7 +179,7 @@ export const Hud: React.FC = () => {
             <input
               type="range" className="bet-modal__slider"
               min={1} max={100} step={1} value={coinValue}
-              onChange={e => handleModalCoinChange(Number(e.target.value))}
+              onChange={e => { gameAudio.playUiSlide(); handleModalCoinChange(Number(e.target.value)) }}
             />
             <input
               type="number" className="bet-modal__input"
@@ -213,7 +217,11 @@ export const Hud: React.FC = () => {
           return (
             <button
               key={mode}
-              onClick={() => !disabled && setSpeed(mode)}
+              onClick={() => {
+                if (disabled) return
+                gameAudio.playUiClick()
+                setSpeed(mode)
+              }}
               disabled={disabled}
               className={`ui-speed-btn ${active ? 'ui-speed-btn--active' : ''}`}
             >

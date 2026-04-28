@@ -1,5 +1,6 @@
 import React from 'react'
 import { useGameStore } from '../../store/gameStore'
+import { gameAudio } from '../../audio/GameAudio'
 import '../ui.css'
 
 export const TopBar: React.FC = () => {
@@ -12,7 +13,11 @@ export const TopBar: React.FC = () => {
   const currency = useGameStore(s => s.currency)
   const stats    = useGameStore(s => s.stats)
 
-  const openTab = (tab: 'info' | 'settings') => { setTab(tab); setMenu(true) }
+  const openTab = (tab: 'info' | 'settings') => {
+    gameAudio.playUiClick()
+    setTab(tab)
+    setMenu(true)
+  }
 
   return (
     <>
@@ -62,7 +67,10 @@ export const TopBar: React.FC = () => {
           </button>
           <button
             className={`ui-icon-btn ${settings.soundEnabled ? 'ui-icon-btn--active' : ''}`}
-            onClick={() => upd({ soundEnabled: !settings.soundEnabled })}
+            onClick={() => {
+              gameAudio.playUiClick()
+              upd({ soundEnabled: !settings.soundEnabled })
+            }}
             title={settings.soundEnabled ? 'Mute' : 'Unmute'}
           >
             {settings.soundEnabled

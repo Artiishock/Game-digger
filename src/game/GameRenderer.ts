@@ -2261,6 +2261,7 @@ export class GameRenderer {
     let lavaTrailAy = this.charY
 
     if (this.stoneBreakActive) {
+      gameAudio.setLoop('stone.ogg', true)
       this.stoneBreakRemainingTime -= gameDt
       this.stoneBreakTickTimer     -= gameDt
 
@@ -2292,6 +2293,8 @@ export class GameRenderer {
       }
 
       if (this.stoneBreakRemainingTime <= 0) {
+        gameAudio.setLoop('stone.ogg', false)
+        gameAudio.playSfx('stone_crash.ogg')
         this.stoneBreakActive = false
         store.updateStats({ multiplier: Math.round(this.multiplier * 100) / 100 })
         this._breakStage = 0
@@ -2305,6 +2308,7 @@ export class GameRenderer {
 
     // Золотой самородок — стоим на месте, множитель визуально растёт до значения RGS
     if (this.goldBreakActive) {
+      gameAudio.setLoop('gold.ogg', true)
       this.goldBreakRemainingTime -= gameDt
       this.goldBreakTickTimer     -= gameDt
 
@@ -2339,6 +2343,8 @@ export class GameRenderer {
       }
 
       if (this.goldBreakRemainingTime <= 0) {
+        gameAudio.setLoop('gold.ogg', false)
+        gameAudio.playSfx('gold_crash.ogg')
         this.goldBreakActive = false
         store.updateStats({ multiplier: Math.round(this.multiplier * 100) / 100 })
         this._breakStage = 0
@@ -2523,8 +2529,9 @@ export class GameRenderer {
     if (!this._ended && !this.stoneBreakActive && !this.goldBreakActive && this.charY > minDepthForLava && lavaHit) {
       this._ended=true
       this.running=false
+      gameAudio.setLoop('drill.ogg', false)
       this.miner.playDie({ loop: true })
-      gameAudio.playSfx('sfx_lava.ogg')
+      gameAudio.playSfx('finish_lose.ogg')
       this._burst(this.charX,this.charY,C.lava,20)
       // Потребляем LAVA-ивент из rgsQueue — исход тот же (поражение),
       // просто физическая лава догнала раньше чем SpawnedObj терминал
@@ -2602,7 +2609,6 @@ export class GameRenderer {
     const type=obj.type
 
     if (type === 'STONE') {
-      gameAudio.playSfx('sfx_stone.ogg')
       this.stoneBreakActive = true
       this.stoneBreakStartMultiplier = this.multiplier
       const multBefore = this.multiplier
@@ -2649,7 +2655,6 @@ export class GameRenderer {
 
     // Золотой самородок — останавливаемся и получаем ×3/сек пока бурим
     if (type === 'GOLD') {
-      gameAudio.playSfx('sfx_gold.ogg')
       this.goldBreakActive = true
       this.goldBreakStartMultiplier = this.multiplier
       const multBefore = this.multiplier
@@ -2730,6 +2735,7 @@ export class GameRenderer {
     if(obj.terminal){
       this._ended=true
       this.running=false
+      gameAudio.setLoop('drill.ogg', false)
       if (type === 'LAVA') this.miner.playDie({ loop: true })
       obj.gfx.visible=false
 
@@ -2849,6 +2855,8 @@ export class GameRenderer {
   }
 
   private _returnToIdle(){
+    gameAudio.setLoop('gold.ogg', false)
+    gameAudio.setLoop('stone.ogg', false)
     this._cleanupLavaDeathCinematic()
     if (!this._lavaHandoffUsedIdleAnchor) {
       this.idleX = 0

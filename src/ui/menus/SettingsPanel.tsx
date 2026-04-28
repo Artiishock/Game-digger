@@ -1,5 +1,6 @@
 import React, { useRef } from 'react'
 import { useGameStore } from '../../store/gameStore'
+import { gameAudio } from '../../audio/GameAudio'
 import '../ui.css'
 
 export const SettingsPanel: React.FC = () => {
@@ -94,14 +95,14 @@ export const SettingsPanel: React.FC = () => {
 const Checkbox: React.FC<{ checked: boolean; onChange: (v: boolean) => void }> = ({ checked, onChange }) => (
   <div
     className={`sys-checkbox ${checked ? 'sys-checkbox--on' : ''}`}
-    onClick={() => onChange(!checked)}
+    onClick={() => { gameAudio.playUiClick(); onChange(!checked) }}
   />
 )
 
 const SysToggle: React.FC<{ checked: boolean; onChange: (v: boolean) => void }> = ({ checked, onChange }) => (
   <div
     className={`sys-toggle ${checked ? 'sys-toggle--on' : ''}`}
-    onClick={() => onChange(!checked)}
+    onClick={() => { gameAudio.playUiClick(); onChange(!checked) }}
   >
     <div className="sys-toggle-knob" />
   </div>
@@ -114,6 +115,7 @@ const SysSlider: React.FC<{ value: number; onChange: (v: number) => void }> = ({
     if (!trackRef.current) return
     const rect = trackRef.current.getBoundingClientRect()
     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+    gameAudio.playUiSlide()
     onChange(ratio)
   }
 

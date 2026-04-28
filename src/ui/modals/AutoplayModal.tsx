@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useGameStore } from '../../store/gameStore'
 import { gameEngine } from '../../game/GameEngine'
+import { gameAudio } from '../../audio/GameAudio'
 import '../ui.css'
 
 const PRESET_ROUNDS = [10, 25, 50, 100, 250, 500, 750, 1000]
@@ -25,6 +26,7 @@ export const AutoplayModal: React.FC = () => {
   const handleStart = () => {
     const r = customRounds ? parseInt(customRounds) : rounds
     if (!r || r < 1) return
+    gameAudio.playUiClick()
     setOpen(false)
     gameEngine.startAutoplay({
       totalRounds:              r,
@@ -36,12 +38,12 @@ export const AutoplayModal: React.FC = () => {
   }
 
   return (
-    <div className="ui-overlay" onClick={() => setOpen(false)}>
+    <div className="ui-overlay" onClick={() => { gameAudio.playUiClick(); setOpen(false) }}>
       <div className="ui-modal ui-modal--sm" onClick={e => e.stopPropagation()}>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <span className="ui-ap-title">АВТОСПИН</span>
-          <button className="ui-modal-close" onClick={() => setOpen(false)}>✕</button>
+          <button className="ui-modal-close" onClick={() => { gameAudio.playUiClick(); setOpen(false) }}>✕</button>
         </div>
 
         {/* Round presets */}
@@ -51,12 +53,12 @@ export const AutoplayModal: React.FC = () => {
             {PRESET_ROUNDS.map(r => (
               <button
                 key={r}
-                onClick={() => { setRounds(r); setCustomRounds('') }}
+                onClick={() => { gameAudio.playUiClick(); setRounds(r); setCustomRounds('') }}
                 className={`ui-pill ${rounds === r && !customRounds ? 'ui-pill--active' : ''}`}
               >{r}</button>
             ))}
             <button
-              onClick={() => { setRounds(0); setCustomRounds('') }}
+              onClick={() => { gameAudio.playUiClick(); setRounds(0); setCustomRounds('') }}
               className={`ui-pill ${rounds === 0 && !customRounds ? 'ui-pill--active' : ''}`}
             >∞</button>
           </div>
@@ -89,7 +91,7 @@ export const AutoplayModal: React.FC = () => {
 
 const CheckRow: React.FC<{ label: string; checked: boolean; onChange: (v: boolean) => void }> = ({ label, checked, onChange }) => (
   <label className="ui-check-row">
-    <div className={`ui-checkbox ${checked ? 'ui-checkbox--checked' : ''}`} onClick={() => onChange(!checked)}>
+    <div className={`ui-checkbox ${checked ? 'ui-checkbox--checked' : ''}`} onClick={() => { gameAudio.playUiClick(); onChange(!checked) }}>
       {checked && <span className="ui-checkbox-tick">✓</span>}
     </div>
     {label}

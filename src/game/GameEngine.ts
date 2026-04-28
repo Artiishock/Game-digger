@@ -91,6 +91,7 @@ class GameEngine {
     const bet = store.bet
 
     try {
+      gameAudio.playStartGame()
       let response: RGS.PlayResponse
 
       if (RGS.isDemo()) {

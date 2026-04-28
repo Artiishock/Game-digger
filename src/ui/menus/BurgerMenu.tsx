@@ -1,5 +1,6 @@
 import React from 'react'
 import { useGameStore } from '../../store/gameStore'
+import { gameAudio } from '../../audio/GameAudio'
 import { SettingsPanel } from './SettingsPanel'
 import { InfoPanel, ReplayPanel } from './InfoAndReplay'
 import '../ui.css'
@@ -22,19 +23,19 @@ export const BurgerMenu: React.FC = () => {
   if (!isOpen) return null
 
   return (
-    <div className="ui-overlay" onClick={() => setOpen(false)}>
+    <div className="ui-overlay" onClick={() => { gameAudio.playUiClick(); setOpen(false) }}>
       <div className="ui-modal" onClick={e => e.stopPropagation()}>
 
         <div className="ui-modal-header">
           <span className="ui-modal-title">⛏ DEEP RUSH</span>
-          <button className="ui-modal-close" onClick={() => setOpen(false)}>✕</button>
+          <button className="ui-modal-close" onClick={() => { gameAudio.playUiClick(); setOpen(false) }}>✕</button>
         </div>
 
         <div className="ui-tabs">
           {TABS.map(t => (
             <button
               key={t.id}
-              onClick={() => setTab(t.id)}
+              onClick={() => { gameAudio.playUiClick(); setTab(t.id) }}
               className={`ui-tab ${tab === t.id ? 'ui-tab--active' : ''}`}
             >
               {t.icon} {t.label}

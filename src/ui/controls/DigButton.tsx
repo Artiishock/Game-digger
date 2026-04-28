@@ -18,6 +18,7 @@ export const DigButton: React.FC = () => {
 
   const handleSpinClick = () => {
     gameAudio.unlock()
+    gameAudio.playUiClick()
     if (isAutoActive)   gameEngine.stopAutoplay()
     else if (canDig)    gameEngine.startRound()
   }
@@ -25,12 +26,14 @@ export const DigButton: React.FC = () => {
   // Клик по стрелке — показать/скрыть кнопку
   const handleArrowClick = (e: React.MouseEvent) => {
     e.stopPropagation()
+    gameAudio.playUiClick()
     setCollapsed(v => !v)
   }
 
   // Клик по badge — открыть/закрыть autoplay modal
   const handleBadgeClick = (e: React.MouseEvent) => {
     e.stopPropagation()
+    gameAudio.playUiClick()
     setAP(!isAPOpen)
   }
 
