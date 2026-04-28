@@ -558,13 +558,11 @@
 .ui-modal-body {
   flex: 1;
   overflow-y: auto;
-  padding: 60px 260px;
+  padding: 60px 0 20px;
 }
 
 
-::-webkit-scrollbar {
-  display: none;
-}
+
 
 .ui-modal-footer {
   display: none;
@@ -1528,4 +1526,150 @@
 .sys-toggle--on .sys-toggle-knob {
   left: 27.67px;
   background: #d9d9d9;
+}
+
+
+/* ═══════════════════════════════════════════════════════
+   INFORMATION PANEL
+   ═══════════════════════════════════════════════════════ */
+
+.info-panel {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 34px;
+  font-family: Inter, var(--font-body), sans-serif;
+}
+
+.info-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.info-section-title {
+  margin: 0;
+  font-family: Inter, var(--font-body), sans-serif;
+  font-size: 25px;
+  line-height: 100%;
+  font-weight: 800;
+  color: #facb32;
+  text-transform: uppercase;
+}
+
+.info-section-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.info-text {
+  margin: 0;
+  font-family: Inter, var(--font-body), sans-serif;
+  font-size: 20px;
+  line-height: 125%;
+  font-weight: 500;
+  color: #dbdbdb;
+}
+
+.info-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.info-list-row {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 18px;
+  align-items: baseline;
+}
+
+.info-list-label {
+  font-family: Inter, var(--font-body), sans-serif;
+  font-size: 20px;
+  line-height: 120%;
+  font-weight: 800;
+  color: #facb32;
+}
+
+.info-list-value {
+  font-family: Inter, var(--font-body), sans-serif;
+  font-size: 20px;
+  line-height: 120%;
+  font-weight: 500;
+  color: #dbdbdb;
+}
+
+.info-bullet-list {
+  margin: 0;
+  padding-left: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: Inter, var(--font-body), sans-serif;
+  font-size: 20px;
+  line-height: 125%;
+  font-weight: 500;
+  color: #dbdbdb;
+}
+
+.info-bullet-list li::marker {
+  color: #facb32;
+}
+
+.info-version {
+  margin: 6px 0 0;
+  font-family: Inter, var(--font-body), sans-serif;
+  font-size: 18px;
+  line-height: 120%;
+  font-weight: 500;
+  color: #a0a0b2;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+.ui-modal {
+  position: relative;
+}
+
+.ui-modal-body {
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.ui-modal-body::-webkit-scrollbar {
+  display: none;
+}
+
+.ui-modal-scrollbar {
+  position: absolute;
+  top: 110px;
+  right: 8px;
+  width: 12px;
+  height: calc(100% - 120px);
+  pointer-events: auto;
+}
+
+.ui-modal-scrollbar-thumb {
+  width: 12px;
+  height: 110px;
+  border-radius: 2px;
+  background: #A0A0B2;
+  cursor: grab;
+}
+
+.ui-modal-scrollbar-thumb:active {
+  cursor: grabbing;
 }
