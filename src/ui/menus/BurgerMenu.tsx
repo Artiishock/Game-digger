@@ -108,7 +108,10 @@ export const BurgerMenu: React.FC = () => {
 
   return (
     <div className="ui-overlay" onClick={() => setOpen(false)}>
-      <div className="ui-modal ui-menu-modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="ui-modal ui-menu-modal"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="ui-modal-header">
           <span className="ui-modal-title">SYSTEM SETTINGS</span>
           <button className="ui-modal-close" onClick={() => setOpen(false)}>
@@ -123,7 +126,14 @@ export const BurgerMenu: React.FC = () => {
               onClick={() => setTab(t.id)}
               className={`ui-tab ${tab === t.id ? "ui-tab--active" : ""}`}
             >
-              <img className="ui-tab-icon" src={t.icon} alt="" aria-hidden="true" />
+              <span
+                className="ui-tab-icon"
+                aria-hidden="true"
+                style={{
+                  maskImage: `url(${t.icon})`,
+                  WebkitMaskImage: `url(${t.icon})`,
+                }}
+              />
               <span>{t.label}</span>
             </button>
           ))}

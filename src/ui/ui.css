@@ -674,19 +674,31 @@
   font-weight: 900;
   letter-spacing: 0;
   text-transform: uppercase;
-  transition: color 0.15s;
+  transition:
+    color 0.15s ease,
+    transform 0.15s ease;
 }
 
 .ui-tab:hover,
 .ui-tab--active {
-  color: #a0a0b2;
+  color: #f2fdff;
+  transform: scale(1.06);
 }
 
 .ui-tab-icon {
-  width: 28px;
-  height: 28px;
-  color: currentColor;
+  display: block;
+  width: 25px;
+  height: 25px;
   flex-shrink: 0;
+  background-color: currentColor;
+
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -2059,7 +2071,6 @@
     font-size: 0;
   }
 
-  .ui-menu-modal .ui-tab span,
   .ui-menu-modal .ui-tab-label {
     display: none;
   }
@@ -2295,7 +2306,6 @@
     font-size: 0;
   }
 
-  .ui-menu-modal .ui-tab span,
   .ui-menu-modal .ui-tab-label {
     display: none;
   }
