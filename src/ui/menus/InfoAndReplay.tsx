@@ -240,93 +240,57 @@ export function addReplayRound(r: ReplayRound) {
 export const ReplayPanel: React.FC = () => {
   if (roundHistory.length === 0) {
     return (
-      <div
-        style={{
-          color: "rgba(240,230,211,0.4)",
-          fontSize: 13,
-          textAlign: "center",
-          marginTop: 40,
-        }}
-      >
-        История раундов пуста.
-        <br />
-        Сыграйте первый раунд.
+      <div className="replay-panel replay-panel--empty">
+        <p className="replay-empty-title">Round history is empty</p>
+        <p className="replay-empty-text">Play your first round</p>
       </div>
     );
   }
 
   return (
-    <div style={{ overflowX: "auto" }}>
-      <table
-        style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}
-      >
-        <thead>
-          <tr>
-            {[
-              "Время",
-              "Ставка",
-              "Выигрыш",
-              "Профит",
-              "До",
-              "После",
-              "Валюта",
-            ].map((h) => (
-              <th
-                key={h}
-                style={{
-                  padding: "8px 10px",
-                  textAlign: "left",
-                  color: "#FFB830",
-                  fontSize: 10,
-                  letterSpacing: ".12em",
-                  textTransform: "uppercase",
-                  borderBottom: "1px solid rgba(255,184,48,0.15)",
-                  fontWeight: 700,
-                }}
-              >
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {roundHistory.map((r, i) => (
-            <tr
-              key={i}
-              style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
-            >
-              <td style={tdStyle}>{r.time}</td>
-              <td style={tdStyle}>{r.bet.toFixed(2)}</td>
-              <td
-                style={{
-                  ...tdStyle,
-                  color: r.win > 0 ? "#7CFC00" : "rgba(240,230,211,0.5)",
-                }}
-              >
-                {r.win.toFixed(2)}
-              </td>
-              <td
-                style={{
-                  ...tdStyle,
-                  color: r.profit >= 0 ? "#7CFC00" : "#FF6B6B",
-                }}
-              >
-                {r.profit >= 0 ? "+" : ""}
-                {r.profit.toFixed(2)}
-              </td>
-              <td style={tdStyle}>{r.balBefore.toFixed(2)}</td>
-              <td style={tdStyle}>{r.balAfter.toFixed(2)}</td>
-              <td style={tdStyle}>{r.currency}</td>
+    <div className="replay-panel replay-panel--filled">
+      <div className="replay-table-wrap">
+        <table className="replay-table">
+          <thead>
+            <tr>
+              {[
+                "Time",
+                "Bet",
+                "Win",
+                "Profit",
+                "Before",
+                "After",
+                "Currency",
+              ].map((h) => (
+                <th key={h}>{h}</th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+
+          <tbody>
+            {roundHistory.map((r, i) => (
+              <tr key={i}>
+                <td>{r.time}</td>
+                <td>{r.bet.toFixed(2)}</td>
+                <td className={r.win > 0 ? "replay-win" : "replay-muted"}>
+                  {r.win.toFixed(2)}
+                </td>
+                <td
+                  className={
+                    r.profit >= 0 ? "replay-profit-plus" : "replay-profit-minus"
+                  }
+                >
+                  {r.profit >= 0 ? "+" : ""}
+                  {r.profit.toFixed(2)}
+                </td>
+                <td>{r.balBefore.toFixed(2)}</td>
+                <td>{r.balAfter.toFixed(2)}</td>
+                <td>{r.currency}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
-};
-
-const tdStyle: React.CSSProperties = {
-  padding: "9px 10px",
-  color: "rgba(240,230,211,0.65)",
-  fontVariantNumeric: "tabular-nums",
 };
