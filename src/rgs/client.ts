@@ -74,7 +74,7 @@ export interface RoundEvent {
   depth:           number   // metres from surface
   distance:        number   // path distance metres
   effect?:         EventEffect   // явный эффект на множитель (для COIN/GOLD/DIAMOND/BOMB/STONE)
-  durationMs?:     number   // GOLD / STONE: time to destroy
+  durationMs?:     number   // GOLD/STONE: миллисекунды паузы (tier×500 для sN/gN из демо)
   /** @deprecated используется `effect`. Оставлено для совместимости старых рекордов. */
   multiplierSnap?: number
 }

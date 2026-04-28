@@ -2143,6 +2143,7 @@ export class SpineAnimator {
   static tick(dt: number): void {
     this._instances = this._instances.filter((inst) => {
       if (!inst || (inst as any).destroyed) return false;
+      if ((inst as any).sleeping) return true;
       try {
         inst.update(dt);
 

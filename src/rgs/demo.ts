@@ -151,13 +151,13 @@ function parseToken(token: string): {
     return { type, effect: { op: 'div', value: d } }
   }
   if (type === 'GOLD') {
-    // gN: +N за N*0.5 секунд
-    const t = parseInt(token.slice(1), 10)
+    // gN: +N за N×0.5 с паузы
+    const t = Math.max(1, parseInt(token.slice(1), 10) || 1)
     return { type, effect: { op: 'add', value: t }, durationMs: t * 500 }
   }
-  // STONE
-  const t = parseInt(token.toLowerCase().slice(1), 10)
-  return { type, effect: { op: 'sub', value: t }, durationMs: Math.max(1000, t * 700) }
+  // STONE: sN: −N за N×0.5 с паузы
+  const t = Math.max(1, parseInt(token.toLowerCase().slice(1), 10) || 1)
+  return { type, effect: { op: 'sub', value: t }, durationMs: t * 500 }
 }
 
 

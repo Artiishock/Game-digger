@@ -136,7 +136,7 @@ export const useGameStore = create<GameStore>((set) => ({
 
   events:  [],
   roundID: '',
-  stats:   { depth: 0, distance: 0, multiplier: 0 },
+  stats:   { depth: 0, distance: 0, multiplier: 1 },
 
   speed: 1,
 
@@ -165,7 +165,7 @@ export const useGameStore = create<GameStore>((set) => ({
     set((s) => ({ stats: { ...s.stats, ...partial } })),
 
   resetStats: () =>
-    set({ stats: { depth: 0, distance: 0, multiplier: 0 } }),
+    set({ stats: { depth: 0, distance: 0, multiplier: 1 } }),
 
   setAutoplay: (cfg) =>
     set((s) => ({ autoplay: { ...s.autoplay, ...cfg } })),
