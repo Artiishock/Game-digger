@@ -253,15 +253,7 @@ export const ReplayPanel: React.FC = () => {
         <table className="replay-table">
           <thead>
             <tr>
-              {[
-                "Time",
-                "Bet",
-                "Win",
-                "Profit",
-                "Before",
-                "After",
-                "Currency",
-              ].map((h) => (
+              {["Time", "Currency", "Bet", "Win", "Replay"].map((h) => (
                 <th key={h}>{h}</th>
               ))}
             </tr>
@@ -270,22 +262,24 @@ export const ReplayPanel: React.FC = () => {
           <tbody>
             {roundHistory.map((r, i) => (
               <tr key={i}>
-                <td>{r.time}</td>
+                <td className="replay-time-cell">{r.time}</td>
+                <td>{r.currency}</td>
                 <td>{r.bet.toFixed(2)}</td>
                 <td className={r.win > 0 ? "replay-win" : "replay-muted"}>
                   {r.win.toFixed(2)}
                 </td>
-                <td
-                  className={
-                    r.profit >= 0 ? "replay-profit-plus" : "replay-profit-minus"
-                  }
-                >
-                  {r.profit >= 0 ? "+" : ""}
-                  {r.profit.toFixed(2)}
+                <td>
+                  <button className="replay-button">
+                    <span
+                      className="replay-icon"
+                      aria-hidden="true"
+                      style={{
+                        mask: `url("/ui/replay_icon.svg") center / contain no-repeat`,
+                        WebkitMask: `url("/ui/replay_icon.svg") center / contain no-repeat`,
+                      }}
+                    />
+                  </button>
                 </td>
-                <td>{r.balBefore.toFixed(2)}</td>
-                <td>{r.balAfter.toFixed(2)}</td>
-                <td>{r.currency}</td>
               </tr>
             ))}
           </tbody>

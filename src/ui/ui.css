@@ -1664,8 +1664,6 @@
   width: 100%;
   max-width: 720px;
   margin: 0 auto;
-  font-family: Inter, var(--font-body), sans-serif;
-  color: #dbdbdb;
   animation: fadeTab 0.25s ease;
 }
 
@@ -1708,6 +1706,8 @@
 .replay-table-wrap {
   width: 100%;
   min-height: 100%;
+  padding: 0 45px 25px;
+  box-sizing: border-box;
   overflow-x: hidden;
   overflow-y: visible;
   scrollbar-width: none;
@@ -1722,11 +1722,16 @@
   min-width: 0;
   table-layout: fixed;
   border-collapse: collapse;
-  font-family: Inter, var(--font-body), sans-serif;
-  font-size: 18px;
-  line-height: 120%;
-  font-weight: 500;
   font-variant-numeric: tabular-nums;
+  background-color: rgb(6, 6, 6, 0.65);
+  margin: 0 5px;
+  border-radius: 12px;
+}
+
+.replay-table th,
+.replay-table td {
+  text-align: center;
+  vertical-align: middle;
 }
 
 .replay-table thead {
@@ -1736,44 +1741,99 @@
 }
 
 .replay-table th {
-  padding: 0 12px 14px;
-  text-align: center;
-  font-size: 16px;
-  line-height: 100%;
-  font-weight: 800;
+  height: 65px;
+  padding: 0 12px;
+  font-size: 20px;
+  line-height: 1;
+  font-weight: 700;
   color: #facb32;
   text-transform: uppercase;
-  border-bottom: 1px solid rgba(250, 203, 50, 0.28);
   white-space: normal;
   overflow-wrap: anywhere;
 }
 
 .replay-table td {
-  padding: 14px 12px;
+  height: 65px;
+  font-size: 20px;
+  line-height: 1;
+  font-weight: 500;
   color: #dbdbdb;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  text-transform: uppercase;
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+.replay-time-cell {
+  white-space: pre-line;
+}
+
+.replay-table td:last-child {
   text-align: center;
+  vertical-align: middle;
+}
+
+.replay-table td:last-child .replay-button {
+  margin: 0 auto;
+}
+
+.replay-table thead tr:first-child th {
+  border-bottom: 3px solid #f2fdff;
+}
+
+.replay-table tbody tr {
+  border-bottom: 1px solid #a0a0b2;
 }
 
 .replay-table tbody tr:last-child td {
   border-bottom: none;
 }
 
-.replay-muted {
-  color: #a0a0b2 !important;
+.replay-button {
+  width: 170px;
+  height: 40px;
+  border-radius: 8px;
+  background-color: #52525c;
+  border: none;
+  cursor: pointer;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  transition: background-color 0.15s ease;
 }
 
-.replay-win,
-.replay-profit-plus {
-  color: #7cfc00 !important;
-  font-weight: 800;
+.replay-icon {
+  display: block;
+  width: 26px;
+  height: 26px;
+  color: #a0a0b2;
+  background-color: currentColor;
+
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+
+  transition:
+    width 0.15s ease,
+    height 0.15s ease,
+    color 0.15s ease;
 }
 
-.replay-profit-minus {
-  color: #ff6b6b !important;
-  font-weight: 800;
+.replay-button:hover .replay-icon,
+.replay-button:active .replay-icon,
+.replay-button--active .replay-icon {
+  color: #d9d9d9;
+}
+
+.replay-button:hover,
+.replay-button:active,
+.replay-button--active {
+  background-color: #6068ff;
 }
 
 .ui-menu-modal:has(.replay-panel--filled) .ui-modal-body {
@@ -1937,49 +1997,80 @@
     display: none;
   }
 
+  /* ───────── HISTORY / REPLAY TABLE ───────── */
+
   .ui-menu-modal:has(.replay-panel--filled) .ui-modal-body {
     padding: 0;
     align-items: stretch;
     justify-content: flex-start;
-  }
-
-  .ui-menu-modal .replay-panel {
-    width: 100%;
-    max-width: none;
-    box-sizing: border-box;
-  }
-
-  .ui-menu-modal .replay-panel--empty {
-    min-height: 260px;
-    margin-top: auto;
-    margin-bottom: auto;
+    overflow: hidden;
   }
 
   .ui-menu-modal .replay-panel--filled {
+    width: 100%;
+    max-width: none;
     min-height: 100%;
+    height: 100%;
     margin: 0;
   }
 
+  .ui-menu-modal .replay-table-wrap {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    padding: 0 clamp(20px, 3.2vw, 24px) clamp(18px, 2.6vw, 22px);
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+
   .ui-menu-modal .replay-table {
+    width: 100%;
     min-width: 0;
+    margin: 0;
     table-layout: fixed;
-    font-size: 16px;
+    border-collapse: collapse;
+    border-radius: 8px;
+    overflow: hidden;
+    background-color: rgba(6, 6, 6, 0.65);
   }
 
   .ui-menu-modal .replay-table th {
-    padding: 0 10px 12px;
-    font-size: 14px;
+    height: clamp(30px, 4.6vw, 34px);
+    padding: 0 8px;
+    font-size: clamp(11px, 1.65vw, 15px);
+    line-height: 1;
+    text-align: center;
+    vertical-align: middle;
   }
 
   .ui-menu-modal .replay-table td {
-    padding: 12px 10px;
-    font-size: 16px;
+    height: clamp(43px, 6.4vw, 48px);
+    padding: 0 8px;
+    font-size: clamp(12px, 1.9vw, 15px);
+    line-height: 1.1;
+    text-align: center;
+    vertical-align: middle;
+  }
+
+  .ui-menu-modal .replay-time-cell {
+    white-space: pre-line;
+    line-height: 1.15;
+  }
+
+  .ui-menu-modal .replay-button {
+    width: clamp(82px, 16vw, 100px);
+    height: clamp(24px, 3.8vw, 28px);
+    border-radius: 4px;
+    margin: 0 auto;
+  }
+
+  .ui-menu-modal .replay-icon {
+    width: clamp(15px, 2.4vw, 18px);
+    height: clamp(15px, 2.4vw, 18px);
   }
 
   .ui-menu-modal:has(.replay-panel--filled) .ui-modal-scrollbar {
     display: none;
-    top: 90px;
-    bottom: 30px;
   }
 }
 
@@ -2093,43 +2184,84 @@
     display: none;
   }
 
+  /* ───────── HISTORY / REPLAY TABLE ───────── */
+
   .ui-menu-modal:has(.replay-panel--filled) .ui-modal-body {
     padding: 0;
     align-items: stretch;
     justify-content: flex-start;
-  }
-
-  .ui-menu-modal .replay-panel {
-    width: 100%;
-    max-width: none;
-    box-sizing: border-box;
+    overflow: hidden;
   }
 
   .ui-menu-modal .replay-panel--filled {
+    width: 100%;
+    max-width: none;
     min-height: 100%;
+    height: 100%;
     margin: 0;
   }
 
+  .ui-menu-modal .replay-table-wrap {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    padding: 0 clamp(18px, 2.7vw, 24px) clamp(12px, 3.75vh, 15px);
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+
   .ui-menu-modal .replay-table {
+    width: 100%;
     min-width: 0;
+    margin: 0;
     table-layout: fixed;
-    font-size: 16px;
+    border-collapse: collapse;
+    border-radius: 8px;
+    overflow: hidden;
+    background-color: rgba(6, 6, 6, 0.65);
   }
 
   .ui-menu-modal .replay-table th {
-    padding: 0 10px 12px;
-    font-size: 14px;
+    height: clamp(28px, 8.75vh, 35px);
+    padding: 0 8px;
+    font-size: clamp(9px, 1.2vw, 15px);
+    line-height: 1;
+    text-align: center;
+    vertical-align: middle;
   }
 
   .ui-menu-modal .replay-table td {
-    padding: 12px 10px;
-    font-size: 16px;
+    height: clamp(33px, 9vh, 36px);
+    padding: 0 8px;
+    font-size: clamp(9px, 1.2vw, 15px);
+    line-height: 1.15;
+    text-align: center;
+    vertical-align: middle;
+  }
+
+  .ui-menu-modal .replay-time-cell {
+    white-space: pre-line;
+    line-height: 1.15;
+  }
+
+  .ui-menu-modal .replay-table thead tr:first-child th {
+    border-bottom-width: 2px;
+  }
+
+  .ui-menu-modal .replay-button {
+    width: clamp(95px, 12.5vw, 113px);
+    height: clamp(19px, 5vh, 20px);
+    border-radius: 4px;
+    margin: 0 auto;
+  }
+
+  .ui-menu-modal .replay-icon {
+    width: clamp(13px, 1.55vw, 14px);
+    height: clamp(13px, 1.55vw, 14px);
   }
 
   .ui-menu-modal:has(.replay-panel--filled) .ui-modal-scrollbar {
     display: none;
-    top: 90px;
-    bottom: 30px;
   }
 }
 
@@ -2364,60 +2496,84 @@
     display: none;
   }
 
+  /* ───────── HISTORY / REPLAY TABLE ───────── */
+
   .ui-menu-modal:has(.replay-panel--filled) .ui-modal-body {
     padding: 0;
     align-items: stretch;
     justify-content: flex-start;
-  }
-
-  .ui-menu-modal .replay-panel {
-    width: 100%;
-    max-width: none;
-    box-sizing: border-box;
-  }
-
-  .ui-menu-modal .replay-panel--empty {
-    min-height: 150px;
-    margin: auto 0;
+    overflow: hidden;
   }
 
   .ui-menu-modal .replay-panel--filled {
+    width: 100%;
+    max-width: none;
     min-height: 100%;
+    height: 100%;
     margin: 0;
   }
 
-  .ui-menu-modal .replay-empty-title {
-    font-size: 16px;
-    line-height: 100%;
-  }
-
-  .ui-menu-modal .replay-empty-text {
-    font-size: 16px;
-    line-height: 120%;
+  .ui-menu-modal .replay-table-wrap {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    padding: 0 clamp(10px, 3vw, 12px) clamp(12px, 1.8vh, 16px);
+    box-sizing: border-box;
+    overflow: hidden;
   }
 
   .ui-menu-modal .replay-table {
+    width: 100%;
     min-width: 0;
+    margin: 0;
     table-layout: fixed;
-    font-size: 14px;
+    border-collapse: collapse;
+    border-radius: 8px;
+    overflow: hidden;
+    background-color: rgba(6, 6, 6, 0.65);
   }
 
   .ui-menu-modal .replay-table th {
-    padding: 0 8px 8px;
-    font-size: 11px;
-    line-height: 100%;
+    height: clamp(30px, 4vh, 36px);
+    padding: 0 5px;
+    font-size: clamp(8px, 2.5vw, 10px);
+    line-height: 1;
+    text-align: center;
+    vertical-align: middle;
   }
 
   .ui-menu-modal .replay-table td {
-    padding: 8px;
-    font-size: 14px;
-    line-height: 120%;
+    height: clamp(35px, 4.85vh, 44px);
+    padding: 0 5px;
+    font-size: clamp(8px, 2.35vw, 9px);
+    line-height: 1.15;
+    text-align: center;
+    vertical-align: middle;
+  }
+
+  .ui-menu-modal .replay-time-cell {
+    white-space: pre-line;
+    line-height: 1.15;
+  }
+
+  .ui-menu-modal .replay-table thead tr:first-child th {
+    border-bottom-width: 2px;
+  }
+
+  .ui-menu-modal .replay-button {
+    width: clamp(45px, 14vw, 56px);
+    height: clamp(20px, 2.9vh, 26px);
+    border-radius: 4px;
+    margin: 0 auto;
+  }
+
+  .ui-menu-modal .replay-icon {
+    width: clamp(13px, 4vw, 16px);
+    height: clamp(13px, 4vw, 16px);
   }
 
   .ui-menu-modal:has(.replay-panel--filled) .ui-modal-scrollbar {
     display: none;
-    top: 36px;
-    bottom: 15px;
   }
 }
 
@@ -2680,59 +2836,84 @@
     display: none;
   }
 
+  /* ───────── HISTORY / REPLAY TABLE ───────── */
+
   .ui-menu-modal:has(.replay-panel--filled) .ui-modal-body {
     padding: 0;
     align-items: stretch;
     justify-content: flex-start;
-  }
-
-  .ui-menu-modal .replay-panel {
-    width: 100%;
-    max-width: none;
-    box-sizing: border-box;
-  }
-
-  .ui-menu-modal .replay-panel--empty {
-    min-height: 320px;
-    margin: auto 0;
+    overflow: hidden;
   }
 
   .ui-menu-modal .replay-panel--filled {
+    width: 100%;
+    max-width: none;
     min-height: 100%;
+    height: 100%;
     margin: 0;
   }
 
-  .ui-menu-modal .replay-empty-title {
-    font-size: 16px;
-    line-height: 100%;
-  }
-
-  .ui-menu-modal .replay-empty-text {
-    font-size: 16px;
-    line-height: 120%;
+  .ui-menu-modal .replay-table-wrap {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    padding: 0 clamp(10px, 3vw, 12px) clamp(12px, 1.8vh, 16px);
+    box-sizing: border-box;
+    overflow: hidden;
   }
 
   .ui-menu-modal .replay-table {
+    width: 100%;
     min-width: 0;
+    margin: 0;
     table-layout: fixed;
-    font-size: 14px;
+    border-collapse: collapse;
+    border-radius: 8px;
+    overflow: hidden;
+    background-color: rgba(6, 6, 6, 0.65);
   }
 
   .ui-menu-modal .replay-table th {
-    padding: 0 8px 10px;
-    font-size: 11px;
+    height: clamp(30px, 4vh, 36px);
+    padding: 0 5px;
+    font-size: clamp(8px, 2.5vw, 10px);
+    line-height: 1;
+    text-align: center;
+    vertical-align: middle;
   }
 
   .ui-menu-modal .replay-table td {
-    padding: 10px 8px;
-    font-size: 14px;
+    height: clamp(35px, 4.85vh, 44px);
+    padding: 0 5px;
+    font-size: clamp(8px, 2.35vw, 9px);
+    line-height: 1.15;
+    text-align: center;
+    vertical-align: middle;
+  }
+
+  .ui-menu-modal .replay-time-cell {
+    white-space: pre-line;
+    line-height: 1.15;
+  }
+
+  .ui-menu-modal .replay-table thead tr:first-child th {
+    border-bottom-width: 2px;
+  }
+
+  .ui-menu-modal .replay-button {
+    width: clamp(45px, 14vw, 56px);
+    height: clamp(20px, 2.9vh, 26px);
+    border-radius: 4px;
+    margin: 0 auto;
+  }
+
+  .ui-menu-modal .replay-icon {
+    width: clamp(13px, 4vw, 16px);
+    height: clamp(13px, 4vw, 16px);
   }
 
   .ui-menu-modal:has(.replay-panel--filled) .ui-modal-scrollbar {
     display: none;
-    top: 42px;
-    right: 0;
-    bottom: 15px;
   }
 }
 
