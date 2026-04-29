@@ -1,6 +1,11 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useMemo, useRef } from 'react'
 import { useGameStore } from '../../store/gameStore'
 import { gameAudio } from '../../audio/GameAudio'
+import {
+  resolveWinCelebration,
+  winCelebrationVideoSrc,
+  type WinCelebrateKind,
+} from '../winCelebration'
 import '../ui.css'
 
 export const ResultOverlay: React.FC = () => {
@@ -10,9 +15,24 @@ export const ResultOverlay: React.FC = () => {
   const currency = useGameStore(s => s.currency)
   const autoplay = useGameStore(s => s.autoplay)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const winVideoRef = useRef<HTMLVideoElement>(null)
 
   // Экран поражения (ПРОВАЛ) убран — после LAVA сразу IDLE (см. App.tsx).
   const show = phase === 'WIN'
+
+  const multiplier = useMemo(() => {
+    if (!show || !(bet > 0) || lastWin <= 0) return 0
+    return lastWin / bet
+  }, [show, bet, lastWin])
+
+  const celebrateKind: WinCelebrateKind | null =
+    multiplier > 0 ? resolveWinCelebration(multiplier) : null
+
+  useEffect(() => {
+    const v = winVideoRef.current
+    if (!celebrateKind || !v) return
+    void v.play().catch(() => {})
+  }, [celebrateKind, show])
 
   useEffect(() => {
     if (show && autoplay.active) {
@@ -31,11 +51,12 @@ export const ResultOverlay: React.FC = () => {
     useGameStore.getState().setPhase('IDLE')
   }
 
-  const multiplier = lastWin > 0 ? (lastWin / bet) : 0
   const bgStyle = {
     background:
       'radial-gradient(ellipse at center, rgba(76,175,80,0.25) 0%, rgba(0,0,0,0.7) 70%)',
   }
+
+  const winMultDisplay = lastWin > 0 && bet > 0 ? lastWin / bet : 0
 
   return (
     <div
@@ -43,15 +64,27 @@ export const ResultOverlay: React.FC = () => {
       style={bgStyle}
       onClick={dismissOverlayOnly}
     >
-      <div className="ui-result-emoji">🛏️</div>
-
-      <div className="ui-result-title ui-result-title--win">ПОБЕДА!</div>
+      {celebrateKind && (
+        <div className="ui-result-celebrate" aria-hidden key={celebrateKind}>
+          <div className="ui-result-celebrate-inner">
+            <video
+              ref={winVideoRef}
+              className="ui-result-celebrate-video"
+              playsInline
+              autoPlay
+              loop
+              muted
+              src={winCelebrationVideoSrc(celebrateKind)}
+            />
+          </div>
+        </div>
+      )}
 
       {lastWin > 0 && (
         <div className="ui-result-win-info">
           <div className="ui-result-win-sub">Выигрыш</div>
           <div className="ui-result-win-amt">{lastWin.toFixed(2)} {currency}</div>
-          <div className="ui-result-win-mult">×{multiplier.toFixed(2)} от ставки</div>
+          <div className="ui-result-win-mult">×{winMultDisplay.toFixed(2)} от ставки</div>
         </div>
       )}
 

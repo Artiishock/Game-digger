@@ -715,6 +715,43 @@
   animation: pulse 2s ease infinite;
 }
 
+@keyframes uiWinCelebratePop {
+  from { transform: scale(0); }
+  to   { transform: scale(1); }
+}
+
+.ui-result-celebrate {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  pointer-events: none;
+  margin-bottom: 8px;
+}
+
+.ui-result-celebrate-inner {
+  transform: scale(0);
+  animation: uiWinCelebratePop 0.5s cubic-bezier(0.2, 0.85, 0.25, 1) forwards;
+  transform-origin: center center;
+  will-change: transform;
+  max-width: min(720px, 92vw);
+  max-height: min(38vh, 320px);
+}
+
+.ui-result-celebrate-video {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: min(38vh, 320px);
+  object-fit: contain;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-result-celebrate-inner {
+    animation: none;
+    transform: scale(1);
+  }
+}
+
 /* ═══════════════════════════════════════════════════════
    ERROR SCREEN
    ═══════════════════════════════════════════════════════ */

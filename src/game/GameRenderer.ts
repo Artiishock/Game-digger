@@ -10,7 +10,7 @@ import type { Spine } from 'pixi-spine'
 import { GameConfig, HERO_MAX_SIDE_PX } from './GameConfig'
 import { gameAudio } from '../audio/GameAudio'
 import { GameAssets } from './gameAssets'
-import { buildRoundPathV2, buildRoundPathV3, cavePathHitsTunnel, distancePointToTunnelPolyline, pruneDecorObstaclesAfterPathChange } from './WorldMap'
+import { buildRoundPathV2, buildRoundPathV3, cavePathHitsTunnel, decorSpawnAcceptByPath, distancePointToTunnelPolyline, pruneDecorObstaclesAfterPathChange } from './WorldMap'
 import type { FullPathResult, PathPoint, RoadPoint } from './WorldMap'
 
 // ── Переключение варианта пути ──────────────────────────────────────────────
@@ -27,14 +27,6 @@ const START_PATH_SOFTEN_POINTS = 8
 const START_PATH_MAX_DX_PX = TILE * 0.85
 /** Задержка старта прорезки туннеля в интро start-анимации (0 = резка сразу у травы). */
 const START_TUNNEL_CARVE_DELAY_SEC = 0
-/** Скорость «призрака» в die-сцене: базово ×4; после любого нажатия клавиши/клика — ещё ×3. */
-const LAVA_GHOST_BASE_SPEED_MUL = 4
-const LAVA_GHOST_INPUT_SPEED_MUL = 3
-/** Плавный переход survivor в позу как в idle (до игры). */
-const LAVA_DIE_SCENE_BLEND_SEC = 0.46
-/** Замедление полёта старого героя в верхней фазе (1 = без изменений). */
-const LAVA_DIE_HEAVEN_GHOST_SPEED_MUL = 0.32
-
 /** X на оси туннеля для произвольной глубины (линейная интерполяция по сегментам path). */
 function pathXAtWorldY(wy: number, path: PathPoint[], surfY: number): number {
   if (path.length === 0) return 0
@@ -661,11 +653,8 @@ class ObjectSpawner {
       const so = this._safeObjects[this._safeSpawnedIdx]
       if (so.y > genUpTo) break
       this._safeSpawnedIdx++
-      const pathXAtY = pathXAtWorldY(so.y, this._pathPointsForSpawn, this.surfY)
-      // Коридор отбора делаем широким: вокруг оси маршрута + запас на боковые отклонения.
-      // Слишком узкий фильтр пропускал часть корректных safeObjects на поворотах пути.
-      const fillHalfW = viewW * 1.05 + TILE * 3.5
-      if (Math.abs(so.x - pathXAtY) > fillHalfW) continue
+      // Совпадает с WorldMap.placeObstacles: полоса следует траектории (envelope zigzag по Y), не точке оси только на этой глубости.
+      if (!decorSpawnAcceptByPath(so.x, so.y, this._pathPointsForSpawn, viewW)) continue
       if (so.kind === 'decor') {
         const decorType = so.decorVisual ?? this._pickType(so.y, this._rng(so.y ^ 0xABC))
         const sz = this._sizeForType(decorType)
@@ -1041,40 +1030,30 @@ export class GameRenderer {
   private _lossTerminalDescent = false // end of LOSS path: smooth fall, no tunnel snap
   /** X оси у терминальной лавы (конец предрасчёта туннеля LOSS); `null` если не LOSS */
   private _lossLavaCenterX: number | null = null
-  /** Смерть в лаве: полёт вверх, на поверхности второй герой, смена фокуса камеры. */
+  /** Смерть в лаве: камера застывает, один персонаж с die летит вверх за время `finish_lose.ogg`. */
   private _lavaDeathCinematic = false
   private _lavaDeathX = 0
   private _lavaDeathRootY = 0
-  private _lavaHeavenPhase = false
-  private _lavaHeavenBlend = false
-  private _lavaHeavenBlendT = 0
-  private _lavaHeavenBlendFromMinerY = 0
-  private _lavaHeavenBlendFromSurX = 0
-  private _lavaHeavenBlendFromSurY = 0
-  private _lavaHeavenT = 0
-  private _lavaDeathT = 0
-  /**
-   * Фаза heaven: корень призрака в мировой Y смерти; подъём = сдвиг слоёв мира на эту величину.
-   */
-  private _lavaDeathWorldScrollY = 0
-  /** Мировая Y в момент смерти — для «выреза» скролла после подъёма из ямы. */
-  private _lavaPitDepthY = 0
-  /** Скорость подъёма "старого" героя до смены фокуса (px/сек, игровое время). */
-  private _lavaCarryUpSpeed = 0
-  private _lavaSurfaceSurvivor: SpriteCharacter | null = null
+  /** Кадр камеры застывает с момента контакта с лавой. */
+  private _lavaFrozenCamX = 0
+  private _lavaFrozenCamY = 0
+  /** Мировая Y верхней границы, при достижении корень считается ушедшим за экран (−Y = вверх). */
+  private _lavaDeathExitWorldY = 0
+  /** Подбирается как (старт − exit) / (длина_SFX × deathSceneMotionScale). */
+  private _lavaDeathAscentSpeedPx = 0
+  /** true между `_tryStartLavaDeathCinematic` и успешным handoff cleanup; не смешиваем с WIN-idle. */
+  private _lavaExitFlightActive = false
+  /** После loseDelayMs: камера летит из застывшего подзёмного вида к кадру idle без мгновенного телепорта. */
+  private _lavaLossIdleGlideActive = false
+  private _lavaLossIdleGlideT = 0
+  private _lavaLossIdleGlideDurSec = 1
+  private _lavaLossIdleGlideFromCx = 0
+  private _lavaLossIdleGlideFromCy = 0
+  private _lavaLossIdleGlideToCx = 0
+  private _lavaLossIdleGlideToCy = 0
   private _lavaLossTimeoutPending = false
-  /** true после cleanup LAVA с survivor: idleX уже выставлен из мира, не сбрасывать в 0 в _returnToIdle. */
+  /** После cleanup LAVA: idleX уже из колонки смерти, не сбрасывать в 0 в _returnToIdle. */
   private _lavaHandoffUsedIdleAnchor = false
-  /** Любое нажатие (не удержание) в die-сцене — включает «быстрый» множитель до конца сцены. */
-  private _lavaDeathPressBoost = false
-  private _lavaDeathInputListeners = false
-  private _onLavaKbdDown = (e: KeyboardEvent) => {
-    if (e.repeat) return
-    this._lavaDeathPressBoost = true
-  }
-  private _onLavaPtrDown = () => {
-    this._lavaDeathPressBoost = true
-  }
   private _caveZones:   Array<{x:number; y:number; r:number}> = []  // круги всех активных пещер
   /** Позиция вдоль туннеля: длина дуги от начала path; скорость = const вдоль этой дуги */
   private _pathArcS = 0
@@ -1254,8 +1233,6 @@ export class GameRenderer {
   private _syncLayerScroll() {
     const x = -this.camX
     const y = -this.camY
-    // LAVA heaven: камера уже как в idle; не сдвигаем мир на _lavaDeathWorldScrollY — иначе
-    // чанки уезжают за экран (tileWorld.update с camY-scroll даёт rowMax < 0) и виден только darkBg.
     this.worldBgLayer.position.set(x, y)
     this._sceneryLayer.position.set(x, y)
     this.worldChunkLayer.position.set(x, y)
@@ -1272,9 +1249,9 @@ export class GameRenderer {
 
   /** Прогресс длины прореза start-интро (0–1): только для `_awaitingStartAnim`; иначе `null`. */
   private _updateTunnel(sx: number, sy: number, tunnelLengthProgress: number | null = null) {
-    if (this.tileWorld) {
-      // В сцене смерти LAVA камера едет вверх — без стирания туннеля (иначе «бурит» за кадром).
-      if (this._lavaDeathCinematic) return
+      if (this.tileWorld) {
+      // При LAVA или подъезде к idle не стираем туннель в фоне.
+      if (this._lavaDeathCinematic || this._lavaLossIdleGlideActive) return
       this.tileWorld.scratchAt(sx, sy, this.camX, this.camY, this._pathTangentNx, this._pathTangentNy, tunnelLengthProgress)
     }
   }
@@ -1903,94 +1880,51 @@ export class GameRenderer {
     return { ox, oy }
   }
 
-  // ─── LAVA: полёт вверх + второй герой на поверхности ───────────────────────
-
-  private _installLavaDeathInputBoost(): void {
-    if (this._lavaDeathInputListeners || typeof window === 'undefined') return
-    this._lavaDeathInputListeners = true
-    this._lavaDeathPressBoost = false
-    window.addEventListener('keydown', this._onLavaKbdDown)
-    window.addEventListener('pointerdown', this._onLavaPtrDown, true)
-  }
-
-  private _uninstallLavaDeathInputBoost(): void {
-    if (!this._lavaDeathInputListeners) return
-    this._lavaDeathInputListeners = false
-    this._lavaDeathPressBoost = false
-    if (typeof window === 'undefined') return
-    window.removeEventListener('keydown', this._onLavaKbdDown)
-    window.removeEventListener('pointerdown', this._onLavaPtrDown, true)
-  }
+  // ─── LAVA: камера без движения, призрак с die летит вверх за длительность finish_lose.ogg ─
 
   private _cleanupLavaDeathCinematic(): void {
-    this._uninstallLavaDeathInputBoost()
-    this._lavaHandoffUsedIdleAnchor = false
-    let surWx = 0
-    let surWy = 0
-    const hadSurfaceSurvivor = !!this._lavaSurfaceSurvivor
-    if (this._lavaSurfaceSurvivor) {
-      const sur = this._lavaSurfaceSurvivor
-      surWx = sur.root.x
-      surWy = sur.root.y
-      if (sur.root.parent) sur.root.parent.removeChild(sur.root)
-      sur.destroy()
-      this._lavaSurfaceSurvivor = null
-    }
+    const didLava = this._lavaExitFlightActive
+    if (didLava) this._lavaExitFlightActive = false
     this._lavaDeathCinematic = false
-    this._lavaHeavenPhase = false
-    this._lavaHeavenBlend = false
-    this._lavaHeavenBlendT = 0
-    this._lavaHeavenT = 0
-    this._lavaDeathWorldScrollY = 0
-    this._lavaPitDepthY = 0
+    if (!didLava) return
+
     this.miner.clearLavaDeathVisualOverride()
     this.miner.root.visible = true
-    if (hadSurfaceSurvivor) {
-      const hi = GameConfig.hero.idle
-      this.idleX = surWx - hi.rootOffsetXPx
-      this._lavaHandoffUsedIdleAnchor = true
-      this.miner.root.x = surWx
-      this.miner.root.y = surWy
-      this.camX = surWx - this.W / 2
-      this.camY = this.idleCamY
-      this._syncLayerScroll()
-      this._syncSkyBgParallax()
-    }
+    const hi = GameConfig.hero.idle
+    this.idleX = this._lavaDeathX - hi.rootOffsetXPx
+    this._lavaHandoffUsedIdleAnchor = true
+    this.miner.root.x = this._lavaDeathX
+    this.miner.root.y = this.surfY + hi.rootOffsetYPx
+    this.camX = this._lavaDeathX - this.W / 2
+    this.camY = this.idleCamY
+    this._syncLayerScroll()
+    this._syncSkyBgParallax()
   }
 
-  /** false → вызывать старый setTimeout(lose) сразу. */
+  /** Всегда true: fallbacks — старый setTimeout(lose) не нужен. */
   private _tryStartLavaDeathCinematic(): boolean {
-    if (!SpineAnimator.heroReady) return false
-    const hero = SpineAnimator.createHero(HERO_SPINE_SCALE)
-    if (!hero) return false
-    const sur = new SpriteCharacter()
-    this.minerLayer.addChildAt(sur.root, 0)
-    if (!sur.setHeroSpine(hero)) {
-      sur.destroy()
-      return false
-    }
-    const hi = GameConfig.hero.idle
-    sur.root.x = this.charX + hi.rootOffsetXPx
-    sur.root.y = this.surfY + hi.rootOffsetYPx
-    sur.setIdleMode(true)
-    sur.resetFacing()
-    this._lavaSurfaceSurvivor = sur
+    const m = GameConfig.lava.deathSceneMotionScale ?? 1
+    const sfxSec =
+      gameAudio.getSfxBufferDurationSec('finish_lose.ogg') ??
+      GameConfig.lava.finishLoseSfxDurationFallbackSec
+    const denom = Math.max(1e-3, sfxSec * m)
 
     this._lavaDeathCinematic = true
-    this._lavaHeavenPhase = false
-    this._lavaHeavenBlend = false
-    this._lavaHeavenBlendT = 0
-    this._lavaHeavenT = 0
-    this._lavaDeathT = 0
-    this._lavaDeathWorldScrollY = 0
-    this._lavaCarryUpSpeed = 0
     this._lavaLossTimeoutPending = false
     this._lavaDeathX = this.charX
     this._lavaDeathRootY = this.miner.root.y
-    this._lavaPitDepthY = this.miner.root.y
+    this._lavaFrozenCamX = this.camX
+    this._lavaFrozenCamY = this.camY
+    // Верх кадра в мирах ≈ frozenCamY; запас чтобы спрайт целиком ушёл над краем.
+    const offTopPx = TILE * 2 + HERO_MAX_SIDE_PX * 0.42
+    this._lavaDeathExitWorldY = this._lavaFrozenCamY - offTopPx
+    const distPx = Math.max(TILE, this._lavaDeathRootY - this._lavaDeathExitWorldY)
+    this._lavaDeathAscentSpeedPx = distPx / denom
+
+    this._lavaExitFlightActive = true
     this.miner.root.visible = true
     this.miner.applyLavaDeathAscentVisual()
-    this._installLavaDeathInputBoost()
+
     return true
   }
 
@@ -2000,144 +1934,81 @@ export class GameRenderer {
     setTimeout(() => {
       this._lavaLossTimeoutPending = false
       gameEngine.onRoundComplete(0, false)
-      this._returnToIdle()
+      this._startLavaLossIdleGlideOrIdle()
     }, GameConfig.round.loseDelayMs)
   }
 
-  private _tickLavaDeathCinematic(dt: number): void {
-    // Во время die-сцены игнорируем speed-кнопки/нажатия — темп всегда фиксированный.
-    const spd = 1
-    const m = GameConfig.lava.deathSceneMotionScale ?? 1
-    const gameDtM = dt * m
-    const inputBoost = this._lavaDeathPressBoost
-    const gMul =
-      LAVA_GHOST_BASE_SPEED_MUL *
-      (inputBoost ? LAVA_GHOST_INPUT_SPEED_MUL : 1)
-    const hiIdle = GameConfig.hero.idle
-    const sur = this._lavaSurfaceSurvivor
-    if (!sur) {
-      this._scheduleLavaLossResult()
-      this._pUpdate(gameDtM, dt)
+  /** После звука/задержки: либо ~1 с выезда камеры к поверхности, либо сразу сборка idle. */
+  private _startLavaLossIdleGlideOrIdle(): void {
+    const glideSec = GameConfig.round.loseIdleGlideSec ?? 1
+    if (!this._lavaExitFlightActive || glideSec <= 0) {
+      this._returnToIdle()
       return
     }
-    const needH = GameConfig.lava.heavenRiseHeightPx
-    const maxH = GameConfig.lava.heavenRiseMaxSec
-    const hs = GameConfig.lava.heavenRiseSpeedPx * spd * m
 
-    if (!this._lavaHeavenPhase) {
-      // Фаза ямы: подъём к клону на поверхности (как до рефакторинга cinematic).
-      this._lavaDeathT += gameDtM
-      const targetY = sur.root.y
-      const maxT = GameConfig.lava.deathAscentMaxSec
-      let ascentSpd = GameConfig.lava.deathAscentSpeedPx * spd * m
-      if (this._lavaDeathT >= maxT) {
-        const remain = this._lavaDeathRootY - targetY
-        if (remain > 0.5) {
-          ascentSpd = Math.max(ascentSpd, remain * 1.8)
-        }
-      }
-      this._lavaCarryUpSpeed = ascentSpd
-      this._lavaDeathRootY = Math.max(
-        targetY,
-        this._lavaDeathRootY - ascentSpd * gMul * gameDtM,
-      )
-      const targetX = sur.root.x
-      const dyToSurf = this._lavaDeathRootY - targetY
-      const xBlendBand = TILE * 8
-      let approachX = this._lavaDeathX
-      if (dyToSurf > 0 && dyToSurf < xBlendBand) {
-        const u = 1 - dyToSurf / xBlendBand
-        approachX = this._lavaDeathX + (targetX - this._lavaDeathX) * u
-      } else if (dyToSurf <= 0) {
-        approachX = targetX
-      }
-      if (this._lavaDeathRootY <= targetY + 0.5) {
-        this._lavaDeathRootY = targetY
-        this._lavaHeavenPhase = true
-        this._lavaHeavenBlend = true
-        this._lavaHeavenBlendT = 0
-        this._lavaHeavenBlendFromSurX = sur.root.x
-        this._lavaHeavenBlendFromSurY = sur.root.y
-        this._lavaHeavenT = 0
-        this._lavaCarryUpSpeed = Math.max(
-          GameConfig.lava.deathAscentSpeedPx * spd * m,
-          GameConfig.lava.heavenRiseSpeedPx * spd * m,
-        )
-        this.running = false
-        // Колонка X как у встречи с призраком — survivor и призрак не прыгают к «центру idle».
-        this.idleX = this._lavaHeavenBlendFromSurX - hiIdle.rootOffsetXPx
-        this._syncSurfaceScenery()
-        this._hideTunnel()
-        this.miner.root.x = sur.root.x
-        this.miner.root.y = sur.root.y
-        this._lavaHeavenBlendFromMinerY = this.miner.root.y
-        {
-          // Кадр как в idle: мировая Y корня на траве — для выреза скролла мира.
-          const blendTargetMinerY = this.surfY + hiIdle.rootOffsetYPx
-          this._lavaDeathWorldScrollY = Math.max(0, this._lavaPitDepthY - blendTargetMinerY)
-        }
-        this._lavaDeathRootY = this.miner.root.y
-      } else {
-        this.miner.root.x = approachX
-        this.miner.root.y = this._lavaDeathRootY
-      }
-    } else {
-      const idleSurfY = this.surfY + hiIdle.rootOffsetYPx
-      const survivorTargetY = idleSurfY
-      const blendTargetMinerY = idleSurfY
-      const D = this._lavaHeavenBlendFromMinerY
-      const B = blendTargetMinerY
-      const scrollCut = Math.max(0, this._lavaPitDepthY - B)
-      if (this._lavaHeavenBlend) {
-        this._lavaHeavenBlendT += gameDtM
-        const t = Math.min(1, this._lavaHeavenBlendT / LAVA_DIE_SCENE_BLEND_SEC)
-        const e = 1 - Math.pow(1 - t, 3)
-        sur.root.x = this._lavaHeavenBlendFromSurX
-        sur.root.y = this._lavaHeavenBlendFromSurY + (survivorTargetY - this._lavaHeavenBlendFromSurY) * e
-        this.miner.root.x = sur.root.x
-        this.miner.root.y = D
-        this._lavaDeathRootY = this.miner.root.y
-        if (t >= 1) this._lavaHeavenBlend = false
-      } else {
-        sur.root.x = this._lavaHeavenBlendFromSurX
-        sur.root.y = survivorTargetY
-        const ghostUpSpeed =
-          (this._lavaCarryUpSpeed > 0 ? this._lavaCarryUpSpeed : hs) *
-          gMul *
-          LAVA_DIE_HEAVEN_GHOST_SPEED_MUL
-        this.miner.root.x = sur.root.x
-        // Призрак с die продолжает лететь вверх (−Y), а не замирает на D после смены фокуса на survivor.
-        this.miner.root.y -= ghostUpSpeed * gameDtM
-        this._lavaDeathWorldScrollY += ghostUpSpeed * gameDtM
-        this._lavaDeathRootY = this.miner.root.y
-      }
-      this._lavaHeavenT += gameDtM
-      // Полная heavenRiseHeightPx: иначе min(..., ~33px) мгновенно закрывало сцену — призрак «замирал».
-      const riseAfterBlend = this._lavaDeathWorldScrollY - scrollCut
-      if (
-        (!this._lavaHeavenBlend && riseAfterBlend >= needH) ||
-        this._lavaHeavenT >= maxH
-      ) {
+    this._lavaDeathCinematic = false
+
+    this._lavaLossIdleGlideDurSec = glideSec
+    this._lavaLossIdleGlideT = 0
+    this._lavaLossIdleGlideActive = true
+
+    this._lavaLossIdleGlideFromCx = this._lavaFrozenCamX
+    this._lavaLossIdleGlideFromCy = this._lavaFrozenCamY
+    this._lavaLossIdleGlideToCx = this._lavaDeathX - this.W / 2
+    this._lavaLossIdleGlideToCy = this.idleCamY
+  }
+
+  private _tickLavaLossIdleGlide(dt: number): void {
+    this._lavaLossIdleGlideT += dt / this._lavaLossIdleGlideDurSec
+    const uRaw = Math.min(1, Math.max(0, this._lavaLossIdleGlideT))
+    const e = 1 - Math.pow(1 - uRaw, 3)
+    this.camX =
+      this._lavaLossIdleGlideFromCx +
+      (this._lavaLossIdleGlideToCx - this._lavaLossIdleGlideFromCx) * e
+    this.camY =
+      this._lavaLossIdleGlideFromCy +
+      (this._lavaLossIdleGlideToCy - this._lavaLossIdleGlideFromCy) * e
+
+    this._syncLayerScroll()
+    const skyVisible = this.camY < this.surfY + TILE * 2
+    if (this.skyLayer.visible !== skyVisible) this.skyLayer.visible = skyVisible
+    this._syncSkyBgParallax()
+    this._updateSkyDecor(dt)
+    this._updateWorldMask(this.W, this.H)
+    if (this.tileWorld) this.tileWorld.update(this.camX, this.camY, this.W, this.H)
+    this._pUpdate(dt, dt)
+
+    if (uRaw >= 1) {
+      this._lavaLossIdleGlideActive = false
+      this.camX = this._lavaLossIdleGlideToCx
+      this.camY = this._lavaLossIdleGlideToCy
+      this._returnToIdle()
+    }
+  }
+
+  private _tickLavaDeathCinematic(dt: number): void {
+    const m = GameConfig.lava.deathSceneMotionScale ?? 1
+    const gameDtM = dt * m
+
+    this.camX = this._lavaFrozenCamX
+    this.camY = this._lavaFrozenCamY
+
+    if (!this._lavaLossTimeoutPending) {
+      this._lavaDeathRootY -= this._lavaDeathAscentSpeedPx * gameDtM
+      this.miner.root.x = this._lavaDeathX
+      this.miner.root.y = this._lavaDeathRootY
+
+      this.charX = this._lavaDeathX
+      this.charY = this._lavaDeathRootY
+
+      if (this._lavaDeathRootY <= this._lavaDeathExitWorldY) {
         this.miner.root.visible = false
         this._scheduleLavaLossResult()
       }
+
+      this.miner.update(gameDtM, 1, false)
     }
 
-    this.charX = this._lavaDeathX
-    this.charY = this._lavaHeavenPhase ? this.surfY : this._lavaDeathRootY
-
-    this.miner.update(gameDtM, 1, false)
-    sur.update(gameDtM, 0.9, false)
-
-    if (!this._lavaHeavenPhase) {
-      // Яма: призрак по центру кадра.
-      this.camX = this.miner.root.x - this.W / 2
-      this.camY = this.miner.root.y - this.H / 2
-    } else {
-      // Камера по колонне встречи (тот же X, что у survivor / призрака), высота как в idle.
-      this.camX = this._lavaHeavenBlendFromSurX - this.W / 2
-      this.camY = this.idleCamY
-    }
     this._syncLayerScroll()
     this._updateTunnel(this.charX - this.camX, this.charY - this.camY)
     const skyVisible = this.camY < this.surfY + TILE * 2
@@ -2244,6 +2115,11 @@ export class GameRenderer {
         this.running = true
         this._syncSurfaceScenery()
       }
+      return
+    }
+
+    if (this._lavaLossIdleGlideActive) {
+      this._tickLavaLossIdleGlide(dt)
       return
     }
 
@@ -3072,7 +2948,7 @@ export class GameRenderer {
   }
 
   destroy(){
-    this._uninstallLavaDeathInputBoost()
+    this._lavaLossIdleGlideActive = false
     this.skyLayer.mask=null
     this.worldBgLayer.mask=null
     this.worldChunkLayer.mask=null

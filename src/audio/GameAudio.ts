@@ -61,6 +61,15 @@ class GameAudioModule {
     this.setLoop('drill.ogg', phase === 'RUNNING')
   }
 
+  /**
+   * Длительность загруженного в WebAudio декодированного SFX в секундах.
+   * Пока буфера нет (`ensureBuffers` ещё не отработал) — undefined.
+   */
+  getSfxBufferDurationSec(file: string): number | undefined {
+    const buf = this.buffers.get(file)
+    return buf != null && buf.duration > 0 ? buf.duration : undefined
+  }
+
   playSfx(file: string): void {
     const { soundEnabled, sfxVolume } = useGameStore.getState().settings
     if (!soundEnabled || sfxVolume <= 0) return

@@ -1,4 +1,4 @@
-import{g as F}from"./vendor-pixi-B9wKiFzt.js";var U={exports:{}},u={};/**
+import{g as F}from"./vendor-pixi-WZaN9XRs.js";var U={exports:{}},u={};/**
  * @license React
  * react.production.min.js
  *
