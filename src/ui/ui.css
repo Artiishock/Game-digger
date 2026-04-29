@@ -83,7 +83,7 @@
   left: 40px;
   width: 270px;
   height: 110px;
-  border: 2px dashed rgba(255, 255, 255, 0.2);
+  border: 2px dashed rgba(255, 255, 255, 1);
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
@@ -2703,6 +2703,16 @@
   }
 }
 
+.ui-spin-btn-icon,
+.ui-autospin-btn-icon,
+.ui-speed-icon,
+.ui-bet-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 /* ═══════════════════════════════════════════════════════
    GAME UI — tablet landscape (≈1150x744)
    ═══════════════════════════════════════════════════════ */
@@ -2874,6 +2884,44 @@
   .ui-bet-icon {
     width: 22px;
     height: 22px;
+  }
+
+  .ui-spin-btn-icon,
+  .ui-autospin-btn-icon,
+  .ui-speed-icon,
+  .ui-bet-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .ui-spin-btn-icon svg,
+  .ui-spin-btn-icon img {
+    display: block;
+  }
+
+  .ui-autospin-btn-icon svg,
+  .ui-autospin-btn-icon img {
+    display: block;
+  }
+
+  .ui-speed-icon svg,
+  .ui-speed-icon img {
+    width: 43px !important;
+    height: 43px !important;
+    max-width: 43px;
+    max-height: 43px;
+    display: block;
+  }
+
+  .ui-bet-icon svg,
+  .ui-bet-icon img {
+    width: 22px !important;
+    height: 22px !important;
+    max-width: 22px;
+    max-height: 22px;
+    display: block;
   }
 }
 
@@ -3070,4 +3118,314 @@
     height: 35px;
   }
 
+  .ui-spin-btn-icon,
+  .ui-autospin-btn-icon,
+  .ui-speed-icon,
+  .ui-bet-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .ui-spin-btn-icon svg,
+  .ui-spin-btn-icon img {
+    display: block;
+  }
+
+  .ui-autospin-btn-icon svg,
+  .ui-autospin-btn-icon img {
+    display: block;
+  }
+
+  .ui-speed-icon svg,
+  .ui-speed-icon img {
+    width: 43px !important;
+    height: 43px !important;
+    max-width: 43px;
+    max-height: 43px;
+    display: block;
+  }
+
+  .ui-bet-icon {
+    width: 13px;
+    height: 13px;
+  }
+
+  .ui-bet-icon svg,
+  .ui-bet-icon img {
+    width: 13px !important;
+    height: 13px !important;
+    max-width: 13px;
+    max-height: 13px;
+    display: block;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   GAME UI — mobile portrait (≈400x900)
+   Overrides only tablet portrait game UI.
+   ═══════════════════════════════════════════════════════ */
+
+@media (max-width: 532px) and (orientation: portrait) {
+  .ui-logo-zone {
+    display: none;
+  }
+
+  .ui-win-zone {
+    top: clamp(16px, 5vw, 20px);
+    left: 0;
+    transform: none;
+    width: 100%;
+    height: 35px;
+
+    background: linear-gradient(
+      180deg,
+      rgba(0, 0, 0, 0) 0%,
+      rgba(0, 0, 0, 0.5) 30%,
+      rgba(0, 0, 0, 0.5) 70%,
+      rgba(0, 0, 0, 0) 100%
+    );
+  }
+
+  .ui-win-label,
+  .ui-win-amount {
+    font-size: 24px;
+    font-weight: 800;
+  }
+
+  .ui-topright {
+    top: clamp(8px, 2.5vw, 10px);
+    right: clamp(8px, 2.5vw, 10px);
+    gap: 5px;
+  }
+
+  .ui-icon-btns {
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .ui-icon-btn {
+    width: 50px;
+    height: 50px;
+  }
+
+  .ui-icon,
+  .ui-icon-btn svg,
+  .ui-icon-btn img {
+    width: 24px;
+    height: 24px;
+  }
+
+  .ui-icon-btns .ui-icon-btn:nth-child(1) {
+    position: fixed;
+    left: clamp(32px, 8.75vw, 35px);
+    top: clamp(8px, 2.5vw, 10px);
+    transform: translateX(-50%);
+  }
+
+  .ui-depth-block {
+    position: fixed;
+    left: clamp(32px, 8.75vw, 35px);
+    top: clamp(62px, 16.25vw, 65px);
+    transform: translateX(-50%);
+    gap: 5px;
+    align-items: center;
+  }
+
+  .ui-depth-label {
+    font-size: 10px;
+    font-weight: 800;
+  }
+
+  .ui-depth-value {
+    font-size: 15px;
+    font-weight: 800;
+  }
+
+  .ui-spin-control {
+    right: 0;
+    bottom: 34%;
+    gap: 10px;
+  }
+
+  .ui-spin-btn {
+    width: 100px;
+    height: 100px;
+  }
+
+  .ui-spin-btn-icon {
+    width: 80px;
+    height: 80px;
+  }
+
+  .ui-autospin-btn {
+    width: 75px;
+    height: 75px;
+  }
+
+  .ui-autospin-btn-icon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .ui-hud {
+    height: clamp(72px, 20vw, 75px);
+    padding-left: clamp(8px, 2.5vw, 10px);
+    padding-right: clamp(15px, 5vw, 20px);
+
+    background: linear-gradient(
+      to top,
+      rgba(6, 6, 6, 0.9) 40%,
+      rgba(6, 6, 6, 0) 100%
+    );
+  }
+
+  .ui-credit {
+    width: auto;
+    height: auto;
+    padding: 0;
+    background: none;
+    border: none;
+    border-radius: 0;
+    bottom: clamp(16px, 5vw, 20px);
+    left: clamp(8px, 2.5vw, 10px);
+    position: absolute;
+  }
+
+  .ui-credit-label {
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .ui-credit-value {
+    font-size: 12px;
+    font-weight: 900;
+  }
+
+  .ui-group-wrapper {
+    position: static;
+    padding: 0;
+    gap: 0;
+    background: none;
+    border: none;
+    box-shadow: none;
+  }
+
+  .ui-speed-group {
+    position: absolute;
+    left: 50%;
+    bottom: clamp(16px, 5vw, 20px);
+    transform: translateX(-50%);
+    gap: 5px;
+  }
+
+  .ui-speed-btn {
+    width: 30px;
+    height: 30px;
+  }
+
+  .ui-speed-icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .ui-bet-block {
+    position: absolute;
+    right: clamp(8px, 2.5vw, 10px);
+    bottom: clamp(4px, 1.25vw, 5px);
+
+    display: grid;
+    grid-template-columns: auto 30px;
+    grid-template-rows: auto auto;
+    column-gap: 6px;
+    row-gap: 5px;
+    align-items: center;
+  }
+
+  .ui-bet-label {
+    grid-column: 1;
+    grid-row: 1;
+    font-size: 12px;
+    font-weight: 800;
+    margin-bottom: -17px;
+  }
+
+  .ui-bet-controls {
+    display: contents;
+  }
+
+  .ui-bet-amount {
+    grid-column: 1;
+    grid-row: 2;
+    font-size: 12px;
+    font-weight: 900;
+    margin-top: -17px;
+  }
+
+  .ui-bet-adj {
+    width: 30px;
+    height: 30px;
+  }
+
+  .ui-bet-icon {
+    width: 13px;
+    height: 13px;
+  }
+
+  .ui-bet-controls .ui-bet-adj:first-child {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .ui-bet-controls .ui-bet-adj:last-child {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .ui-spin-btn-icon,
+  .ui-autospin-btn-icon,
+  .ui-speed-icon,
+  .ui-bet-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .ui-spin-btn-icon svg,
+  .ui-spin-btn-icon img {
+    width: 80px !important;
+    height: 80px !important;
+    max-width: 80px;
+    max-height: 80px;
+    display: block;
+  }
+
+  .ui-autospin-btn-icon svg,
+  .ui-autospin-btn-icon img {
+    width: 40px !important;
+    height: 40px !important;
+    max-width: 40px;
+    max-height: 40px;
+    display: block;
+  }
+
+  .ui-speed-icon svg,
+  .ui-speed-icon img {
+    width: 20px !important;
+    height: 20px !important;
+    max-width: 20px;
+    max-height: 20px;
+    display: block;
+  }
+
+  .ui-bet-icon svg,
+  .ui-bet-icon img {
+    width: 13px !important;
+    height: 13px !important;
+    max-width: 13px;
+    max-height: 13px;
+    display: block;
+  }
 }
