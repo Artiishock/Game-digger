@@ -330,7 +330,7 @@ export const Hud: React.FC = () => {
                 <img src="/ui/minus_icon.svg" alt="" />
               </span>
             </button>
-            <span className="ui-bet-amount">${bet.toFixed(2)}</span>
+            <span className="ui-bet-amount">{bet.toFixed(2)}</span>
             <button
               className="ui-bet-adj"
               onClick={handlePlus}
