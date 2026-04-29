@@ -39,12 +39,6 @@ function tunnelEllipsePolyRotatedLocal(
 
 /** Верхняя полоса травы в локальных координатах чанка: меньше Y → выше на экране (смотри маску чанка при сильном отрицании). */
 const GRASS_SPRITE_Y_OFFSET = -13
-/** Стирание травы по круглому hitbox персонажа. */
-const GRASS_ERASE_R = TILE * GameConfig.collision.radiusTiles
-/** Доп. усиление стирания верхней «шапки» травы у поверхности. */
-const GRASS_ERASE_TOP_EXTRA_R = GRASS_ERASE_R * 1.2
-const GRASS_ERASE_TOP_SHIFT_PX = TILE * 0.70
-const GRASS_ERASE_TOP_REACH_PX = TILE * 0.78
 /** Запас сверху для grass-mask, чтобы верх травы не клипался при отрицательном Y. */
 const GRASS_MASK_HEADROOM = 24
 
@@ -605,7 +599,8 @@ export class TileWorld {
 
   private _syncTunnelBgEarthTiles(camX: number, camY: number, screenW: number, screenH: number): void {
     if (this._tunnelBgMode !== 'earthTiles') return
-    const margin = TILE * 6
+    // Аналогично viewport-спавну декора, но с чуть большим запасом.
+    const margin = Math.max(TILE * 6, Math.max(screenW, screenH) * 1.35)
     const wx0 = camX - margin
     const wx1 = camX + screenW + margin
     const wy0 = Math.max(0, camY - margin)
@@ -700,25 +695,13 @@ export class TileWorld {
         }
         const grassMaskRT = (chunk as any).grassMaskRT as PIXI.RenderTexture | undefined
         if (grassMaskRT && carveGrass) {
-          // Для травы используем центр hitbox персонажа (не ось туннеля/бура).
-          const dig = GameConfig.hero.dig
-          const px = -uy, py = ux
-          const across = dig.tunnelOffsetAcrossPx * (ux < -0.02 ? -1 : 1)
-          const gx = lx + ux * dig.tunnelOffsetAlongPx + px * across + dig.tunnelWorldOffsetXPx
-          const gy = ly + uy * dig.tunnelOffsetAlongPx + py * across + dig.tunnelWorldOffsetYPx + GRASS_MASK_HEADROOM
           this._scratchGb.clear()
-          this._scratchGb.beginFill(0x000000).drawCircle(gx, gy, GRASS_ERASE_R).endFill()
-          if (row === 0) {
-            // Доп. штампы у поверхности: добиваем верхнюю шапку травы.
-            this._scratchGb.beginFill(0x000000).drawCircle(
-              gx,
-              gy - GRASS_ERASE_TOP_SHIFT_PX,
-              GRASS_ERASE_TOP_EXTRA_R,
-            ).endFill()
-            this._scratchGb.lineStyle(Math.max(2, GRASS_ERASE_TOP_EXTRA_R * 2), 0x000000)
-            this._scratchGb.moveTo(gx, gy)
-            this._scratchGb.lineTo(gx, gy - GRASS_ERASE_TOP_REACH_PX)
+          // Тот же овал, что и выкоп грунта — иначе трава «шире» туннеля (раньше был круг по hitbox).
+          const polyG: number[] = []
+          for (let i = 0; i < poly.length; i += 2) {
+            polyG.push(poly[i]!, poly[i + 1]! + GRASS_MASK_HEADROOM)
           }
+          this._scratchGb.beginFill(0x000000).drawPolygon(polyG).endFill()
           this.renderer.render(this._scratchGb, { renderTexture: grassMaskRT, clear: false })
         }
 
@@ -741,16 +724,9 @@ export class TileWorld {
             this.renderer.render(this._scratchDl, { renderTexture: (chunk as any).darkMaskRT, clear: false })
           }
           if (grassMaskRT && carveGrass) {
-            const dig = GameConfig.hero.dig
-            const px = -uy, py = ux
-            const across = dig.tunnelOffsetAcrossPx * (ux < -0.02 ? -1 : 1)
-            const gx = lx + ux * dig.tunnelOffsetAlongPx + px * across + dig.tunnelWorldOffsetXPx
-            const gy = ly + uy * dig.tunnelOffsetAlongPx + py * across + dig.tunnelWorldOffsetYPx + GRASS_MASK_HEADROOM
-            const pgx = plx + ux * dig.tunnelOffsetAlongPx + px * across + dig.tunnelWorldOffsetXPx
-            const pgy = ply + uy * dig.tunnelOffsetAlongPx + py * across + dig.tunnelWorldOffsetYPx + GRASS_MASK_HEADROOM
             this._scratchGl.clear()
-            this._scratchGl.lineStyle(Math.max(2, GRASS_ERASE_R * 2), 0x000000)
-            this._scratchGl.moveTo(pgx, pgy).lineTo(gx, gy)
+            this._scratchGl.lineStyle(lineW, 0x000000)
+            this._scratchGl.moveTo(plx, ply + GRASS_MASK_HEADROOM).lineTo(lx, ly + GRASS_MASK_HEADROOM)
             this.renderer.render(this._scratchGl, { renderTexture: grassMaskRT, clear: false })
           }
         }
@@ -758,7 +734,19 @@ export class TileWorld {
     }
   }
 
-  scratchAt(sx: number, sy: number, camX: number, camY: number, tnx = 0, tny = 1) {
+  scratchAt(
+    sx: number,
+    sy: number,
+    camX: number,
+    camY: number,
+    tnx = 0,
+    tny = 1,
+    /**
+     * 0…1: доля пути до конца текущего штриха (от ретро-опоры до бурового конца в мире).
+     * Start-интро — наращивание канала по длине, а не масштаб овала в одной точке.
+     */
+    tunnelLengthProgress: number | null = null,
+  ) {
     if (!this.renderer) return
     const ts = GameConfig.tunnelScratch
     const rx = ts.ellipseRadiusXPx
@@ -783,19 +771,30 @@ export class TileWorld {
     // Первый кадр копания: короткий ретро-сегмент, чтобы сразу прорезать верхний слой травы,
     // но без глубокого «провала» старта (как было при большом startPad).
     const startPad = TILE * 0.92
-    const ax = this.lastPt?.x ?? (wxEnd - stampUx * startPad)
-    const ay = this.lastPt?.y ?? (wyEnd - stampUy * startPad)
+    const retroWx = wxEnd - stampUx * startPad
+    const retroWy = wyEnd - stampUy * startPad
+    const carvePartialIntro =
+      tunnelLengthProgress != null &&
+      tunnelLengthProgress < 1 - 1e-5
+    // Во время start-интро каждый кадр от одной ретро-опоры до доли tl (lastPt не копим).
+    const ax = carvePartialIntro ? retroWx : this.lastPt?.x ?? retroWx
+    const ay = carvePartialIntro ? retroWy : this.lastPt?.y ?? retroWy
     const toEndDx = wxEnd - ax, toEndDy = wyEnd - ay
     const toEndLen = Math.hypot(toEndDx, toEndDy)
-    // Не прорезаем большой стартовый сегмент мгновенно:
-    // ограничиваем продвижение маски за один тик.
+    // Не прорезаем большой стартовый сегмент мгновенно — только когда нет управления длиной по клипу.
     const maxAdvancePerTick = Math.max(spacing * 2.2, TILE * 0.16)
     let wxTarget = wxEnd
     let wyTarget = wyEnd
-    if (toEndLen > maxAdvancePerTick && toEndLen > 1e-6) {
+    const shouldClampAdvance = !carvePartialIntro && this.lastPt == null
+    if (shouldClampAdvance && toEndLen > maxAdvancePerTick && toEndLen > 1e-6) {
       const k = maxAdvancePerTick / toEndLen
       wxTarget = ax + toEndDx * k
       wyTarget = ay + toEndDy * k
+    }
+    if (tunnelLengthProgress != null) {
+      const tl = Math.max(1e-4, Math.min(1, tunnelLengthProgress))
+      wxTarget = ax + (wxTarget - ax) * tl
+      wyTarget = ay + (wyTarget - ay) * tl
     }
     const segdx = wxTarget - ax, segdy = wyTarget - ay
     const segLen = Math.hypot(segdx, segdy)
@@ -808,16 +807,27 @@ export class TileWorld {
       const t = i / nSteps
       const wx = ax + segdx * t
       const wy = ay + segdy * t
-      // Траву режем по всему стартовому сегменту: круг + линия.
+      // Траву режем тем же полигоном что и землю (+ «нитка» между шагами), по всей длине сегмента.
       // Иначе остаётся «крышка» травы над первым шагом туннеля.
       const carveGrass = true
-      this._scratchWorldTunnelStamp(wx, wy, rx, ry, stampUx, stampUy, prev, carveGrass)
+      this._scratchWorldTunnelStamp(
+        wx,
+        wy,
+        rx,
+        ry,
+        stampUx,
+        stampUy,
+        prev,
+        carveGrass,
+      )
       prev = { x: wx, y: wy }
     }
 
-    if (!this.lastPt) this.lastPt = { x: wxTarget, y: wyTarget }
-    this.lastPt.x = wxTarget
-    this.lastPt.y = wyTarget
+    if (!carvePartialIntro) {
+      if (!this.lastPt) this.lastPt = { x: wxTarget, y: wyTarget }
+      this.lastPt.x = wxTarget
+      this.lastPt.y = wyTarget
+    }
   }
 
   resetScratch() { this.lastPt = null }
@@ -947,7 +957,8 @@ export class TileWorld {
   // ── Update ─────────────────────────────────────────────────────────────────
 
   update(camX: number, camY: number, screenW: number, screenH: number) {
-    const buf    = CPW*4  // больший буфер — чанки строятся заранее
+    // Как в логике декора (viewport-based), но чуть больше — чтобы мир всегда «впереди».
+    const buf = Math.max(CPW * 4, Math.max(screenW, screenH) * 1.7)
     const colMin = Math.floor((camX-buf)/CPW)
     const colMax = Math.ceil((camX+screenW+buf)/CPW)
     const rowMin = Math.max(0, Math.floor((camY-buf)/CPH))

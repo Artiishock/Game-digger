@@ -237,6 +237,87 @@ export function tunnelXAtWorldY(path: PathPoint[], wy: number): number {
 }
 
 /**
+ * Min/max X оси маршрута на вертикальном интервале [wy - halfYm, wy + halfYm].
+ * После этого на полоску добавляются отступы (экран, паддинги) — иначе при зигзаге полилинии
+ * декор оказывался «у края генерации»: полоса строится от одной точки tunnelXAtWorldY(y),
+ * хотя поблизости персонаж проходит через другие X по тому же участку глубины.
+ */
+export function tunnelXEnvelopeAroundY(path: PathPoint[], wy: number, halfYm: number): { minX: number; maxX: number } {
+  if (path.length === 0) return { minX: 0, maxX: 0 }
+  const fallback = tunnelXAtWorldY(path, wy)
+  const lo = wy - Math.max(halfYm, TILE * 0.01)
+  const hi = wy + Math.max(halfYm, TILE * 0.01)
+  const segments = Math.max(10, Math.ceil((2 * (hi - lo)) / (STEP_Y * 0.4)))
+  let minX = Infinity
+  let maxX = -Infinity
+  for (let k = 0; k <= segments; k++) {
+    const y = lo + ((hi - lo) * k) / segments
+    const x = tunnelXAtWorldY(path, y)
+    minX = Math.min(minX, x)
+    maxX = Math.max(maxX, x)
+  }
+  return { minX: minX === Infinity ? fallback : minX, maxX: maxX === -Infinity ? fallback : maxX }
+}
+
+/** Та же логика, что горизонтальные пределы генерации декора в `placeObstacles` после смещений пути. */
+export function decorGenerationHorizontalExtent(
+  path: PathPoint[],
+  worldY: number,
+  viewportWidthPx?: number,
+): { minX: number; maxX: number } {
+  /** Тот же паддинг, что в placeObstacles. */
+  const decorSpawnPadX = TILE * 1.4
+  /** Расширяем область генерации за допустимый коридор по X минимум на ширину экрана. */
+  const screenExtraX = viewportWidthPx && viewportWidthPx > 0 ? viewportWidthPx : TILE * 12
+  const worldMinX = X_MIN - decorSpawnPadX - screenExtraX
+  const worldMaxX = X_MAX + decorSpawnPadX + screenExtraX
+  /**
+   * Вертикальный захват огибания пути по X: большой шаг между вершинами + MAX_DX
+   * может дать большой горизонтальный свинг за несколько секунд движения — берём окно шире.
+   */
+  /** По вертикали — достаточно широкое окно, но без охвата всего раунда (стоимость выборки). */
+  const envelopeHalfY = Math.min(
+    TILE * 55,
+    Math.max(STEP_Y * 18, STEP_Y * 26 + MAX_DX * 2.6),
+  )
+  /** Дополнительный полуохват по горизонтали: камера и полоса генерации должны быть шире визуального коридора. */
+  const decorLateralExtras = TILE * 4 + MAX_DX * 1.4
+
+  let decorHalfSpan: number
+  if (viewportWidthPx && viewportWidthPx > 0) {
+    decorHalfSpan = viewportWidthPx * 1.12 + decorSpawnPadX + decorLateralExtras
+  } else {
+    decorHalfSpan = (worldMaxX - worldMinX) * 0.5 + decorLateralExtras
+  }
+
+  const env = tunnelXEnvelopeAroundY(path, worldY, envelopeHalfY)
+
+  let minX = Math.max(worldMinX, env.minX - decorHalfSpan)
+  let maxX = Math.min(worldMaxX, env.maxX + decorHalfSpan)
+
+  const mid = (env.minX + env.maxX) * 0.5
+  if (maxX - minX < TILE * 0.5) {
+    minX = Math.max(worldMinX, mid - TILE * 0.25)
+    maxX = Math.min(worldMaxX, mid + TILE * 0.25)
+  }
+  return { minX, maxX }
+}
+
+/**
+ * Принято ли считать safeObject по X актуальной «полосой» декора после смещений пути
+ * (расширенная область следования по zigzag без отсечения на поворотах).
+ */
+export function decorSpawnAcceptByPath(
+  worldX: number,
+  worldY: number,
+  path: PathPoint[],
+  viewportWidthPx?: number,
+): boolean {
+  const { minX, maxX } = decorGenerationHorizontalExtent(path, worldY, viewportWidthPx)
+  return worldX >= minX && worldX <= maxX
+}
+
+/**
  * Проверяет: пересекает ли круг (cx, cy, r) туннель?
  * Туннель = набор капсул между соседними точками пути.
  * Проверяем только сегменты в диапазоне Y ± lookahead.
@@ -547,28 +628,46 @@ export function placeObstacles(
 
   // ── Декорации ──────────────────────────────────────────────────────────────
   const placed: Array<{ x: number; y: number; r: number }> = []
+  const roadOccupancy = roadPoints.map(rp => {
+    const sz = rp.type === 'HOME' ? DECOR_HOME_PLACE_SZ : (ITEM_SZ[rp.type] ?? 60)
+    const r = rp.type === 'HOME' ? (sz * Math.SQRT1_2) : (sz / 2)
+    return { x: rp.worldX, y: rp.worldY, r }
+  })
 
   /** Минимум между центрами декора (чуть больше проплешин между объектами). */
   const decorClearance = TILE * 1.2
-  /** Декор может появляться чуть шире игрового окна, чтобы не было пустых краёв. */
-  const decorSpawnPadX = TILE * 1.4
-  const decorGlobalMinX = X_MIN - decorSpawnPadX
-  const decorGlobalMaxX = X_MAX + decorSpawnPadX
-  // Если знаем ширину экрана — спавним декор вокруг оси туннеля в "экранном" диапазоне.
-  const decorHalfScreenSpan =
-    viewportWidthPx && viewportWidthPx > 0
-      ? viewportWidthPx * 0.5 + decorSpawnPadX
-      : (decorGlobalMaxX - decorGlobalMinX) * 0.5
+
+  /** Горизонтальные пределы: по полосе возможных X траектории в окне по Y + отступ экрана (decorGenerationHorizontalExtent). */
   const decorBoundsAtY = (worldY: number): { minX: number; maxX: number; midX: number } => {
-    const tunX = tunnelXAtWorldY(path, worldY)
-    let minX = Math.max(decorGlobalMinX, tunX - decorHalfScreenSpan)
-    let maxX = Math.min(decorGlobalMaxX, tunX + decorHalfScreenSpan)
-    if (maxX - minX < TILE * 0.5) {
-      const cx = Math.max(decorGlobalMinX, Math.min(decorGlobalMaxX, tunX))
-      minX = Math.max(decorGlobalMinX, cx - TILE * 0.25)
-      maxX = Math.min(decorGlobalMaxX, cx + TILE * 0.25)
-    }
+    const { minX, maxX } = decorGenerationHorizontalExtent(path, worldY, viewportWidthPx)
     return { minX, maxX, midX: (minX + maxX) * 0.5 }
+  }
+
+  /** Принудительная постановка декора в заданную точку (для пост-заполнения видимой полосы по маршруту). */
+  const tryPlaceDecorForced = (
+    type: EventType,
+    worldX: number,
+    worldY: number,
+    tunnelMargin = DECOR_TUNNEL_PLACE_MARGIN,
+  ): boolean => {
+    const sz = type === 'HOME' ? DECOR_HOME_PLACE_SZ : (ITEM_SZ[type] ?? 60)
+    const r = type === 'HOME' ? (sz * Math.SQRT1_2) : (sz / 2)
+    const b = decorBoundsAtY(worldY)
+    const x = Math.max(b.minX, Math.min(b.maxX, worldX))
+    if (intersectsTunnel(x, worldY, r, path, surfY, tunnelMargin)) return false
+    for (const rp of roadOccupancy) {
+      if (Math.hypot(x - rp.x, worldY - rp.y) < r + rp.r + TILE * 0.08) return false
+    }
+    for (const lv of lavaSpots) {
+      if (Math.hypot(x - lv.x, worldY - lv.y) < r + lv.r) return false
+    }
+    const minD = r + decorClearance
+    for (const p of placed) {
+      if (Math.hypot(x - p.x, worldY - p.y) < minD + p.r) return false
+    }
+    placed.push({ x, y: worldY, r })
+    objects.push({ x, y: worldY, w: sz, h: sz, kind: 'decor', decorVisual: type })
+    return true
   }
 
   const tryDecor = (type: EventType, yRow: number) => {
@@ -582,6 +681,9 @@ export function placeObstacles(
       const b = decorBoundsAtY(worldY)
       const x = Math.max(b.minX, Math.min(b.maxX, worldX))
       if (intersectsTunnel(x, worldY, r, path, surfY, tunnelMargin)) return false
+      for (const rp of roadOccupancy) {
+        if (Math.hypot(x - rp.x, worldY - rp.y) < r + rp.r + TILE * 0.08) return false
+      }
       // Не ставим декор в зонах будущей лавы.
       for (const lv of lavaSpots) {
         if (Math.hypot(x - lv.x, worldY - lv.y) < r + lv.r) return false
@@ -622,7 +724,32 @@ export function placeObstacles(
       if (placedAny) break
     }
 
-    // Если удалось поставить у туннеля — не разбрасываем этот объект далеко.
+    // Левый и правый фланги от оси траектории: без этого при успехе «у стенки туннеля»
+    // срабатывает ранний return ниже и половина полосы по X остаётся пустой.
+    const bwLane = decorBoundsAtY(baseY)
+    const txLane = tunnelXAtWorldY(path, baseY)
+    const flankGapCore = vm + r + TILE * 0.92
+    const tryHalfBandSpan = (
+      edgeMin: number,
+      edgeMax: number,
+      yW: number,
+    ): boolean => {
+      if (!(edgeMax > edgeMin + Math.max(TILE * 0.38, r * 1.2))) return false
+      for (let fq = 0; fq < 22; fq++) {
+        const u = rng(yRow ^ 0xFA11 ^ fq * 79 ^ ty, worldSeed)
+        const xx = edgeMin + u * (edgeMax - edgeMin)
+        const jY =
+          (rng(yRow ^ 0xFA22 ^ fq ^ ty, worldSeed) - 0.5) * SPAWN_INTERVAL * 0.34
+        if (tryPlace(xx, yW + jY, vm)) return true
+      }
+      return false
+    }
+    const leftEdgeMax = Math.min(txLane - flankGapCore, bwLane.maxX - r - 6)
+    const rightEdgeMin = Math.max(txLane + flankGapCore, bwLane.minX + r + 6)
+    if (tryHalfBandSpan(bwLane.minX, leftEdgeMax, baseY)) placedAny = true
+    if (tryHalfBandSpan(rightEdgeMin, bwLane.maxX, baseY)) placedAny = true
+
+    // Уже есть предмет около коридора / на флангах — второй блок не нужен (он дублирует площади).
     if (placedAny) return
 
     // Затем заполняем обе половины ширины (правая и левая), чтобы не было пустоты справа.
@@ -680,18 +807,18 @@ export function placeObstacles(
     if (rv < Math.max(0.22, GameConfig.spawn.spawnChance * 0.84)) {
       // Чуть плотнее ряды, min-дистанция по-прежнему decorClearance.
       const countRoll = rng(Math.floor(dy) ^ 0x77AA ^ decorStepIdx * 0x1F1F, worldSeed)
-      const perRow = countRoll < 0.22 ? 3 : countRoll < 0.68 ? 2 : 1
+      const perRow = countRoll < 0.28 ? 4 : countRoll < 0.74 ? 3 : 2
       for (let n = 0; n < perRow; n++) {
         const rowShift = (n - (perRow - 1) / 2) * TILE * (0.34 + rng(Math.floor(dy) ^ n * 0x2D2D, worldSeed) * 0.3)
         const yTry = dy + rowShift
         tryDecor(pickDecorType(yTry + n, rng(yTry ^ 0xABC ^ n * 0x55, worldSeed)), yTry)
       }
 
-      if (rng(dy ^ 0xBEEF, worldSeed) < Math.min(0.72, GameConfig.spawn.doubleChance * 0.78)) {
+      if (rng(dy ^ 0xBEEF, worldSeed) < Math.min(0.9, GameConfig.spawn.doubleChance * 0.92)) {
         const d2 = TILE * (0.38 + rng(dy ^ 0xF00D, worldSeed) * 0.55)
         tryDecor(pickDecorType(dy + 11, rng(dy ^ 0xF00D, worldSeed)), dy + d2)
       }
-      if (GameConfig.spawn.decorExtraChance > 0 && rng(dy ^ 0xC001, worldSeed) < Math.min(0.55, GameConfig.spawn.decorExtraChance * 0.68)) {
+      if (GameConfig.spawn.decorExtraChance > 0 && rng(dy ^ 0xC001, worldSeed) < Math.min(0.82, GameConfig.spawn.decorExtraChance * 0.9)) {
         const d3 = TILE * (0.82 + rng(dy ^ 0xD00D, worldSeed) * 0.9)
         tryDecor(pickDecorType(dy + 17, rng(dy ^ 0xD00D, worldSeed)), dy + d3)
       }
@@ -752,6 +879,65 @@ export function placeObstacles(
   }
   for (let i = 0; i < sortedRoad.length - 1; i++) {
     placeDecorAlongSegment(sortedRoad[i]!.worldY, sortedRoad[i + 1]!.worldY, i)
+  }
+
+  // ── Контроль наполненности по полю видимости вдоль каждой точки маршрута ───
+  // Проверяем обе стороны от оси пути и добрасываем декор, если в "экранной" полосе пусто.
+  const ensureDecorCoverageAtPathPoint = (pt: PathPoint, idx: number): void => {
+    if (pt.y < surfY + TILE * 0.35 || pt.y > terminalY + TILE * 7.5) return
+    const bounds = decorBoundsAtY(pt.y)
+    const spanW = bounds.maxX - bounds.minX
+    if (spanW < TILE * 1.2) return
+
+    const viewW = viewportWidthPx && viewportWidthPx > 0 ? viewportWidthPx : spanW * 0.72
+    const halfView = Math.max(TILE * 2.4, Math.min(spanW * 0.5, viewW * 0.58))
+    const yBand = TILE * 1.05
+    const axisGap = DECOR_VISUAL_TUNNEL_MARGIN + TILE * 0.62
+
+    const leftMin = Math.max(bounds.minX, pt.x - halfView)
+    const leftMax = Math.min(bounds.maxX, pt.x - axisGap)
+    const rightMin = Math.max(bounds.minX, pt.x + axisGap)
+    const rightMax = Math.min(bounds.maxX, pt.x + halfView)
+
+    const targetPerSide = viewW > TILE * 9 ? 2 : 1
+    const countInBand = (xMin: number, xMax: number): number => {
+      if (xMax <= xMin) return 0
+      let count = 0
+      for (const o of objects) {
+        if (o.kind !== 'decor') continue
+        if (Math.abs(o.y - pt.y) > yBand) continue
+        if (o.x >= xMin && o.x <= xMax) count++
+      }
+      return count
+    }
+
+    const fillSide = (xMin: number, xMax: number, sideKey: number): void => {
+      if (xMax <= xMin + TILE * 0.3) return
+      let have = countInBand(xMin, xMax)
+      if (have >= targetPerSide) return
+      const need = targetPerSide - have
+      const attempts = need * 16
+      for (let a = 0; a < attempts && have < targetPerSide; a++) {
+        const u = rng((idx + 1) * 0x9E37 ^ sideKey ^ a * 71, worldSeed)
+        const yJ = (rng((idx + 1) * 0x85EB ^ sideKey ^ a * 29, worldSeed) - 0.5) * TILE * 1.3
+        const x = xMin + u * (xMax - xMin)
+        const y = pt.y + yJ
+        const t = pickPathSegmentDecorType(
+          y + sideKey * 0.1,
+          rng(Math.floor(y) ^ sideKey ^ a * 0x2D2D, worldSeed),
+        )
+        if (tryPlaceDecorForced(t, x, y, DECOR_VISUAL_TUNNEL_MARGIN)) have++
+      }
+    }
+
+    fillSide(leftMin, leftMax, 0x41A3)
+    fillSide(rightMin, rightMax, 0x72F1)
+  }
+
+  for (let i = 0; i < path.length; i++) {
+    const pt = path[i]
+    if (!pt) continue
+    ensureDecorCoverageAtPathPoint(pt, i)
   }
 
   // ── Лава (только вне туннеля) ─────────────────────────────────────────────

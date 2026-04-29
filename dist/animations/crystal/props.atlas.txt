@@ -1,0 +1,6 @@
+diamond.png
+size:300,276
+filter:Linear,Linear
+pma:true
+gem
+bounds:2,2,293,269

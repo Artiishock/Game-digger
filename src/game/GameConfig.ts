@@ -30,13 +30,13 @@ export const GameConfig = {
     },
     STONE: {
       subValues: [1, 2, 3, 4] as number[],  // вычитание из множителя, выбирается случайно
-      durationMin: 3,     // минимальное время разбивания камня, секунды
-      durationMax: 5,     // максимальное время разбивания камня, секунды
+      durationMin: 3, // только если у ивента нет эффекта (редкий fallback): не sN-токены
+      durationMax: 5,
     },
     GOLD: {
-      addValues: [1, 2, 3, 4] as number[],  // прибавка к множителю, выбирается случайно
-      durationMin: 3,     // минимальное время бурения золота, секунды
-      durationMax: 5,     // максимальное время бурения золота, секунды
+      addValues: [1, 2, 3, 4] as number[],  // прибавка к множителю; с RGS: пауза = tier × 0.5 с
+      durationMin: 3,
+      durationMax: 5,
     },
     HOME: {
       hitW: 200,  // ширина хитбокса кровати (px) — независимо от размера текстуры
@@ -107,11 +107,11 @@ export const GameConfig = {
     /** Шаг пути WorldMap / интерполяция персонажа (должен совпадать с STEP_Y в WorldMap) */
     intervalTiles: 0.72,
     /** Плотнее ряды декора (только placeObstacles) */
-    decorIntervalTiles: 0.32,
+    decorIntervalTiles: 0.24,
     spawnChance:     1, // вероятность что в точке спавна появится предмет (0–1)
-    doubleChance:    0.62,  // второй декор в том же «кластере» — реже, меньше кучкования
+    doubleChance:    0.78,  // повышено: чаще второй декор в кластере
     /** Доп. попытка декора между основными рядами (0–1) */
-    decorExtraChance: 0.42,
+    decorExtraChance: 0.6,
 
     /**
      * Декор вдоль оси туннеля между соседними road-предметами (и от поверхности до первого).
@@ -122,7 +122,7 @@ export const GameConfig = {
       minSpanTiles:   1.08,
       stepTilesMin:   0.36,
       stepTilesMax:   0.78,
-      spawnChance:    0.58,
+      spawnChance:    0.72,
     },
 
     // Вероятности типов предметов (зависят от глубины)
@@ -131,7 +131,7 @@ export const GameConfig = {
       bombBase:        0.15,  // базовый шанс бомбы (растёт с глубиной)
       bombMax:         0.30,  // максимальный шанс бомбы на большой глубине
       bombDepthScale:  0.01,  // насколько быстро растёт шанс бомбы с глубиной
-      stoneBase:       0.03,  // базовый шанс камня
+      stoneBase:       0.10,  // базовый шанс камня
       stoneMax:        0.20,  // максимальный шанс камня на большой глубине
       stoneDepthScale: 0.008, // насколько быстро растёт шанс камня с глубиной
       goldThreshold:     0.68,  // ниже — GOLD; затем узкий слот HOME-декор; остальное — DIAMOND
@@ -139,7 +139,7 @@ export const GameConfig = {
       homeDecorChance: 0.028,
       // остаток до 1.0 → DIAMOND
 
-      homeChance:      0.50,  // вероятность появления HOME в каждой точке его интервала (0–1)
+      homeChance:      0.80,  // вероятность появления HOME в каждой точке его интервала (0–1)
       homeMinDepth:    30,    // минимальная глубина (в тайлах) до которой HOME не спавнится
       homeIntervalTiles: 20, // каждые N тайлов — отдельная проверка на появление HOME
     },
@@ -147,7 +147,7 @@ export const GameConfig = {
 
   // ─── Движение персонажа ───────────────────────────────────────────────────────
   movement: {
-    charSpeed:          300,    // спуск в туннеле (ниже — спокойнее, естественнее)
+    charSpeed:          500,    // спуск в туннеле (ниже — спокойнее, естественнее)
     idleSpeed:          70,    // скорость в режиме idle (пикс/сек)
     speedMultMin:       0.97,  // узкий диапазон — почти постоянная скорость спуска
     speedMultMax:       1.03,
@@ -197,7 +197,9 @@ export const GameConfig = {
      */
     worldLavaSpawnMask: 3,
     /** Скорость вылета вверх с анимацией die (px/с, игровое время). */
-    deathAscentSpeedPx: 300,
+    deathAscentSpeedPx: 500,
+    /** Запас, если декодированный `finish_lose.ogg` ещё недоступен — расчёт скорости вылета призрака. */
+    finishLoseSfxDurationFallbackSec: 2.0,
     /** Макс. длительность подъёма (с) — дальше принудительно переключение на героя наверху. */
     deathAscentMaxSec: 14,
     /**
@@ -209,7 +211,7 @@ export const GameConfig = {
      * После встречи с «земным» клоном: зацикленный idle, полёт вверх в небо.
      * Скорость (px/с, игр. время), мин. длина фазы (с), высота (px над точкой встречи), лимит (с).
      */
-    heavenRiseSpeedPx:  92,
+    heavenRiseSpeedPx:  32,
     heavenRiseMinSec:  1.35,
     heavenRiseHeightPx: 380,
     heavenRiseMaxSec:  7,
@@ -219,9 +221,16 @@ export const GameConfig = {
   round: {
     winDelayMs:       800,   // задержка после HOME перед переходом в результат, мс
     loseDelayMs:      1000,  // задержка после LAVA перед переходом в результат, мс
+    /** После проигрыша в лаве: плавное «выплывание» камеры к idle (сек), затем сборка idle-сцены. 0 — сразу _returnToIdle. */
+    loseIdleGlideSec: 1,
     autoplayDelayMs:  1200,  // задержка между раундами в автоплее, мс
     /** Множитель «экран / глубина» для ppm — больше → дальше друг от друга символы по Y */
-    depthSpreadScreenFactor: 3.25,
+    depthSpreadScreenFactor: 2.6,
+    /** Порог множителя для оверлея WIN в `public/animations/{megawin|epicwin|bigwin}/` (Spine). */
+    megaWinMinMultiplier: 50,
+    epicWinMinMultiplier: 10,
+    /** Строго больше этого — уровень bigwin, пока множитель ниже epic. */
+    bigWinExclusiveAboveMultiplier: 3,
   },
 
   // ─── Герой: калибровка (px; углы — радианы) ────────────────────────────────
