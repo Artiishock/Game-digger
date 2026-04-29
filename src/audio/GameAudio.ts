@@ -1,6 +1,7 @@
 import { useGameStore } from '../store/gameStore'
 import type { EventType } from '../rgs/client'
 import type { GamePhase } from '../store/gameStore'
+import { GameConfig } from '../game/GameConfig'
 
 function baseUrl(): string {
   const b = import.meta.env.BASE_URL || '/'
@@ -33,6 +34,13 @@ const COLLECT_SFX: Partial<Record<EventType, string>> = {
   LAVA: 'finish_lose.ogg',
 }
 
+const MUSIC_LOOPS = new Set([
+  'background_1.ogg',
+  'background_2.ogg',
+  'background_3.ogg',
+  'ambient.ogg',
+])
+
 class GameAudioModule {
   private ctx: AudioContext | null = null
   private buffers = new Map<string, AudioBuffer>()
@@ -46,6 +54,8 @@ class GameAudioModule {
     void this.ctx.resume()
     void this.ensureBuffers()
     this.refreshFromStore()
+    const store = useGameStore.getState()
+    this.syncPhase(store.phase, store.stats.multiplier)
   }
 
   init(): void {
@@ -57,8 +67,17 @@ class GameAudioModule {
     this.applyMusicFromStore()
   }
 
-  syncPhase(phase: GamePhase): void {
+  syncPhase(phase: GamePhase, multiplier = 1): void {
     this.setLoop('drill.ogg', phase === 'RUNNING')
+    const inPlayableScene =
+      phase === 'IDLE' || phase === 'BETTING' || phase === 'RUNNING' || phase === 'WIN' || phase === 'LOSE'
+    this.setLoop('background_1.ogg', inPlayableScene)
+    this.setLoop('ambient.ogg', inPlayableScene)
+    this.setLoop('background_2.ogg', phase === 'RUNNING')
+    this.setLoop(
+      'background_3.ogg',
+      phase === 'RUNNING' && multiplier >= GameConfig.round.bigWinExclusiveAboveMultiplier,
+    )
   }
 
   /**
@@ -108,19 +127,21 @@ class GameAudioModule {
   }
 
   setLoop(file: string, on: boolean): void {
-    const { soundEnabled, sfxVolume } = useGameStore.getState().settings
-    if (!soundEnabled || sfxVolume <= 0) on = false
+    const { soundEnabled, sfxVolume, musicVolume } = useGameStore.getState().settings
+    const isMusic = MUSIC_LOOPS.has(file)
+    const volume = isMusic ? musicVolume : sfxVolume
+    if (!soundEnabled || volume <= 0) on = false
     const existing = this.loopers.get(file)
     if (on) {
       if (existing) {
-        existing.volume = sfxVolume
+        existing.volume = volume
         if (existing.paused) void existing.play().catch(() => {})
         return
       }
       const a = new Audio(url(file))
       a.loop = true
       a.preload = 'auto'
-      a.volume = sfxVolume
+      a.volume = volume
       this.loopers.set(file, a)
       void a.play().catch(() => {})
       return
@@ -133,9 +154,10 @@ class GameAudioModule {
   }
 
   private applyMusicFromStore(): void {
-    const { soundEnabled } = useGameStore.getState().settings
-    for (const looper of this.loopers.values()) {
-      looper.volume = soundEnabled ? useGameStore.getState().settings.sfxVolume : 0
+    const { soundEnabled, sfxVolume, musicVolume } = useGameStore.getState().settings
+    for (const [file, looper] of this.loopers.entries()) {
+      const volume = MUSIC_LOOPS.has(file) ? musicVolume : sfxVolume
+      looper.volume = soundEnabled ? volume : 0
       if (!soundEnabled) looper.pause()
     }
   }

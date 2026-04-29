@@ -1073,6 +1073,7 @@ export class GameRenderer {
   private stoneBreakStartMultiplier = 0;
   private stoneBreakTickTimer = 0;      // таймер до следующего тика (-1/сек)
   private stoneBreakDisplayMult = 0;   // текущее отображаемое значение
+  private _stoneCrashPlayed = false;   // crash уже сыгран в финальной фазе
 
   // Золотой самородок — останавливает персонажа, множитель растёт ×3/сек
   private goldBreakActive = false;
@@ -1345,7 +1346,8 @@ export class GameRenderer {
       c.scale.set(scl)
       c.x = this.W * (0.12 + i * 0.31)
       c.y = this.H * (0.10 + i * 0.06)
-      ;(c as PIXI.Sprite & { _baseY: number })._baseY = c.y
+      const topAtBuild = Math.max(0, Math.min(this.H, -this.camY))
+      ;(c as PIXI.Sprite & { _topDy: number })._topDy = c.y - topAtBuild
       ;(c as PIXI.Sprite & { _drift: number })._drift = 28 - i * 9
       this.skyLayer.addChild(c)
     }
@@ -1394,11 +1396,11 @@ export class GameRenderer {
     for (const ch of this.skyLayer.children) {
       const name = (ch as PIXI.DisplayObject).name ?? ''
       if (!name.startsWith('cloud')) continue
-      const c = ch as PIXI.Sprite & { _drift?: number; _baseY?: number }
+      const c = ch as PIXI.Sprite & { _drift?: number; _topDy?: number }
       const drift = c._drift ?? 14
       // Компенсируем движение камеры, чтобы скорость облаков не зависела от направления персонажа.
       c.x += drift * dt - camDx
-      c.y = c._baseY ?? c.y
+      c.y = top + (c._topDy ?? c.y - top)
       const half = (c.texture?.width ?? 100) * 0.5 * Math.abs(c.scale.x)
       if (c.x > this.W + half + 20) c.x = -half - 20
     }
@@ -1503,6 +1505,7 @@ export class GameRenderer {
     this.stoneBreakStartMultiplier = 0;
     this.stoneBreakTickTimer = 0;
     this.stoneBreakDisplayMult = 0;
+    this._stoneCrashPlayed = false;
     this.goldBreakActive = false;
     this.goldBreakRemainingTime = 0;
     this.goldBreakTotalDuration = 0;
@@ -2171,12 +2174,16 @@ export class GameRenderer {
         ) {
           this._breakStage = 3
           SpineAnimator.setAnimation(this._breakSpine, STONE_STAGE.done, false)
+          // Играем crash в момент финальной фазы (разлёт на кусочки), а не в самом конце.
+          if (!this._stoneCrashPlayed) {
+            gameAudio.playSfx('stone_crash.ogg')
+            this._stoneCrashPlayed = true
+          }
         }
       }
 
       if (this.stoneBreakRemainingTime <= 0) {
         gameAudio.setLoop('stone.ogg', false)
-        gameAudio.playSfx('stone_crash.ogg')
         this.stoneBreakActive = false
         store.updateStats({ multiplier: Math.round(this.multiplier * 100) / 100 })
         this._breakStage = 0
@@ -2519,6 +2526,7 @@ export class GameRenderer {
       this.stoneBreakRemainingTime = duration
       this.stoneBreakDisplayMult   = multBefore   // начинаем с текущего значения
       this.stoneBreakTickTimer     = 0.5           // первый тик UI через 0.5 игровой сек
+      this._stoneCrashPlayed       = false
       this._breakStage = 1
       if (obj.spine) {
         console.log('[DEBUG STONE] spine exists, setting stage_02, goldStoneReady=', SpineAnimator.goldStoneReady)

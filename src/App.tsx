@@ -26,6 +26,7 @@ document.head.appendChild(fontLink)
 export const App: React.FC = () => {
   const { width, height } = useWindowSize()
   const phase    = useGameStore(s => s.phase)
+  const multiplier = useGameStore(s => s.stats.multiplier)
   const settings = useGameStore(s => s.settings, shallow)
   const prevPhase = useRef<string>('')
   const [assetsReady, setAssetsReady] = React.useState(false)
@@ -45,8 +46,8 @@ export const App: React.FC = () => {
   }, [])
 
   useEffect(() => {
-    gameAudio.syncPhase(phase)
-  }, [phase])
+    gameAudio.syncPhase(phase, multiplier)
+  }, [phase, multiplier])
 
   // Нет оверлея «ПРОВАЛ» — сразу выход в меню (ставка уже списана в движке).
   useEffect(() => {
