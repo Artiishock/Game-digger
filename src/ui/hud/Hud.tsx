@@ -304,11 +304,16 @@ export const Hud: React.FC = () => {
                 key={mode}
                 onClick={() => !disabled && setSpeed(mode)}
                 disabled={disabled}
-                className="ui-speed-btn"
+                className={`ui-speed-btn ${active ? "ui-speed-btn--active" : ""}`}
               >
-                <span className="ui-speed-icon">
-                  <img src={SPEED_ICONS[mode]} alt="" />
-                </span>
+                <span
+                  className="ui-speed-icon"
+                  aria-hidden="true"
+                  style={{
+                    maskImage: `url("${SPEED_ICONS[mode]}")`,
+                    WebkitMaskImage: `url("${SPEED_ICONS[mode]}")`,
+                  }}
+                />
 
                 <span className="ui-speed-label">{label}</span>
               </button>

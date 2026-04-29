@@ -47,7 +47,7 @@ export const TopBar: React.FC = () => {
               </span>
             ) : (
               <span>
-                <img className="ui-icon" src="/ui/sound.svg" alt="sound" />
+                <img className="ui-icon" src="/ui/sound_icon_disabled.svg" alt="sound" />
               </span>
             )}
           </button>

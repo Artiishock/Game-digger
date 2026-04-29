@@ -340,6 +340,7 @@
   justify-content: center;
   gap: 1px;
   padding: 0;
+  position: relative;
 }
 
 .ui-speed-btn:disabled {
@@ -349,14 +350,46 @@
 .ui-speed-icon {
   width: 43px;
   height: 43px;
+  color: #646464;
+  background-color: currentColor;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+  transition:
+    width 0.15s ease,
+    height 0.15s ease,
+    color 0.15s ease;
 }
 
 .ui-speed-label {
-  font-size: 10px;
-  font-weight: 800;
-  color: var(--text-dim);
-  letter-spacing: 0.04em;
-  transition: color 0.15s;
+  font-size: 14px;
+  font-weight: 900;
+  color: #f2fdff;
+  position: absolute;
+  right: 0px;
+  bottom: 0px;
+  transform: rotate(10deg);
+  transition:
+    font-size 0.15s ease,
+    color 0.15s ease;
+}
+
+.ui-speed-btn:hover .ui-speed-icon,
+.ui-speed-btn:active .ui-speed-icon,
+.ui-speed-btn--active .ui-speed-icon {
+  width: 50px;
+  height: 50px;
+  color: #f2fdff;
+}
+
+.ui-speed-btn:hover .ui-speed-label,
+.ui-speed-btn:active .ui-speed-label,
+.ui-speed-btn--active .ui-speed-label {
+  font-size: 16px;
+  color: #facb32;
 }
 
 /* Total BET */
@@ -2706,7 +2739,8 @@
 .ui-spin-btn-icon,
 .ui-autospin-btn-icon,
 .ui-speed-icon,
-.ui-bet-icon {
+.ui-bet-icon,
+.ui-icon {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3330,6 +3364,25 @@
     height: 20px;
   }
 
+  .ui-speed-label {
+    font-size: 7px;
+  }
+
+  .ui-speed-btn:hover .ui-speed-icon,
+  .ui-speed-btn:active .ui-speed-icon,
+  .ui-speed-btn--active .ui-speed-icon {
+    width: 22px;
+    height: 22px;
+    color: #f2fdff;
+  }
+
+  .ui-speed-btn:hover .ui-speed-label,
+  .ui-speed-btn:active .ui-speed-label,
+  .ui-speed-btn--active .ui-speed-label {
+    font-size: 10px;
+    color: #facb32;
+  }
+
   .ui-bet-block {
     position: absolute;
     right: clamp(8px, 2.5vw, 10px);
@@ -3593,6 +3646,25 @@
   .ui-speed-icon {
     width: 20px;
     height: 20px;
+  }
+
+  .ui-speed-label {
+    font-size: 7px;
+  }
+
+  .ui-speed-btn:hover .ui-speed-icon,
+  .ui-speed-btn:active .ui-speed-icon,
+  .ui-speed-btn--active .ui-speed-icon {
+    width: 22px;
+    height: 22px;
+    color: #f2fdff;
+  }
+
+  .ui-speed-btn:hover .ui-speed-label,
+  .ui-speed-btn:active .ui-speed-label,
+  .ui-speed-btn--active .ui-speed-label {
+    font-size: 10px;
+    color: #facb32;
   }
 
   .ui-bet-block {
