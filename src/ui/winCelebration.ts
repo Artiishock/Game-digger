@@ -3,8 +3,9 @@ import { GameConfig } from '../game/GameConfig'
 export type WinCelebrateKind = 'megawin' | 'epicwin' | 'bigwin'
 
 /**
- * По финальному множителю раунда (выигрыш / ставка) — какой ролик празднования показать.
+ * По финальному множителю раунда (выигрыш / ставка) — какую Spine-анимацию празднования показать.
  * megawin ≥ epic ≥ big; ниже порога big — без отдельного клипа (только обычный экран победы).
+ * Ассеты: `public/animations/{bigwin|epicwin|megawin}/win_alerts.*`
  */
 export function resolveWinCelebration(multiplier: number): WinCelebrateKind | null {
   if (!Number.isFinite(multiplier) || multiplier <= 0) return null
@@ -18,8 +19,12 @@ export function resolveWinCelebration(multiplier: number): WinCelebrateKind | nu
   return null
 }
 
-export function winCelebrationVideoSrc(kind: WinCelebrateKind): string {
-  const b = import.meta.env.BASE_URL || '/'
-  const base = b.endsWith('/') ? b : `${b}/`
-  return `${base}animations/win/${kind}.mp4`
+/**
+ * То же распределение по tier, но при «обычном» победном множителе (≤ bigAbove)
+ * всё равно показываем `bigwin`-Spine, чтобы на экране была анимация, а не только текст.
+ */
+export function resolveWinCelebrationOrFallback(multiplier: number): WinCelebrateKind | null {
+  const tier = resolveWinCelebration(multiplier)
+  if (tier != null) return tier
+  return multiplier > 1 ? 'bigwin' : null
 }

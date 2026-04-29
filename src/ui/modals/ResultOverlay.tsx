@@ -1,21 +1,18 @@
 import React, { useEffect, useMemo, useRef } from 'react'
 import { useGameStore } from '../../store/gameStore'
 import { gameAudio } from '../../audio/GameAudio'
-import {
-  resolveWinCelebration,
-  winCelebrationVideoSrc,
-  type WinCelebrateKind,
-} from '../winCelebration'
+import { resolveWinCelebrationOrFallback, type WinCelebrateKind } from '../winCelebration'
+import { WinCelebrationSpine } from '../WinCelebrationSpine'
 import '../ui.css'
 
 export const ResultOverlay: React.FC = () => {
   const phase    = useGameStore(s => s.phase)
   const lastWin  = useGameStore(s => s.lastWin)
+  const roundID  = useGameStore(s => s.roundID)
   const bet      = useGameStore(s => s.bet)
   const currency = useGameStore(s => s.currency)
   const autoplay = useGameStore(s => s.autoplay)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const winVideoRef = useRef<HTMLVideoElement>(null)
 
   // Экран поражения (ПРОВАЛ) убран — после LAVA сразу IDLE (см. App.tsx).
   const show = phase === 'WIN'
@@ -26,13 +23,7 @@ export const ResultOverlay: React.FC = () => {
   }, [show, bet, lastWin])
 
   const celebrateKind: WinCelebrateKind | null =
-    multiplier > 0 ? resolveWinCelebration(multiplier) : null
-
-  useEffect(() => {
-    const v = winVideoRef.current
-    if (!celebrateKind || !v) return
-    void v.play().catch(() => {})
-  }, [celebrateKind, show])
+    multiplier > 0 ? resolveWinCelebrationOrFallback(multiplier) : null
 
   useEffect(() => {
     if (show && autoplay.active) {
@@ -65,17 +56,10 @@ export const ResultOverlay: React.FC = () => {
       onClick={dismissOverlayOnly}
     >
       {celebrateKind && (
-        <div className="ui-result-celebrate" aria-hidden key={celebrateKind}>
+        <div className="ui-result-celebrate" aria-hidden>
           <div className="ui-result-celebrate-inner">
-            <video
-              ref={winVideoRef}
-              className="ui-result-celebrate-video"
-              playsInline
-              autoPlay
-              loop
-              muted
-              src={winCelebrationVideoSrc(celebrateKind)}
-            />
+            {/* Ключ раунда: каждый win — новый React-инстанс и полная перезагрузка Spine с нуля */}
+            <WinCelebrationSpine key={`${roundID}-${celebrateKind}`} kind={celebrateKind} />
           </div>
         </div>
       )}

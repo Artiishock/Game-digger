@@ -1082,6 +1082,7 @@ export class GameRenderer {
   private goldBreakStartMultiplier = 0;
   private goldBreakTickTimer = 0;       // таймер до следующего тика (+N/сек)
   private goldBreakDisplayMult = 0;    // текущее отображаемое значение
+  private _goldCrashPlayed = false;     // crash уже сыгран в финальной фазе (как у камня)
 
   // Активный объект во время брейка (показываем action-анимацию)
   private _breakSpine: import('pixi-spine').Spine | null = null;
@@ -1512,6 +1513,7 @@ export class GameRenderer {
     this.goldBreakStartMultiplier = 0;
     this.goldBreakTickTimer = 0;
     this.goldBreakDisplayMult = 0;
+    this._goldCrashPlayed = false;
     this._breakStage = 0;
     this._destroyBreakObj();
 
@@ -2228,12 +2230,16 @@ export class GameRenderer {
         ) {
           this._breakStage = 3
           SpineAnimator.setAnimation(this._breakSpine, GOLD_STAGE.done, false)
+          // Как у камня: crash в момент финальной фазы, а не после остановки лупа.
+          if (!this._goldCrashPlayed) {
+            gameAudio.playSfx('gold_crash.ogg')
+            this._goldCrashPlayed = true
+          }
         }
       }
 
       if (this.goldBreakRemainingTime <= 0) {
         gameAudio.setLoop('gold.ogg', false)
-        gameAudio.playSfx('gold_crash.ogg')
         this.goldBreakActive = false
         store.updateStats({ multiplier: Math.round(this.multiplier * 100) / 100 })
         this._breakStage = 0
@@ -2571,6 +2577,7 @@ export class GameRenderer {
       this.goldBreakTotalDuration = duration
       this.goldBreakDisplayMult   = multBefore   // начинаем с текущего значения
       this.goldBreakTickTimer     = 0.5           // первый тик UI через 0.5 игровой сек
+      this._goldCrashPlayed       = false
       this._breakStage = 1
       this._burst(obj.worldX, obj.worldY, C.gold, 12)
       if (obj.spine) {
@@ -2795,6 +2802,7 @@ export class GameRenderer {
     this.goldBreakStartMultiplier = 0
     this.goldBreakTickTimer = 0
     this.goldBreakDisplayMult = 0
+    this._goldCrashPlayed = false
     this.idleActive = true
     this._awaitingStartAnim = false
     this.miner.setIdleMode(true)

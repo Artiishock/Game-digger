@@ -226,10 +226,10 @@ export const GameConfig = {
     autoplayDelayMs:  1200,  // задержка между раундами в автоплее, мс
     /** Множитель «экран / глубина» для ppm — больше → дальше друг от друга символы по Y */
     depthSpreadScreenFactor: 2.6,
-    /** Порог множителя для клипов WIN в `public/animations/win/` (выше победы — более сильное видео). */
+    /** Порог множителя для оверлея WIN в `public/animations/{megawin|epicwin|bigwin}/` (Spine). */
     megaWinMinMultiplier: 50,
     epicWinMinMultiplier: 10,
-    /** Строго больше этого — bigwin.mp4 пока множитель ниже epic. */
+    /** Строго больше этого — уровень bigwin, пока множитель ниже epic. */
     bigWinExclusiveAboveMultiplier: 3,
   },
 
