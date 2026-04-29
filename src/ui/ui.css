@@ -79,17 +79,17 @@
 
 .ui-logo-zone {
   position: absolute;
-  top: 14px;
-  left: 14px;
-  width: 170px;
-  height: 58px;
+  top: 40px;
+  left: 40px;
+  width: 270px;
+  height: 110px;
   border: 2px dashed rgba(255, 255, 255, 0.2);
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
   color: rgba(255, 255, 255, 0.3);
-  font-size: 14px;
+  font-size: 24px;
   background: rgba(255, 255, 255, 0.03);
   z-index: 60;
   pointer-events: none;
@@ -97,7 +97,7 @@
 
 .ui-win-zone {
   position: absolute;
-  top: 18px;
+  top: 40px;
   left: 50%;
   transform: translateX(-50%);
   background: radial-gradient(
@@ -105,96 +105,141 @@
     rgba(0, 0, 0, 1) 0%,
     rgba(252, 70, 107, 0) 70%
   );
-  padding: 8px 36px;
-  min-width: 210px;
-  text-align: center;
+  width: 410px;
+  height: 50px;
   z-index: 60;
   pointer-events: none;
   white-space: nowrap;
+  gap: 8px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  box-sizing: border-box;
 }
 
 .ui-win-label {
-  font-size: 11px;
+  font-size: 32px;
   color: var(--text-dim);
-  letter-spacing: 0.14em;
+  line-height: 1;
   text-transform: uppercase;
-  font-weight: 600;
+  font-weight: 800;
+  color: #ffffff;
+  font-family: "Inter", sans-serif;
+  -webkit-text-stroke: 2px #000000;
+  paint-order: stroke fill;
 }
 
 .ui-win-amount {
-  font-size: 20px;
-  font-weight: 900;
-  color: var(--gold);
-  letter-spacing: 0.04em;
+  line-height: 1;
+  font-size: 32px;
+  font-weight: 800;
+  color: #facb32;
   font-variant-numeric: tabular-nums;
+  font-family: "Inter", sans-serif;
+  -webkit-text-stroke: 2px #000000;
+  paint-order: stroke fill;
 }
 
 .ui-topright {
   position: absolute;
-  top: 12px;
-  right: 14px;
+  top: 40px;
+  right: 40px;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
+  gap: 30px;
   z-index: 70;
 }
 
 .ui-icon-btns {
   display: flex;
-  gap: 8px;
+  gap: 5px;
+  justify-content: center;
 }
 
 .ui-icon-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 1.5px solid var(--border-subtle);
-  background: var(--bg-btn);
-  color: var(--text);
+  width: 50px;
+  height: 50px;
+
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  backdrop-filter: blur(6px);
-  transition:
-    background 0.15s,
-    border-color 0.15s;
+
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+
+  border: none;
+  background-color: transparent;
+
+  opacity: 1;
+  transition: opacity 0.15s;
 }
-.ui-icon-btn:hover {
-  background: rgba(255, 184, 48, 0.1);
-  border-color: var(--border-gold-s);
+
+.ui-icon-btn:disabled {
+  opacity: 1;
 }
-.ui-icon-btn--active {
-  border-color: rgba(255, 184, 48, 0.4);
+
+.ui-icon-btns .ui-icon-btn:nth-child(1) {
+  background-image: url("/ui/sound_bg.png");
+}
+
+.ui-icon-btns .ui-icon-btn:nth-child(2) {
+  background-image: url("/ui/info_bg.png");
+}
+
+.ui-icon-btns .ui-icon-btn:nth-child(3) {
+  background-image: url("/ui/settings_bg.png");
+}
+
+.ui-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.ui-icon-info {
+  font-weight: 900;
+  font-size: 26px;
+  line-height: 1;
+  color: #f2fdff;
+  font-family: "Inter", sans-serif;
 }
 
 .ui-depth-block {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 2px;
+  gap: 25px;
   pointer-events: none;
+  align-items: center;
+  box-sizing: border-box;
 }
 
 .ui-depth-row {
   display: flex;
-  align-items: baseline;
-  gap: 6px;
+  flex-direction: column;
+  align-items: center;
 }
 
 .ui-depth-label {
-  font-size: 9px;
-  color: rgba(240, 230, 211, 0.35);
-  letter-spacing: 0.12em;
+  font-size: 18px;
+  font-weight: 800;
+  color: #ffffff;
+  line-height: 1;
   text-transform: uppercase;
+  font-family: "Inter", sans-serif;
+  -webkit-text-stroke: 2px #000000;
+  paint-order: stroke fill;
 }
 
 .ui-depth-value {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--gold);
+  font-size: 24px;
+  font-weight: 900;
+  color: #facb32;
   font-variant-numeric: tabular-nums;
+  font-family: "Inter", sans-serif;
+  -webkit-text-stroke: 2px #000000;
+  paint-order: stroke fill;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -206,80 +251,104 @@
   bottom: 0;
   left: 0;
   right: 0;
-  height: var(--hud-h);
+  height: 200px;
   background: linear-gradient(
     to top,
     rgba(6, 6, 6, 0.833) 30%,
     rgba(6, 6, 6, 0) 100%
   );
-  /* border-top: 1px solid var(--border-gold); */
   display: flex;
   align-items: center;
-  padding: 0 16px;
+  padding: 0 40px;
   z-index: 50;
+  justify-content: space-between;
 }
 
 /* CREDIT */
 .ui-credit {
   display: flex;
+  box-sizing: border-box;
   flex-direction: column;
-  gap: 2px;
+  justify-content: center;
+
   flex-shrink: 0;
+  width: 260px;
+  height: 120px;
+  background: rgba(6, 6, 6, 0.5);
+  border: 1px solid #9f9f9f;
+  border-radius: 24px;
+  padding: 26px 32px;
+  gap: 5px;
 }
 
 .ui-credit-label {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--gold);
-  letter-spacing: 0.12em;
+  font-size: 18px;
+  font-weight: 800;
+  color: #facb32;
+  line-height: 1;
   text-transform: uppercase;
+  font-family: "Inter", sans-serif;
+  -webkit-text-stroke: 2px #000000;
+  paint-order: stroke fill;
 }
 
 .ui-credit-value {
-  font-size: 20px;
-  font-weight: 900;
-  color: var(--text);
+  font-size: 26px;
+  font-weight: 800;
+  color: #ffffff;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
+  font-family: "Inter", sans-serif;
+  -webkit-text-stroke: 2px #000000;
+  paint-order: stroke fill;
+}
+
+.ui-group-wrapper {
+  display: flex;
+  gap: 45px;
+  align-items: flex-end;
+  border-radius: 24px;
+  background: rgba(6, 6, 6, 0.5);
+  border: 1px solid #9f9f9f;
+  box-shadow: inset 0 0 10px 0 rgba(0, 0, 0, 0.15);
+  padding: 22px 25px;
 }
 
 /* Speed buttons */
 .ui-speed-group {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
   display: flex;
   gap: 10px;
   align-items: center;
 }
 
 .ui-speed-btn {
-  width: 54px;
-  height: 54px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.12);
-  background: rgba(20, 10, 4, 0.9);
+  width: 64px;
+  height: 64px;
+  background-color: transparent;
+  background-image: url("/ui/speedmode_bg.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  color: transparent;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 1px;
-  transition: all 0.15s;
   padding: 0;
 }
-.ui-speed-btn:hover:not(:disabled) {
-  background: rgba(255, 184, 48, 0.08);
-  border-color: rgba(255, 184, 48, 0.3);
-}
-.ui-speed-btn--active {
-  border-color: var(--gold) !important;
-  background: var(--gold-dim) !important;
-  box-shadow: 0 0 14px var(--gold-glow);
-}
+
 .ui-speed-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
+  opacity: 1;
+}
+
+.ui-speed-icon {
+  width: 43px;
+  height: 43px;
 }
 
 .ui-speed-label {
@@ -289,27 +358,24 @@
   letter-spacing: 0.04em;
   transition: color 0.15s;
 }
-.ui-speed-btn--active .ui-speed-label {
-  color: var(--gold);
-}
 
 /* Total BET */
 .ui-bet-block {
-  position: absolute;
-  right: 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  width: 120px;
+  gap: 10px;
 }
 
 .ui-bet-label {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--gold);
-  letter-spacing: 0.12em;
+  font-size: 24px;
+  font-weight: 900;
+  color: #facb32;
+  line-height: 1;
   text-transform: uppercase;
+  font-family: "Inter", sans-serif;
+  -webkit-text-stroke: 2px #000000;
+  paint-order: stroke fill;
 }
 
 .ui-bet-controls {
@@ -319,38 +385,51 @@
 }
 
 .ui-bet-adj {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  border: 1.5px solid var(--border-gold-s);
-  background: rgba(15, 8, 3, 0.9);
-  color: var(--text);
-  font-size: 16px;
-  font-weight: 700;
+  width: 50px;
+  height: 50px;
+
+  background-color: transparent;
+  background-image: url("/ui/plus_minus_bg.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+
+  border: none;
+  outline: none;
+  box-shadow: none;
+
+  font-size: 22px;
+  font-weight: 900;
+  line-height: 1;
+
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  line-height: 1;
-  padding: 0;
-  transition:
-    opacity 0.15s,
-    background 0.15s;
+
+  opacity: 1;
+  transition: opacity 0.15s;
 }
-.ui-bet-adj:hover:not(:disabled) {
-  background: var(--gold-dim);
-}
+
 .ui-bet-adj:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
+  opacity: 1;
+}
+
+.ui-bet-icon {
+  width: 22px;
+  height: 22px;
 }
 
 .ui-bet-amount {
-  font-size: 16px;
+  font-size: 32px;
   font-weight: 900;
-  color: var(--text);
+  color: #f2fdff;
+  line-height: 1;
+  text-transform: uppercase;
+  font-family: "Inter", sans-serif;
+  -webkit-text-stroke: 2px #000000;
+  paint-order: stroke fill;
   font-variant-numeric: tabular-nums;
-  min-width: 52px;
   text-align: center;
 }
 
@@ -358,110 +437,119 @@
    DIG / SPIN BUTTON
    ═══════════════════════════════════════════════════════ */
 
-.ui-spin-btn {
+.ui-spin-control {
   position: absolute;
-  right: 0px;
-  bottom: var(--hud-h);
-  width: 110px;
-  height: 110px;
-  border-radius: 20% 0% 0% 20%;
-  border: 3px solid var(--border-subtle);
-  background: rgba(12, 12, 12, 0.92);
-  box-shadow: 0 0 28px rgba(255, 160, 0, 0.4);
-  cursor: pointer;
+  right: 0;
+  bottom: 30%;
+  z-index: 60;
   display: flex;
   flex-direction: column;
+  align-items: flex-end;
+  gap: 15px;
+}
+
+.ui-spin-btn {
+  width: 200px;
+  height: 200px;
+
+  background-color: transparent;
+  background-image: url("/ui/spin_bg.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+
+  border: none;
+  outline: none;
+  box-shadow: none;
+
+  cursor: pointer;
+
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0;
-  z-index: 60;
-  /* плавное скрытие вправо */
-  transform: translateX(0);
-  transition:
-    transform 0.35s cubic-bezier(0.4, 0, 0.2, 1),
-    background 0.15s,
-    border-color 0.15s,
-    box-shadow 0.15s;
-  overflow: hidden;
+
   padding: 0;
+  overflow: hidden;
+
+  opacity: 1;
+  transition: opacity 0.15s;
 }
-.ui-spin-btn:hover:not(:disabled) {
+
+/* .ui-spin-btn:hover:not(:disabled) {
   background: rgba(40, 20, 5, 0.95);
 }
+
+.ui-spin-btn:active:not(:disabled) {
+  box-shadow: 0 0 34px rgba(255, 184, 48, 0.55);
+}
+
 .ui-spin-btn:disabled {
   cursor: not-allowed;
-  border-color: rgba(255, 255, 255, 0.15) !important;
-  box-shadow: none !important;
-  background: rgba(40, 22, 10, 0.9) !important;
-}
-.ui-spin-btn--auto {
-  border-color: #ff4400;
-  background: rgba(200, 50, 0, 0.9);
-  box-shadow: 0 0 28px rgba(255, 80, 0, 0.5);
-}
-/* Скрытое состояние — уезжает вправо, торчит только стрелка (~38px) */
-.ui-spin-btn--collapsed {
-  transform: translateX(calc(100% - 38px));
+  color: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.15);
   box-shadow: none;
-}
+  background: rgba(40, 22, 10, 0.9);
+} */
 
-.ui-spin-icon {
-  display: block;
+.ui-spin-btn-icon {
+  width: 118px;
+  height: 118px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
 }
-.ui-spin-btn--running .ui-spin-icon {
+
+/* .ui-spin-btn:disabled .ui-spin-icon {
   animation: spinIcon 0.9s linear infinite;
-}
+} */
 
-/* Стрелка-триггер — всегда слева */
-.ui-spin-arrow {
-  position: absolute;
-  left: 8px;
-  width: 0;
-  height: 0;
-  border-top: 8px solid transparent;
-  border-bottom: 8px solid transparent;
-  border-right: 12px solid rgba(255, 184, 48, 0.6);
+/* AUTOSPIN */
+
+.ui-autospin-btn {
+  width: 100px;
+  height: 100px;
+  background-color: transparent;
+  background-image: url("/ui/autoplay_bg.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  border: none;
+  outline: none;
+  box-shadow: none;
+
   cursor: pointer;
   z-index: 2;
-  transition: border-color 0.15s;
-}
-.ui-spin-btn--auto .ui-spin-arrow,
-.ui-spin-btn:disabled .ui-spin-arrow {
-  border-right-color: rgba(255, 255, 255, 0.15);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  opacity: 1;
+  transition: opacity 0.15s;
 }
 
-/* Badge — теперь кликабельный (открывает autoplay modal) */
-.ui-spin-badge {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: rgba(8, 4, 2, 0.92);
-  color: rgba(240, 230, 211, 0.7);
-  font-size: 11px;
-  font-weight: 800;
-  text-align: center;
-  padding: 4px 0 6px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition:
-    background 0.15s,
-    color 0.15s;
-  z-index: 2;
-}
-.ui-spin-badge:hover {
+/* .ui-autospin-btn:hover {
   background: rgba(255, 184, 48, 0.15);
   color: var(--gold);
 }
-.ui-spin-badge--active {
-  background: rgba(180, 40, 0, 0.95);
-  color: #ffaa88;
+
+.ui-autospin-btn:active {
+  background: rgba(255, 184, 48, 0.24);
+} */
+
+.ui-autospin-btn-icon {
+  width: 55px;
+  height: 55px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
-.ui-spin-badge--active:hover {
-  background: rgba(200, 50, 0, 0.95);
-  color: #ffccaa;
+
+.ui-autospin-btn-text {
+  display: block;
+  line-height: 1;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -1265,127 +1353,11 @@
     --hud-h: 70px;
   }
 
-  /* ── LOGO ZONE: левый верхний угол, компактнее ───── */
-  .ui-logo-zone {
-    top: 10px;
-    left: 10px;
-    width: 90px;
-    height: 44px;
-    font-size: 11px;
-  }
 
-  /* ── WIN: центр, немного ниже ─────────────────────── */
-  .ui-win-zone {
-    top: 12px;
-    left: 50%;
-    transform: translateX(-50%);
-    padding: 6px 18px;
-    min-width: 140px;
-  }
 
-  .ui-win-label {
-    font-size: 9px;
-  }
 
-  .ui-win-amount {
-    font-size: 16px;
-  }
 
-  /* ── TOP-RIGHT: кнопки + depth/distance ──────────── */
-  .ui-topright {
-    top: 8px;
-    right: 10px;
-    gap: 5px;
-  }
 
-  .ui-icon-btns {
-    gap: 6px;
-  }
-
-  .ui-icon-btn {
-    width: 30px;
-    height: 30px;
-  }
-
-  /* Depth/Distance — на мобильном выезжает влево под логотип.
-     .ui-topright — position:absolute right:10px, поэтому
-     дочерний .ui-depth-block тянем через отрицательный right
-     и фиксируем через transform */
-  .ui-depth-block {
-    align-items: flex-start;
-  }
-
-  .ui-depth-label {
-    font-size: 8px;
-  }
-
-  .ui-depth-value {
-    font-size: 12px;
-  }
-
-  /* ── HUD нижняя панель ────────────────────────────── */
-  .ui-hud {
-    height: var(--hud-h);
-    padding: 0 10px;
-  }
-
-  /* CREDIT — слева */
-  .ui-credit-label {
-    font-size: 9px;
-  }
-
-  .ui-credit-value {
-    font-size: 16px;
-  }
-
-  /* Speed buttons — скрываем центральные кнопки скорости на мобильном
-     они занимают слишком много места (на скрине видны только маленькие) */
-  .ui-speed-group {
-    gap: 5px;
-  }
-
-  .ui-speed-btn {
-    width: 36px;
-    height: 36px;
-  }
-
-  .ui-speed-label {
-    font-size: 8px;
-  }
-
-  /* TOTAL BET — справа */
-  .ui-bet-block {
-    width: auto;
-    right: 10px;
-  }
-
-  .ui-bet-label {
-    font-size: 9px;
-  }
-
-  .ui-bet-amount {
-    font-size: 13px;
-    min-width: 38px;
-  }
-
-  .ui-bet-adj {
-    width: 22px;
-    height: 22px;
-    font-size: 14px;
-  }
-
-  /* ── DIG/SPIN BUTTON ─────────────────────────────── */
-  .ui-spin-btn {
-    width: 90px;
-    height: 90px;
-    bottom: var(--hud-h);
-    border-radius: 18% 0% 0% 18%;
-  }
-
-  .ui-spin-badge {
-    font-size: 9px;
-    padding: 3px 0 5px;
-  }
 
   /* ── BET MODAL PANEL (popup) ─────────────────────── */
   .bet-modal-panel {
@@ -1411,63 +1383,8 @@
   }
 }
 
-/* ── Очень маленькие экраны < 380px ────────────────── */
-@media (max-width: 380px) {
-  .ui-speed-btn {
-    width: 30px;
-    height: 30px;
-  }
 
-  .ui-speed-label {
-    font-size: 7px;
-  }
 
-  .ui-credit-value {
-    font-size: 13px;
-  }
-
-  .ui-logo-zone {
-    width: 70px;
-    height: 36px;
-    font-size: 9px;
-  }
-
-  .ui-win-amount {
-    font-size: 14px;
-  }
-}
-
-/* ── Depth block позиционирование ─────────────────────
-   --topleft: мобильный блок (левый верх, под логотипом)
-   --desktop: десктопный блок (внутри ui-topright справа)
-   ─────────────────────────────────────────────────── */
-
-/* По умолчанию (десктоп): topleft скрыт, desktop виден */
-.ui-depth-block--topleft {
-  display: none;
-}
-.ui-depth-block--desktop {
-  display: flex;
-}
-
-/* Мобильный (≤ 532px): topleft виден, desktop скрыт */
-@media (max-width: 532px) {
-  .ui-depth-block--topleft {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 1px;
-    position: absolute;
-    top: 56px;
-    left: 10px;
-    pointer-events: none;
-    z-index: 60;
-  }
-
-  .ui-depth-block--desktop {
-    display: none;
-  }
-}
 
 /* ═══════════════════════════════════════════════════════
    SYSTEM SETTINGS PANEL
