@@ -50,11 +50,19 @@ class GameEngine {
 
       gameAudio.init()
 
-      // Resume active round if disconnected mid-game
-      if (auth.round?.isActive && auth.round.events.length > 0) {
-        store.setEvents(auth.round.events, auth.round.roundID)
-        store.setPhase('RUNNING')
-        return
+      // Если у игрока остался незакрытый раунд — закрываем его молча,
+      // чтобы Stake не блокировал следующий /play с "player has active bet".
+      if (auth.round?.isActive) {
+        try {
+          await RGS.endRound()
+        } catch (e) {
+          console.warn('[GameEngine] failed to close stale round:', e)
+        }
+        try {
+          const fresh = await RGS.getBalance()
+          store.setBalance(fresh.amount)
+          store.setCurrency(fresh.currency)
+        } catch { /* keep cached balance */ }
       }
 
       store.setPhase('IDLE')
@@ -63,7 +71,7 @@ class GameEngine {
       console.error('[GameEngine] boot error:', err)
       if (err instanceof RGS.RgsError) {
         // Fallback to demo on auth failure in dev
-        if (process.env.NODE_ENV === 'development') {
+        if (import.meta.env.DEV) {
           const auth = await Demo.demoAuthenticate()
           store.setBalance(auth.balance.amount)
           store.setCurrency('FUN')
@@ -91,20 +99,41 @@ class GameEngine {
     const bet = store.bet
 
     try {
-      let response: RGS.PlayResponse
+      const response = await this._playWithRecovery(bet)
 
-      if (RGS.isDemo()) {
-        response = await Demo.demoPlay(bet)
-      } else {
-        response = await RGS.play(bet)
+      store.setBalance(response.balance?.amount ?? 0)
+      const evs = response.round?.events ?? []
+      if (evs.length === 0) {
+        console.error('[GameEngine] play returned empty events; raw response:', response)
+        throw new RGS.RgsError('ERR_GEN')
       }
-
-      store.setBalance(response.balance.amount)
-      store.setEvents(response.round.events, response.round.roundID)
+      store.setEvents(evs, response.round?.roundID ?? '')
       store.setPhase('RUNNING')
 
     } catch (err) {
       this._handleRgsError(err)
+    }
+  }
+
+  /**
+   * Делает /play с одной попыткой восстановления: если RGS отвечает
+   * "player has active bet" (ERR_VAL с висящим раундом), сначала
+   * закрываем застрявший раунд через /end-round и пробуем play ещё раз.
+   */
+  private async _playWithRecovery(bet: number): Promise<RGS.PlayResponse> {
+    const tryPlay = () => RGS.isDemo() ? Demo.demoPlay(bet) : RGS.play(bet)
+
+    try {
+      return await tryPlay()
+    } catch (err) {
+      const isStuckBet = err instanceof RGS.RgsError && err.code === 'ERR_VAL'
+      if (!isStuckBet || RGS.isDemo()) throw err
+
+      console.warn('[GameEngine] play hit ERR_VAL, attempting end-round recovery')
+      try { await RGS.endRound() } catch (e2) {
+        console.warn('[GameEngine] recovery end-round also failed:', e2)
+      }
+      return await tryPlay()
     }
   }
 
@@ -124,12 +153,17 @@ class GameEngine {
         const res = await Demo.demoEndRound(bet, won ? multiplier : 0)
         newBalance = res.balance.amount
       } else {
-        // Only call end-round when there is a payout (Stake Engine requirement)
-        if (won && multiplier > 0) {
+        // Stake Engine: всегда закрываем раунд через /end-round, иначе
+        // следующий /play получит "player has active bet". Если бэкенд
+        // уже закрыл (auto_close), endRound вернёт ошибку — глотаем и
+        // просто перечитываем баланс.
+        try {
           const res = await RGS.endRound()
           newBalance = res.balance.amount
-        } else {
-          // Loss: just refresh balance
+        } catch (e) {
+          if (!(e instanceof RGS.RgsError && e.code === 'ERR_VAL')) {
+            console.warn('[GameEngine] end-round failed:', e)
+          }
           const bal = await RGS.getBalance()
           newBalance = bal.amount
         }
