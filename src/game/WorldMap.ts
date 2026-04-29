@@ -628,6 +628,11 @@ export function placeObstacles(
 
   // ── Декорации ──────────────────────────────────────────────────────────────
   const placed: Array<{ x: number; y: number; r: number }> = []
+  const roadOccupancy = roadPoints.map(rp => {
+    const sz = rp.type === 'HOME' ? DECOR_HOME_PLACE_SZ : (ITEM_SZ[rp.type] ?? 60)
+    const r = rp.type === 'HOME' ? (sz * Math.SQRT1_2) : (sz / 2)
+    return { x: rp.worldX, y: rp.worldY, r }
+  })
 
   /** Минимум между центрами декора (чуть больше проплешин между объектами). */
   const decorClearance = TILE * 1.2
@@ -650,6 +655,9 @@ export function placeObstacles(
     const b = decorBoundsAtY(worldY)
     const x = Math.max(b.minX, Math.min(b.maxX, worldX))
     if (intersectsTunnel(x, worldY, r, path, surfY, tunnelMargin)) return false
+    for (const rp of roadOccupancy) {
+      if (Math.hypot(x - rp.x, worldY - rp.y) < r + rp.r + TILE * 0.08) return false
+    }
     for (const lv of lavaSpots) {
       if (Math.hypot(x - lv.x, worldY - lv.y) < r + lv.r) return false
     }
@@ -673,6 +681,9 @@ export function placeObstacles(
       const b = decorBoundsAtY(worldY)
       const x = Math.max(b.minX, Math.min(b.maxX, worldX))
       if (intersectsTunnel(x, worldY, r, path, surfY, tunnelMargin)) return false
+      for (const rp of roadOccupancy) {
+        if (Math.hypot(x - rp.x, worldY - rp.y) < r + rp.r + TILE * 0.08) return false
+      }
       // Не ставим декор в зонах будущей лавы.
       for (const lv of lavaSpots) {
         if (Math.hypot(x - lv.x, worldY - lv.y) < r + lv.r) return false

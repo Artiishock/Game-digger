@@ -980,6 +980,7 @@ export class GameRenderer {
   })
   private liveWinAmountCached = ''
   private _cloudT = 0
+  private _cloudPrevCamX: number | null = null
   private _treeRunDx: [number, number, number] = [...TREE_X_RUN_DX]
   private spawner:ObjectSpawner|null=null
   private tunnelActive = false
@@ -1344,7 +1345,8 @@ export class GameRenderer {
       c.scale.set(scl)
       c.x = this.W * (0.12 + i * 0.31)
       c.y = this.H * (0.10 + i * 0.06)
-      ;(c as PIXI.Sprite & { _drift: number })._drift = 10 + i * 9
+      ;(c as PIXI.Sprite & { _baseY: number })._baseY = c.y
+      ;(c as PIXI.Sprite & { _drift: number })._drift = 28 - i * 9
       this.skyLayer.addChild(c)
     }
   }
@@ -1374,27 +1376,31 @@ export class GameRenderer {
   private _syncSkyBgParallax() {
     const bg = this.skyLayer.getChildByName('bgSprite') as PIXI.TilingSprite | null
     if (!bg) return
-    bg.tilePosition.x = Math.round(-this.camX * 0.2)
+    bg.tilePosition.x = 0
     bg.tilePosition.y = 0
   }
 
   private _updateSkyDecor(dt: number) {
     this._cloudT += dt
+    const prevCamX = this._cloudPrevCamX
+    const camDx = prevCamX === null ? 0 : (this.camX - prevCamX)
+    this._cloudPrevCamX = this.camX
     const top = Math.max(0, Math.min(this.H, -this.camY))
     const rock = this.skyLayer.getChildByName('rockSprite') as PIXI.Sprite | null
     if (rock) {
-      rock.x = this.W * 0.58 - this.camX * 0.07
+      rock.x = this.W * 0.58
       rock.y = top - 6
     }
     for (const ch of this.skyLayer.children) {
       const name = (ch as PIXI.DisplayObject).name ?? ''
       if (!name.startsWith('cloud')) continue
-      const c = ch as PIXI.Sprite & { _drift?: number }
+      const c = ch as PIXI.Sprite & { _drift?: number; _baseY?: number }
       const drift = c._drift ?? 14
-      c.x += drift * dt
+      // Компенсируем движение камеры, чтобы скорость облаков не зависела от направления персонажа.
+      c.x += drift * dt - camDx
+      c.y = c._baseY ?? c.y
       const half = (c.texture?.width ?? 100) * 0.5 * Math.abs(c.scale.x)
       if (c.x > this.W + half + 20) c.x = -half - 20
-      c.y += Math.sin(this._cloudT * 0.7 + name.length) * 0.35 * dt
     }
   }
 
