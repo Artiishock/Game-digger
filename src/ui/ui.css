@@ -323,7 +323,7 @@
 
 .ui-speed-btn {
   width: 64px;
-  height: 64px;
+  height: 67px;
   background-color: transparent;
   background-image: url("/ui/speedmode_bg.png");
   background-size: cover;
@@ -3073,7 +3073,7 @@
 
   .ui-speed-btn {
     width: 64px;
-    height: 64px;
+    height: 67px;
   }
 
   .ui-speed-icon {
@@ -3303,7 +3303,7 @@
 
   .ui-speed-btn {
     width: 64px;
-    height: 64px;
+    height: 67px;
   }
 
   .ui-speed-icon {
@@ -3536,8 +3536,8 @@
   }
 
   .ui-speed-btn {
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 34px;
   }
 
   .ui-speed-icon {
@@ -3820,8 +3820,8 @@
   }
 
   .ui-speed-btn {
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 34px;
   }
 
   .ui-speed-icon {
