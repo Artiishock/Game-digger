@@ -508,34 +508,47 @@
   transition: opacity 0.15s;
 }
 
-/* .ui-spin-btn:hover:not(:disabled) {
-  background: rgba(40, 20, 5, 0.95);
+.ui-spin-btn--active {
+  background-image: url("/ui/spin_bg2.png");
 }
 
-.ui-spin-btn:active:not(:disabled) {
-  box-shadow: 0 0 34px rgba(255, 184, 48, 0.55);
-}
 
-.ui-spin-btn:disabled {
-  cursor: not-allowed;
-  color: rgba(255, 255, 255, 0.25);
-  border-color: rgba(255, 255, 255, 0.15);
-  box-shadow: none;
-  background: rgba(40, 22, 10, 0.9);
-} */
 
 .ui-spin-btn-icon {
-  width: 118px;
-  height: 118px;
+  width: 159px;
+  height: 159px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
 
-/* .ui-spin-btn:disabled .ui-spin-icon {
-  animation: spinIcon 0.9s linear infinite;
-} */
+.ui-spin-btn-icon > svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.ui-spin-btn {
+  position: relative;
+}
+
+.ui-spin-btn-counter {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 42px;
+  color: #F2FDFF;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  z-index: 3;
+}
+
+
 
 /* AUTOSPIN */
 
@@ -571,6 +584,11 @@
   background: rgba(255, 184, 48, 0.24);
 } */
 
+.ui-autospin-btn--active {
+  background-image: url("/ui/autoplay_bg2.png");
+  opacity: 0.45;
+}
+
 .ui-autospin-btn-icon {
   width: 55px;
   height: 55px;
@@ -578,6 +596,12 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+}
+
+.ui-autospin-btn-icon > svg {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -3009,8 +3033,8 @@
   }
 
   .ui-spin-btn-icon {
-    width: 118px;
-    height: 118px;
+    width: 159px;
+    height: 159px;
   }
 
   .ui-autospin-btn {
@@ -3239,8 +3263,8 @@
   }
 
   .ui-spin-btn-icon {
-    width: 118px;
-    height: 118px;
+    width: 159px;
+    height: 159px;
   }
 
   .ui-autospin-btn {
