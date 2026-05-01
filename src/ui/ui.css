@@ -1402,6 +1402,54 @@
 
 
 
+/* ═══════════════════════════════════════════════════════
+   AUTOPLAY MODAL ADAPTIVE — tablet landscape
+   Control point: 1150x744
+   ═══════════════════════════════════════════════════════ */
+
+@media (min-width: 901px) and (max-width: 1300px) and (max-height: 820px) and (orientation: landscape) {
+  .ui-overlay:has(.ui-modal--sm) {
+    align-items: center;
+    justify-content: center;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-close {
+    top: clamp(28px, 3.48vw, 40px);
+    right: clamp(28px, 3.48vw, 40px);
+
+    width: 48px;
+    height: 48px;
+    background-size: 48px 48px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-modal--sm {
+    width: min(950px, calc(100vw - 80px));
+    min-height: min(350px, calc(100vh - 140px));
+    padding: 65px 45px;
+
+    display: grid;
+    grid-template-columns: max-content max-content;
+    column-gap: 35px;
+    align-items: start;
+    justify-content: center;
+
+    box-sizing: border-box;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-section--stop {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-section--autoplay {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}
+
+
+
+
 
 /* ═══════════════════════════════════════════════════════
    RESULT OVERLAY
