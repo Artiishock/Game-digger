@@ -1573,6 +1573,159 @@
   }
 }
 
+
+
+/* ═══════════════════════════════════════════════════════
+   AUTOPLAY MODAL ADAPTIVE — mobile portrait
+   Control point: 400x900
+   ═══════════════════════════════════════════════════════ */
+
+@media (max-width: 532px) and (orientation: portrait) {
+  .ui-overlay:has(.ui-modal--sm) {
+    align-items: center;
+    justify-content: center;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-close {
+    top: clamp(20px, 6vw, 24px);
+    right: clamp(20px, 6vw, 24px);
+
+    width: 24px;
+    height: 24px;
+    background-size: 24px 24px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-modal--sm {
+    width: min(370px, calc(100vw - 30px));
+    min-height: min(480px, calc(100vh - 120px));
+    padding: 25px 45px;
+
+    display: grid;
+    grid-template-columns: max-content;
+    grid-template-rows: max-content max-content;
+    row-gap: 60px;
+    column-gap: 0;
+
+    align-content: start;
+    align-items: start;
+    justify-content: start;
+
+    box-sizing: border-box;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-section--stop {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-section--autoplay {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-section-label {
+    margin-bottom: 15px;
+    font-size: 16px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-stop-conditions {
+    gap: 10px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-check-row,
+  .ui-overlay:has(.ui-modal--sm) .ui-input-row {
+    min-height: 24px;
+    font-size: 16px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-check-row {
+    grid-template-columns: 24px 132px;
+    gap: 9px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-input-row {
+    grid-template-columns: 24px 132px 85px;
+    gap: 9px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-input-row-label {
+    white-space: normal;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-check-row span,
+  .ui-overlay:has(.ui-modal--sm) .ui-input-row-label {
+    line-height: 115%;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-checkbox {
+    width: 24px;
+    height: 24px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-checkbox-tick {
+    width: 13px;
+    height: 7px;
+    border-left-width: 3px;
+    border-bottom-width: 3px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-input-row-field-wrap {
+    width: 85px;
+    height: 25px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-input-row-field {
+    padding: 0 8px;
+    font-size: 12px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-pills {
+    grid-template-columns: repeat(3, 85px);
+    gap: 12px 5px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-pill {
+    width: 85px;
+    height: 25px;
+    gap: 14px;
+    font-size: 15px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-pill::after {
+    width: 11px;
+    height: 11px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-custom {
+    margin-top: 18px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-custom-label {
+    margin-bottom: 9px;
+    font-size: 16px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-input {
+    width: 85px;
+    height: 25px;
+    font-size: 12px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-start-btn {
+    width: 27px;
+    height: 24px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-start-btn::after {
+    width: 11px;
+    height: 11px;
+  }
+}
+
+
+
+
+
 /* ═══════════════════════════════════════════════════════
    RESULT OVERLAY
    ═══════════════════════════════════════════════════════ */
