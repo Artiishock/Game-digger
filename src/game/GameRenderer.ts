@@ -31,6 +31,168 @@ const START_TUNNEL_CARVE_DELAY_SEC = 0
 const LAVA_GHOST_BASE_SPEED_MUL = 2
 const LAVA_GHOST_INPUT_SPEED_MUL = 3
 
+function getDisplayName(obj: any): string {
+  return obj.label || obj.name || obj.constructor?.name || 'Unknown';
+}
+
+function collectPixiSceneStats(root: PIXI.Container) {
+  const byType = new Map<string, number>();
+  const byName = new Map<string, number>();
+
+  let total = 0;
+  let visible = 0;
+  let renderable = 0;
+  let worldVisible = 0;
+
+  function walk(obj: any) {
+    total++;
+
+    const type = obj.constructor?.name || 'Unknown';
+    byType.set(type, (byType.get(type) ?? 0) + 1);
+
+    const name = getDisplayName(obj);
+    byName.set(name, (byName.get(name) ?? 0) + 1);
+
+    if (obj.visible) visible++;
+    if (obj.renderable) renderable++;
+    if (obj.worldVisible) worldVisible++;
+
+    if (obj.children) {
+      for (const child of obj.children) {
+        walk(child);
+      }
+    }
+  }
+
+  walk(root);
+
+  console.clear();
+
+  console.warn('[Pixi scene stats]', {
+    total,
+    visible,
+    renderable,
+    worldVisible,
+  });
+
+  console.warn('[Pixi scene stats] by type');
+  console.table(
+    [...byType.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 30)
+      .map(([type, count]) => ({ type, count }))
+  );
+
+  console.warn('[Pixi scene stats] by name/label');
+  console.table(
+    [...byName.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 30)
+      .map(([name, count]) => ({ name, count }))
+  );
+}
+
+function collectPixiSubtreeStats(root: PIXI.Container) {
+  const byType = new Map<string, number>();
+  const byName = new Map<string, number>();
+
+  let total = 0;
+  let visible = 0;
+  let renderable = 0;
+
+  function walk(obj: any) {
+    total++;
+    // In prod builds Pixi classes may get mangled (e.g. '_Container2'),
+    // so we count important buckets via instanceof, not constructor.name.
+    if (obj instanceof PIXI.Graphics) {
+      byType.set('Graphics', (byType.get('Graphics') ?? 0) + 1);
+    } else if (obj instanceof PIXI.Sprite) {
+      // Includes TilingSprite and normal Sprite.
+      byType.set('Sprite', (byType.get('Sprite') ?? 0) + 1);
+    } else if (obj instanceof PIXI.Container) {
+      byType.set('Container', (byType.get('Container') ?? 0) + 1);
+    } else {
+      const type = obj.constructor?.name || 'Unknown';
+      byType.set(type, (byType.get(type) ?? 0) + 1);
+    }
+
+    const name = getDisplayName(obj);
+    byName.set(name, (byName.get(name) ?? 0) + 1);
+
+    if (obj.visible) visible++;
+    if (obj.renderable) renderable++;
+
+    if (obj.children) {
+      for (const child of obj.children) walk(child);
+    }
+  }
+
+  walk(root);
+
+  return { total, visible, renderable, byType, byName };
+}
+
+function collectPixiTopLayerStats(stage: PIXI.Container) {
+  const layers = stage.children.filter(Boolean) as PIXI.DisplayObject[];
+  const out: Array<{
+    idx: number;
+    name: string;
+    type: string;
+    total: number;
+    renderable: number;
+    Sprite: number;
+    Graphics: number;
+    Container: number;
+  }> = [];
+
+  for (let i = 0; i < layers.length; i++) {
+    const layer = layers[i] as any;
+    if (!layer) continue;
+    if (!layer.children) continue;
+
+    const st = collectPixiSubtreeStats(layer as PIXI.Container);
+    const sprite = st.byType.get('Sprite') ?? 0;
+    const gfx = st.byType.get('Graphics') ?? 0;
+    const cont = st.byType.get('Container') ?? 0;
+
+    out.push({
+      idx: i,
+      name: getDisplayName(layer),
+      type: layer.constructor?.name || 'Unknown',
+      total: st.total,
+      renderable: st.renderable,
+      Sprite: sprite,
+      Graphics: gfx,
+      Container: cont,
+    });
+  }
+
+  out.sort((a, b) => (b.Sprite + b.Graphics + b.Container) - (a.Sprite + a.Graphics + a.Container));
+  return out;
+}
+
+export function installSceneStats(app: PIXI.Application) {
+  const intervalId = window.setInterval(() => {
+    collectPixiSceneStats(app.stage);
+  }, 1000);
+
+  return () => {
+    window.clearInterval(intervalId);
+  };
+}
+
+export function installTopLayerStats(app: PIXI.Application) {
+  const intervalId = window.setInterval(() => {
+    const rows = collectPixiTopLayerStats(app.stage);
+    console.warn('[Pixi top-layer stats] (sorted by Sprite+Graphics+Container)');
+    console.table(rows.slice(0, 20));
+  }, 1000);
+
+  return () => {
+    window.clearInterval(intervalId);
+  };
+}
+
 /** X на оси туннеля для произвольной глубины (линейная интерполяция по сегментам path). */
 function pathXAtWorldY(wy: number, path: PathPoint[], surfY: number): number {
   if (path.length === 0) return 0
@@ -989,6 +1151,15 @@ export class GameRenderer {
     this.worldChunkLayer = new PIXI.Container()
     this.objectsLayer= new PIXI.Container()  // ← между миром и персонажем
 
+    // Debug-friendly names for layer attribution in devtools/stats.
+    this.worldBgLayer.name = 'worldBgLayer'
+    this.skyLayer.name = 'skyLayer'
+    this._sceneryLayer.name = 'sceneryLayer'
+    this.worldChunkLayer.name = 'worldChunkLayer'
+    this.objectsLayer.name = 'objectsLayer'
+    this.minerLayer.name = 'minerLayer'
+    this._worldMask.name = 'worldMask'
+
     // Фон мира → небо → деревья → игровое поле (чанки) → предметы → герой
     this.app.stage.addChild(
       this.worldBgLayer,
@@ -1001,6 +1172,7 @@ export class GameRenderer {
 
     // Маска для skyLayer: небо видно только выше линии травы на экране
     this._worldMask = new PIXI.Graphics()
+    this._worldMask.name = 'worldMask'
     this.app.stage.addChild(this._worldMask)
     this.skyLayer.mask = this._worldMask
     this._updateWorldMask(w, h)
@@ -1031,6 +1203,16 @@ export class GameRenderer {
     })
     SpineAnimator.loadGoldStone()   // грузим параллельно с текстурами, не ждём
     this.app.ticker.add(this._tick.bind(this))
+
+    // Dev-only: print per-stage-child stats so we can attribute Sprite counts to a layer.
+    if (import.meta.env.DEV) {
+      // IMPORTANT: this traversal is expensive and will tank FPS.
+      // Enable only when explicitly requested in console:
+      //   window.__DR_TOP_LAYER_STATS__ = true; location.reload()
+      if ((window as any).__DR_TOP_LAYER_STATS__) {
+        installTopLayerStats(this.app)
+      }
+    }
   }
 
   private _createLiveWinBadge(): void {
@@ -1957,7 +2139,7 @@ export class GameRenderer {
       this._updateWorldMask(this.W, this.H)
       if (this.tileWorld) this.tileWorld.update(this.camX, this.camY, this.W, this.H)
       // Декор/предметы должны быть видны уже во время start-интро.
-      // Коллизии остаются выключены, т.к. running=false.
+      // Коллизии остаются выключены, т.к. running=false.F
       if (this.spawner) this.spawner.update(this.charX, this.charY, this.H * 5)
       this.miner.update(gameDt, 1, true)
       if (!this.miner.isHeroStartIntroPlaying()) {
