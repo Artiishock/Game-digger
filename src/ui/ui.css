@@ -345,6 +345,10 @@
   position: relative;
 }
 
+.ui-speed-btn--active{
+transform: scale(1.2, 1.2)
+}
+
 .ui-speed-btn:disabled {
   opacity: 1;
 }
@@ -3970,6 +3974,12 @@
     width: 22px;
     height: 22px;
     color: #f2fdff;
+
+  }
+
+  .ui-speed-btn--active{
+    width: 30px!important;
+    height: 30px!important;
   }
 
   .ui-speed-btn:hover .ui-speed-label,
