@@ -91,6 +91,7 @@ class GameEngine {
     const bet = store.bet
 
     try {
+      gameAudio.playStartGame()
       let response: RGS.PlayResponse
 
       if (RGS.isDemo()) {
@@ -119,10 +120,14 @@ class GameEngine {
 
     try {
       let newBalance: number
+      /** В demo выплата считается из base_coeff математики; экран WIN тоже показывает этот множитель. */
+      let displayMult = multiplier
 
       if (RGS.isDemo()) {
+        const coeffSnap = Demo.peekPendingBaseCoeff()
         const res = await Demo.demoEndRound(bet, won ? multiplier : 0)
         newBalance = res.balance.amount
+        if (won && coeffSnap > 0) displayMult = coeffSnap
       } else {
         // Only call end-round when there is a payout (Stake Engine requirement)
         if (won && multiplier > 0) {
@@ -138,8 +143,9 @@ class GameEngine {
       store.setBalance(newBalance)
 
       if (won) {
-        const winDisplay = RGS.toDisplay(Math.round(bet * multiplier * RGS.MONEY_SCALE))
+        const winDisplay = RGS.toDisplay(Math.round(bet * displayMult * RGS.MONEY_SCALE))
         store.setLastWin(winDisplay)
+        store.setLastWinMult(displayMult)
         store.setPhase('WIN')
       } else {
         store.setLastWin(0)

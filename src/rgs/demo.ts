@@ -15,6 +15,8 @@ import type {
   RgsConfig, RgsRound, RoundEvent, EventEffect,
 } from './client'
 import { MONEY_SCALE } from './client'
+import { GameConfig } from '../game/GameConfig'
+import type { WinCelebrateKind } from '../ui/winCelebration'
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -23,8 +25,119 @@ let _balance  = INITIAL_BALANCE
 let _roundSeq = 0
 let _pendingBaseCoeff = 0   // реальный base_coeff для точной выплаты
 
+/** DEV: очередь на следующий FUN-раунд (только import.meta.env.DEV, см. demoMathConsole.ts) */
+let _devQueuedCelebrate: WinCelebrateKind | null = null
+let _devQueuedCoeff: number | null = null
+
 export function resetDemoBalance() { _balance = INITIAL_BALANCE }
 export function getDemoBalance()   { return _balance }
+
+/** Снимок множителя математики перед demoEndRound (для отображения WIN = выплате demo). */
+export function peekPendingBaseCoeff(): number {
+  return _pendingBaseCoeff
+}
+
+function uniqCoeffsFromWinTable(table: CumTable): number[] {
+  return [...new Set(table.map(([v]) => v))]
+    .filter(v => Number.isFinite(v))
+    .sort((a, b) => a - b)
+}
+
+function nearestCoefficient(target: number, list: number[]): number {
+  if (list.length === 0) return target
+  let best = list[0]!
+  let bd = Infinity
+  for (const x of list) {
+    const d = Math.abs(x - target)
+    if (d < bd) {
+      bd = d
+      best = x
+    }
+  }
+  return best
+}
+
+function pickCelebrateCoeffFromMath(kind: WinCelebrateKind, winCoeffs: number[]): number {
+  const r = GameConfig.round
+  const mega = r.megaWinMinMultiplier ?? 50
+  const epic = r.epicWinMinMultiplier ?? 10
+  const bigEx = r.bigWinExclusiveAboveMultiplier ?? 3
+  const pos = winCoeffs.filter(c => c > 0)
+
+  const pickMega = (): number =>
+    pos.filter(c => c >= mega)[0] ?? pos[pos.length - 1]!
+  const pickEpic = (): number => {
+    const inTier = pos.filter(c => c >= epic && c < mega)
+    if (inTier.length) return inTier[0]!
+    const ge = pos.filter(c => c >= epic)
+    return ge[0] ?? pickMega()
+  }
+  const pickBig = (): number => {
+    const inTier = pos.filter(c => c > bigEx && c < epic)
+    if (inTier.length) return inTier[inTier.length - 1]!
+    const gt = pos.filter(c => c > bigEx)
+    return gt[0] ?? pos[Math.min(1, pos.length - 1)]!
+  }
+
+  switch (kind) {
+    case 'megawin': return pickMega()
+    case 'epicwin': return pickEpic()
+    case 'bigwin': return pickBig()
+  }
+}
+
+/** Следующий demoPlay возьмёт указанный base_coeff из таблицы (ближайший допустимый). */
+export function devQueueForcedCoeff(desiredCoeff: number): void {
+  if (!import.meta.env.DEV) return
+  _devQueuedCoeff = desiredCoeff
+  _devQueuedCelebrate = null
+  console.info('[demo dev] next round forced coeff (approx):', desiredCoeff)
+}
+
+/** Следующий demoPlay подберёт base_coeff так, чтобы оверлей bigwin/epicwin/megawin совпал с порогами. */
+export function devQueueCelebrateAnimation(kind: WinCelebrateKind): void {
+  if (!import.meta.env.DEV) return
+  _devQueuedCelebrate = kind
+  _devQueuedCoeff = null
+  console.info('[demo dev] next round queued animation:', kind)
+}
+
+export function devClearForcedCoefficientQueue(): void {
+  _devQueuedCoeff = null
+  _devQueuedCelebrate = null
+  if (import.meta.env.DEV) console.info('[demo dev] queues cleared')
+}
+
+export function devGetForcedCoefficientQueueHint(): {
+  coeff: number | null
+  celebrate: WinCelebrateKind | null
+} {
+  return { coeff: _devQueuedCoeff, celebrate: _devQueuedCelebrate }
+}
+
+function takeDevCoefficientForNextRound(winTable: CumTable): number | undefined {
+  if (!import.meta.env.DEV) return undefined
+  const coeffs = uniqCoeffsFromWinTable(winTable)
+  const positives = coeffs.filter(c => c > 0)
+
+  if (_devQueuedCoeff !== null) {
+    const snapped = nearestCoefficient(_devQueuedCoeff, positives.length ? positives : coeffs)
+    console.info(`[demo dev] apply forced coeff ${snapped} (requested ${_devQueuedCoeff})`)
+    _devQueuedCoeff = null
+    _devQueuedCelebrate = null
+    return snapped
+  }
+
+  if (_devQueuedCelebrate !== null) {
+    const k = _devQueuedCelebrate
+    const c = pickCelebrateCoeffFromMath(k, positives.length ? positives : coeffs)
+    console.info(`[demo dev] apply celebrate ${k} → coeff ${c}`)
+    _devQueuedCelebrate = null
+    return c
+  }
+
+  return undefined
+}
 
 // ─── Probability tables ───────────────────────────────────────────────────────
 
@@ -151,13 +264,13 @@ function parseToken(token: string): {
     return { type, effect: { op: 'div', value: d } }
   }
   if (type === 'GOLD') {
-    // gN: +N за N*0.5 секунд
-    const t = parseInt(token.slice(1), 10)
+    // gN: +N за N×0.5 с паузы
+    const t = Math.max(1, parseInt(token.slice(1), 10) || 1)
     return { type, effect: { op: 'add', value: t }, durationMs: t * 500 }
   }
-  // STONE
-  const t = parseInt(token.toLowerCase().slice(1), 10)
-  return { type, effect: { op: 'sub', value: t }, durationMs: Math.max(1000, t * 700) }
+  // STONE: sN: −N за N×0.5 с паузы
+  const t = Math.max(1, parseInt(token.toLowerCase().slice(1), 10) || 1)
+  return { type, effect: { op: 'sub', value: t }, durationMs: t * 500 }
 }
 
 
@@ -246,8 +359,8 @@ export async function demoPlay(betDisplay: number): Promise<PlayResponse> {
   // Загружаем таблицы вероятностей если нужно
   await ensureProbTables()
 
-  // Сэмплируем исход
-  const baseCoeff = sampleTable(_winTable!)
+  const devCoeff = takeDevCoefficientForNextRound(_winTable!)
+  const baseCoeff = devCoeff !== undefined ? devCoeff : sampleTable(_winTable!)
   _pendingBaseCoeff = baseCoeff
   const isLoss = (baseCoeff === 0)
 

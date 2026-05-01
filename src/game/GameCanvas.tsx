@@ -48,6 +48,17 @@ export const GameCanvas: React.FC<Props> = ({ width, height }) => {
     }
   }, [phase, events]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Skip lava death cinematic on any key press or screen tap
+  useEffect(() => {
+    const skip = () => rendererRef.current?.skipLavaDeath()
+    window.addEventListener('keydown', skip)
+    window.addEventListener('pointerdown', skip)
+    return () => {
+      window.removeEventListener('keydown', skip)
+      window.removeEventListener('pointerdown', skip)
+    }
+  }, [])
+
   // Resize
   useEffect(() => {
     if (rendererRef.current && width > 0 && height > 0) {

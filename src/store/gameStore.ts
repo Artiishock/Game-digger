@@ -55,9 +55,10 @@ interface GameStore {
   errorMsg:  string
 
   // Finance
-  balance:    number   // API units
-  bet:        number   // display $
-  lastWin:    number   // display $
+  balance:     number   // API units
+  bet:         number   // display $
+  lastWin:     number   // display $
+  lastWinMult: number   // multiplier from math engine
 
   // Round
   events:    RoundEvent[]
@@ -86,7 +87,8 @@ interface GameStore {
   setCurrency: (c: string)              => void
   setSessionID:(id: string)             => void
   setEvents:   (events: RoundEvent[], roundID: string) => void
-  setLastWin:  (win: number)            => void
+  setLastWin:     (win: number)          => void
+  setLastWinMult: (mult: number)         => void
   setSpeed:    (speed: SpeedMode)       => void
   updateStats: (partial: Partial<SessionStats>) => void
   resetStats:  ()                       => void
@@ -130,9 +132,10 @@ export const useGameStore = create<GameStore>((set) => ({
   config:    null,
   errorMsg:  '',
 
-  balance:   0,
-  bet:       1.0,
-  lastWin:   0,
+  balance:     0,
+  bet:         1.0,
+  lastWin:     0,
+  lastWinMult: 0,
 
   events:  [],
   roundID: '',
@@ -158,14 +161,15 @@ export const useGameStore = create<GameStore>((set) => ({
   setSessionID:(sessionID)=> set({ sessionID }),
 
   setEvents: (events, roundID) => set({ events, roundID }),
-  setLastWin: (lastWin)  => set({ lastWin }),
+  setLastWin:     (lastWin)     => set({ lastWin }),
+  setLastWinMult: (lastWinMult) => set({ lastWinMult }),
   setSpeed:   (speed)    => set({ speed }),
 
   updateStats: (partial) =>
     set((s) => ({ stats: { ...s.stats, ...partial } })),
 
   resetStats: () =>
-    set({ stats: { depth: 0, distance: 0, multiplier: 0 } }),
+    set({ stats: { depth: 0, distance: 0, multiplier: 1 } }),
 
   setAutoplay: (cfg) =>
     set((s) => ({ autoplay: { ...s.autoplay, ...cfg } })),
