@@ -154,14 +154,15 @@ class GameEngine {
 
       // ── Autoplay continuation ──────────────────────────────────────────────
       const ap = store.autoplay
-      if (ap.active && ap.remainingRounds > 0 && !this._abortAutoplay) {
-        const winDisplay = won ? bet * displayMult : 0
-        if (!this._shouldStopAutoplay(ap, winDisplay, newBalance)) {
+      if (ap.active && !this._abortAutoplay) {
+        const winDisplay = won ? bet * multiplier : 0
+        const shouldStop = this._shouldStopAutoplay(ap, winDisplay, newBalance)
+        const isLastRound = ap.remainingRounds <= 1
+        if (shouldStop || isLastRound) {
+          store.setAutoplay({ active: false, remainingRounds: 0 })
+        } else {
           store.decrementAutoplay()
           setTimeout(() => this.startRound(), GameConfig.round.autoplayDelayMs)
-        } else {
-          store.setAutoplay({ active: false })
-          store.setPhase('IDLE')
         }
       }
 
