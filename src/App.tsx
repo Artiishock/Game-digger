@@ -50,12 +50,9 @@ export const App: React.FC = () => {
     gameAudio.syncPhase(phase, multiplier)
   }, [phase, multiplier])
 
-  // Нет оверлея «ПРОВАЛ» — сразу выход в меню (ставка уже списана в движке).
   useEffect(() => {
-    if (phase === "LOSE") {
-      useGameStore.getState().setPhase("IDLE");
-    }
-  }, [phase]);
+    if (phase === "LOSE") useGameStore.getState().setPhase("IDLE")
+  }, [phase])
 
   useEffect(() => {
     gameAudio.refreshFromStore();

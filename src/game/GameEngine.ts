@@ -145,6 +145,7 @@ class GameEngine {
       if (won) {
         const winDisplay = RGS.toDisplay(Math.round(bet * displayMult * RGS.MONEY_SCALE))
         store.setLastWin(winDisplay)
+        store.setLastWinMult(displayMult)
         store.setPhase('WIN')
       } else {
         store.setLastWin(0)

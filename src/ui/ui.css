@@ -46,7 +46,7 @@
 @keyframes fadeInScale {
   from {
     opacity: 0;
-    transform: scale(0.92);
+    transform: scale(0.0);
   }
   to {
     opacity: 1;
@@ -318,12 +318,14 @@
 .ui-speed-group {
   display: flex;
   gap: 10px;
+
   align-items: center;
 }
 
 .ui-speed-btn {
   width: 64px;
-  height: 64px;
+  height: 67px;
+
   background-color: transparent;
   background-image: url("/ui/speedmode_bg.png");
   background-size: cover;
@@ -1084,6 +1086,7 @@
   animation: fadeInScale 0.4s ease;
   pointer-events: auto;
   cursor: pointer;
+  
 }
 
 .ui-result-emoji {
@@ -1114,6 +1117,8 @@
   z-index: 2;
   margin-top: 16px;
   text-align: center;
+  animation: uiWinCelebratePop 0.6s cubic-bezier(0.2, 0.85, 0.25, 1) 0.15s both;
+  transform-origin: center center;
 }
 .ui-result-win-sub  { font-size: 13px; color: var(--text-dim); letter-spacing: 0.1em; text-transform: uppercase; }
 .ui-result-win-amt  {
@@ -1146,7 +1151,7 @@
 
 /* Не начинать с scale(0): у детей getBoundingClientRect() ≈ 0 → Pixi инициализируется 1×1 и клип не виден. */
 @keyframes uiWinCelebratePop {
-  from { opacity: 0; transform: scale(0.88); }
+  from { opacity: 0; transform: scale(0); }
   to   { opacity: 1; transform: scale(1); }
 }
 
@@ -1156,34 +1161,47 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  width: auto;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
   z-index: 1;
+  margin-top: -50px;
 }
 
 .ui-result-celebrate-inner {
+  position: absolute;
+  inset: 0;
   opacity: 0;
-  animation: uiWinCelebratePop 0.5s cubic-bezier(0.2, 0.85, 0.25, 1) forwards;
+  animation: uiWinCelebratePop 1s cubic-bezier(0.2, 0.85, 0.25, 1) 0.5s both;
   transform-origin: center center;
   will-change: transform, opacity;
-  box-sizing: border-box;
-  width: 80vw;
-  height: 80vh;
-  max-width: 80vw;
-  max-height: 80vh;
 }
 
 .ui-result-celebrate-video {
   display: block;
   width: 100%;
   height: 100%;
-  max-height: 80vh;
-  object-fit: contain;
+
+
+}
+
+.ui-result-celebrate-canvas-wrap--epicwin{
+   position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+  margin-top: 60px;
+  overflow: visible;
 }
 
 .ui-result-celebrate-canvas-wrap {
-  width: 100%;
-  position: relative;
+  position: absolute;
+  inset: 0;
 }
 
 .ui-result-celebrate-fail {
@@ -1200,12 +1218,10 @@
   pointer-events: none;
 }
 
-/* Spine (Pixi): контейнер ~80% вьюпорта, Pixi вписывает скелет внутрь */
+/* Spine (Pixi): абсолютно заполняет оверлей, Pixi вписывает скелет внутрь */
 .ui-result-celebrate-canvas {
-  width: 100%;
-  height: 100%;
-  min-height: min(80vh, 80vw);
-  margin: 0 auto;
+  position: absolute;
+  inset: 0;
 }
 @media (prefers-reduced-motion: reduce) {
   .ui-result-celebrate-inner {
@@ -1213,6 +1229,47 @@
     opacity: 1;
     transform: scale(1);
   }
+}
+
+/* ═══════════════════════════════════════════════════════
+   LOSE OVERLAY
+   ═══════════════════════════════════════════════════════ */
+
+.ui-lose {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at center, rgba(200,30,0,0.35) 0%, rgba(0,0,0,0.75) 70%);
+  animation: fadeInScale 0.4s ease;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.ui-lose-inner {
+  text-align: center;
+  animation: uiWinCelebratePop 0.6s cubic-bezier(0.2, 0.85, 0.25, 1) 0.1s both;
+  transform-origin: center center;
+}
+
+.ui-lose-title {
+  font-family: var(--font-display);
+  font-size: clamp(40px, 10vw, 80px);
+  color: #ff4500;
+  text-shadow: 0 0 40px rgba(255, 69, 0, 0.5);
+  letter-spacing: 0.06em;
+  line-height: 1;
+}
+
+.ui-lose-hint {
+  font-size: 13px;
+  color: rgba(240, 230, 211, 0.35);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-top: 16px;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -3106,6 +3163,7 @@
   .ui-speed-group {
     position: absolute;
     left: 50%;
+    overflow: visible;
     bottom: clamp(12px, 1.3vw, 15px);
     transform: translateX(-50%);
   }

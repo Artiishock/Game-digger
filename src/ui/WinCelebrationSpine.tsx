@@ -182,7 +182,20 @@ function syncSlotContainerAlpha(inst: Spine): void {
   }
 }
 
-function layoutSpine(spine: Spine, w: number, h: number): void {
+const KIND_SCALE: Record<WinCelebrateKind, number> = {
+  bigwin:  0.8,
+  epicwin: 1.1,
+  megawin: 0.8,
+}
+
+// Vertical offset as a fraction of canvas height (positive = move down)
+const KIND_Y_OFFSET: Record<WinCelebrateKind, number> = {
+  bigwin:  0,
+  epicwin: 0.1,
+  megawin: 0,
+}
+
+function layoutSpine(spine: Spine, w: number, h: number, pad = 0.8, yOffset = 0): void {
   spine.update(0)
   syncSlotContainerAlpha(spine)
   let b = spine.getBounds()
@@ -192,13 +205,12 @@ function layoutSpine(spine: Spine, w: number, h: number): void {
     const rh = sd.height && sd.height > 0 ? sd.height : 1500
     b = new PIXI.Rectangle(sd.x ?? 0, sd.y ?? 0, rw, rh)
   }
-  const pad = 0.97
   const sx = (w * pad) / Math.max(b.width, 1e-3)
   const sy = (h * pad) / Math.max(b.height, 1e-3)
   const s = Math.min(sx, sy)
   spine.scale.set(s)
   spine.x = w * 0.5 - (b.x + b.width * 0.5) * s
-  spine.y = h * 0.5 - (b.y + b.height * 0.5) * s
+  spine.y = h * 0.5 - (b.y + b.height * 0.5) * s + h * yOffset
 }
 
 type Props = { kind: WinCelebrateKind }
@@ -238,17 +250,10 @@ export const WinCelebrationSpine: React.FC<Props> = ({ kind }) => {
       }
     }
 
-    const measureHost = (): { w: number; h: number } => {
-      const r = el.getBoundingClientRect()
-      let w = Math.max(1, Math.floor(r.width))
-      let h = Math.max(1, Math.floor(r.height))
-      /* Несколько первых кадров после маунта контейнер может давать ~0 px (layout/transitions). */
-      if (w < 64 || h < 64) {
-        w = Math.max(w, Math.floor(window.innerWidth * 0.8))
-        h = Math.max(h, Math.floor(window.innerHeight * 0.8))
-      }
-      return { w, h }
-    }
+    const measureHost = (): { w: number; h: number } => ({
+      w: Math.max(1, window.innerWidth),
+      h: Math.max(1, window.innerHeight),
+    })
 
     ;(async () => {
       try {
@@ -261,12 +266,10 @@ export const WinCelebrationSpine: React.FC<Props> = ({ kind }) => {
         const sa = spine as Spine & { autoUpdate?: boolean }
         sa.autoUpdate = false
 
-        const { w: w0, h: h0 } = measureHost()
-
         try {
           app = new PIXI.Application({
-            width: w0,
-            height: h0,
+            width: window.innerWidth,
+            height: window.innerHeight,
             backgroundAlpha: 0,
             antialias: true,
             resolution: Math.min(window.devicePixelRatio || 1, 2),
@@ -275,8 +278,8 @@ export const WinCelebrationSpine: React.FC<Props> = ({ kind }) => {
           } as PIXI.IApplicationOptions)
         } catch {
           app = new PIXI.Application({
-            width: w0,
-            height: h0,
+            width: window.innerWidth,
+            height: window.innerHeight,
             backgroundAlpha: 0,
             antialias: false,
             forceCanvas: true,
@@ -291,12 +294,12 @@ export const WinCelebrationSpine: React.FC<Props> = ({ kind }) => {
 
         const canvas =
           (app as unknown as { canvas?: HTMLCanvasElement }).canvas ?? (app.view as HTMLCanvasElement)
-        canvas.style.width = '100%'
-        canvas.style.height = '100%'
+        canvas.style.width = '100vw'
+        canvas.style.height = '100vh'
         canvas.style.display = 'block'
         el.appendChild(canvas)
 
-        layoutSpine(spine, w0, h0)
+        layoutSpine(spine, window.innerWidth, window.innerHeight, KIND_SCALE[kind], KIND_Y_OFFSET[kind])
         app.stage.addChild(spine)
 
         const tick = () => {
@@ -311,7 +314,7 @@ export const WinCelebrationSpine: React.FC<Props> = ({ kind }) => {
           if (!alive || !app || !spine) return
           const { w, h } = measureHost()
           app.renderer.resize(w, h)
-          layoutSpine(spine, w, h)
+          layoutSpine(spine, w, h, KIND_SCALE[kind], KIND_Y_OFFSET[kind])
         }
 
         ro = new ResizeObserver(() => reflowNow())
@@ -333,13 +336,13 @@ export const WinCelebrationSpine: React.FC<Props> = ({ kind }) => {
   }, [kind])
 
   return (
-    <div className="ui-result-celebrate-canvas-wrap">
+    <div className={`ui-result-celebrate-canvas-wrap ui-result-celebrate-canvas-wrap--${kind}`}>
       {errorText && (
         <div className="ui-result-celebrate-fail" role="status">
           Не удалось показать анимацию победы ({errorText})
         </div>
       )}
-      <div ref={wrapRef} className="ui-result-celebrate-canvas" aria-hidden />
+      <div ref={wrapRef} className={`ui-result-celebrate-canvas ui-result-celebrate-canvas--${kind}`} aria-hidden />
     </div>
   )
 }

@@ -1007,7 +1007,7 @@ export class GameRenderer {
   private _startTunnelCarveDelaySec = 0
   private charX=0; private charY=0
   private charScreenY=0
-  private multiplier=1; private depth=0; private distance=0
+  private multiplier=0; private depth=0; private distance=0
   private particles:Particle[]=[]
   private ppm=TILE*2
   private rgsQueue:RoundEvent[]=[]
@@ -1053,6 +1053,7 @@ export class GameRenderer {
   private _lavaLossIdleGlideToCx = 0
   private _lavaLossIdleGlideToCy = 0
   private _lavaLossTimeoutPending = false
+  private _lavaLossResultTimerId: ReturnType<typeof setTimeout> | null = null
   /** После cleanup LAVA: idleX уже из колонки смерти, не сбрасывать в 0 в _returnToIdle. */
   private _lavaHandoffUsedIdleAnchor = false
   private _caveZones:   Array<{x:number; y:number; r:number}> = []  // круги всех активных пещер
@@ -1495,7 +1496,7 @@ export class GameRenderer {
     this._cleanupLavaDeathCinematic()
     this.miner.resetFromDeath()
     this._lavaLossTimeoutPending = false
-    this.multiplier=1;this.depth=0;this.distance=0
+    this.multiplier=0;this.depth=0;this.distance=0
     this.particles=[]
     this.rgsQueue=[...events]
     this.rgsEvents=events
@@ -1942,11 +1943,32 @@ export class GameRenderer {
   private _scheduleLavaLossResult(): void {
     if (this._lavaLossTimeoutPending) return
     this._lavaLossTimeoutPending = true
-    setTimeout(() => {
+    this._lavaLossResultTimerId = setTimeout(() => {
       this._lavaLossTimeoutPending = false
+      this._lavaLossResultTimerId = null
       gameEngine.onRoundComplete(0, false)
       this._startLavaLossIdleGlideOrIdle()
     }, GameConfig.round.loseDelayMs)
+  }
+
+  /** Skip the lava death cinematic on any user input. */
+  skipLavaDeath(): void {
+    const active = this._lavaDeathCinematic || this._lavaLossIdleGlideActive || this._lavaLossTimeoutPending
+    if (!active) return
+
+    const needsRoundComplete = this._lavaDeathCinematic
+
+    if (this._lavaLossResultTimerId !== null) {
+      clearTimeout(this._lavaLossResultTimerId)
+      this._lavaLossResultTimerId = null
+    }
+    this._lavaLossTimeoutPending = false
+    this._lavaLossIdleGlideActive = false
+    this._returnToIdle()
+
+    if (needsRoundComplete) {
+      void gameEngine.onRoundComplete(0, false)
+    }
   }
 
   /** После звука/задержки: либо ~1 с выезда камеры к поверхности, либо сразу сборка idle. */
