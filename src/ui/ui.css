@@ -945,7 +945,7 @@
   align-items: start;
   justify-content: center;
 
-  border: 1px solid #9F9F9F;
+  border: 1px solid #9f9f9f;
   border-radius: 12px;
 
   background: rgba(6, 6, 6, 0.5);
@@ -953,7 +953,6 @@
   text-align: left;
   overflow: hidden;
 }
-
 
 .ui-ap-close {
   position: fixed;
@@ -976,7 +975,6 @@
   cursor: pointer;
   z-index: 230;
 }
-
 
 .ui-ap-section {
   margin: 0;
@@ -1348,8 +1346,6 @@
   -webkit-mask-repeat: no-repeat;
 }
 
-
-
 /* ═══════════════════════════════════════════════════════
    AUTOPLAY MODAL ADAPTIVE — tablet portrait
    Control point: 744x1150
@@ -1399,9 +1395,6 @@
   }
 }
 
-
-
-
 /* ═══════════════════════════════════════════════════════
    AUTOPLAY MODAL ADAPTIVE — tablet landscape
    Control point: 1150x744
@@ -1447,9 +1440,138 @@
   }
 }
 
+/* ═══════════════════════════════════════════════════════
+   AUTOPLAY MODAL ADAPTIVE — mobile landscape
+   Control point: 900x400
+   ═══════════════════════════════════════════════════════ */
 
+@media (max-width: 900px) and (max-height: 500px) and (orientation: landscape) {
+  .ui-overlay:has(.ui-modal--sm) {
+    align-items: center;
+    justify-content: center;
+  }
 
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-close {
+    top: clamp(12px, 3vw, 18px);
+    right: clamp(12px, 3vw, 18px);
 
+    width: 24px;
+    height: 24px;
+    background-size: 24px 24px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-modal--sm {
+    width: min(650px, calc(100vw - 80px));
+    min-height: min(250px, calc(100vh - 70px));
+    padding: 32px 45px;
+
+    display: grid;
+    grid-template-columns: max-content max-content;
+    column-gap: 35px;
+    align-items: start;
+    justify-content: center;
+
+    box-sizing: border-box;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-section-label {
+    margin-bottom: 15px;
+    font-size: 16px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-stop-conditions {
+    gap: 10px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-check-row,
+  .ui-overlay:has(.ui-modal--sm) .ui-input-row {
+    min-height: 24px;
+    font-size: 16px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-check-row {
+    grid-template-columns: 24px 132px;
+    gap: 9px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-input-row {
+    grid-template-columns: 24px 132px 85px;
+    gap: 9px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-input-row-label {
+    white-space: normal;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-check-row span,
+  .ui-overlay:has(.ui-modal--sm) .ui-input-row-label {
+    line-height: 115%;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-checkbox {
+    width: 24px;
+    height: 24px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-checkbox-tick {
+    width: 13px;
+    height: 7px;
+    border-left-width: 3px;
+    border-bottom-width: 3px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-input-row-field-wrap {
+    width: 85px;
+    height: 25px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-input-row-field {
+    padding: 0 8px;
+    font-size: 12px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-pills {
+    grid-template-columns: repeat(3, 85px);
+    gap: 12px 5px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-pill {
+    width: 85px;
+    height: 25px;
+    gap: 14px;
+    font-size: 15px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-pill::after {
+    width: 11px;
+    height: 11px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-custom {
+    margin-top: 18px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-custom-label {
+    margin-bottom: 9px;
+    font-size: 16px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-input {
+    width: 85px;
+    height: 25px;
+    font-size: 12px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-start-btn {
+    width: 27px;
+    height: 24px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-start-btn::after {
+    width: 11px;
+    height: 11px;
+  }
+}
 
 /* ═══════════════════════════════════════════════════════
    RESULT OVERLAY
