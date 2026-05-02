@@ -1,6 +1,8 @@
 import { useGameStore } from '../store/gameStore'
 import type { EventType } from '../rgs/client'
 import type { GamePhase } from '../store/gameStore'
+import { GameConfig } from '../game/GameConfig'
+import type { WinCelebrateKind } from '../ui/winCelebration'
 
 function baseUrl(): string {
   const b = import.meta.env.BASE_URL || '/'
@@ -12,37 +14,48 @@ function url(file: string): string {
 }
 
 const SFX_LIST = [
-  'sfx_coin.ogg',
-  'sfx_gold.ogg',
-  'sfx_diamond.ogg',
-  'sfx_bomb.ogg',
-  'sfx_stone.ogg',
-  'sfx_home.ogg',
-  'sfx_lava.ogg',
-  'sfx_win.ogg',
-  'sfx_dig_0.ogg',
-  'sfx_dig_1.ogg',
-  'sfx_dig_2.ogg',
-  'sfx_dig_3.ogg',
-  'sfx_dig_4.ogg',
+  'start_game.ogg',
+  'coin.ogg',
+  'gold_crash.ogg',
+  'crystal.ogg',
+  'bomb.ogg',
+  'stone_crash.ogg',
+  'finish_win.ogg',
+  'finish_lose.ogg',
+  'finish_bigwin.ogg',
+  'finish_epicwin.ogg',
+  'finish_megawin.ogg',
+  'click_ui.ogg',
+  'click_ui_slide.ogg',
+  'gold.ogg',
 ] as const
 
 const COLLECT_SFX: Partial<Record<EventType, string>> = {
-  COIN: 'sfx_coin.ogg',
-  GOLD: 'sfx_gold.ogg',
-  DIAMOND: 'sfx_diamond.ogg',
-  BOMB: 'sfx_bomb.ogg',
-  STONE: 'sfx_stone.ogg',
-  HOME: 'sfx_home.ogg',
-  LAVA: 'sfx_lava.ogg',
+  COIN: 'coin.ogg',
+  DIAMOND: 'crystal.ogg',
+  BOMB: 'bomb.ogg',
+  HOME: 'finish_win.ogg',
+  LAVA: 'finish_lose.ogg',
 }
+
+const MUSIC_LOOPS = new Set([
+  'background_1.ogg',
+  'background_2.ogg',
+  'background_3.ogg',
+  'ambient.ogg',
+  'iddle.ogg',
+])
+
+// Files requiring gap-free looping via Web Audio API (HTML5 Audio has a seek-gap on loop)
+const GAPLESS_LOOPS = new Set(['drill.ogg'])
 
 class GameAudioModule {
   private ctx: AudioContext | null = null
   private buffers = new Map<string, AudioBuffer>()
   private loadStarted = false
   private loadDone = false
-  private music: HTMLAudioElement | null = null
+  private loopers = new Map<string, HTMLAudioElement>()
+  private looperNodes = new Map<string, { src: AudioBufferSourceNode; gain: GainNode }>()
 
   /** Вызывать по первому клику пользователя (DIG), чтобы снять блокировку autoplay. */
   unlock(): void {
@@ -50,6 +63,8 @@ class GameAudioModule {
     void this.ctx.resume()
     void this.ensureBuffers()
     this.refreshFromStore()
+    const store = useGameStore.getState()
+    this.syncPhase(store.phase, store.stats.multiplier)
   }
 
   init(): void {
@@ -58,40 +73,53 @@ class GameAudioModule {
 
   /** Вызывать из React при смене настроек звука (громкость / mute). */
   refreshFromStore(): void {
-    const phase = useGameStore.getState().phase
     this.applyMusicFromStore()
-    if (
-      this.music &&
-      (phase === 'RUNNING' || phase === 'BETTING') &&
-      useGameStore.getState().settings.soundEnabled &&
-      useGameStore.getState().settings.musicVolume > 0 &&
-      this.music.paused
-    ) {
-      void this.music.play().catch(() => {})
+  }
+
+  syncPhase(phase: GamePhase, multiplier = 1): void {
+    this.setLoop('drill.ogg', phase === 'RUNNING')
+    const inPlayableScene =
+      phase === 'IDLE' || phase === 'BETTING' || phase === 'RUNNING' || phase === 'WIN' || phase === 'LOSE'
+    this.setLoop('background_1.ogg', inPlayableScene)
+    this.setLoop('ambient.ogg', inPlayableScene)
+    this.setLoop('background_2.ogg', phase === 'RUNNING')
+    this.setLoop(
+      'background_3.ogg',
+      phase === 'RUNNING' && multiplier >= GameConfig.round.bigWinExclusiveAboveMultiplier,
+    )
+    this.setLoop('iddle.ogg', phase === 'IDLE')
+  }
+
+  private readonly _WIN_FANFARE: Record<WinCelebrateKind, string> = {
+    bigwin:  'finish_bigwin.ogg',
+    epicwin: 'finish_epicwin.ogg',
+    megawin: 'finish_megawin.ogg',
+  }
+
+  /** Запускает/останавливает аудио экрана победы. */
+  syncWinScreen(show: boolean, kind: WinCelebrateKind | null): void {
+    if (show) {
+      if (kind) this.playSfx(this._WIN_FANFARE[kind])
+      this.setLoop('finish_pay.ogg', true)
+      if (kind) this.setLoop('finish_coins.ogg', true)
+    } else {
+      this.setLoop('finish_pay.ogg', false)
+      this.setLoop('finish_coins.ogg', false)
     }
   }
 
-  syncPhase(phase: GamePhase): void {
-    const wantMusic = phase === 'RUNNING' || phase === 'BETTING'
-    if (!this.music) {
-      if (!wantMusic) return
-      this.music = new Audio(url('bgm_main.mp3'))
-      this.music.loop = true
-      this.music.preload = 'auto'
-    }
-    this.applyMusicFromStore()
-    if (!wantMusic) {
-      this.music.pause()
-      return
-    }
-    const store = useGameStore.getState()
-    if (!store.settings.soundEnabled || store.settings.musicVolume <= 0) {
-      this.music.pause()
-      return
-    }
-    void this.music.play().catch(() => {
-      /* ждём unlock() */
-    })
+  /** Останавливает луп счётчика (при скипе игроком). */
+  stopWinPayLoop(): void {
+    this.setLoop('finish_pay.ogg', false)
+  }
+
+  /**
+   * Длительность загруженного в WebAudio декодированного SFX в секундах.
+   * Пока буфера нет (`ensureBuffers` ещё не отработал) — undefined.
+   */
+  getSfxBufferDurationSec(file: string): number | undefined {
+    const buf = this.buffers.get(file)
+    return buf != null && buf.duration > 0 ? buf.duration : undefined
   }
 
   playSfx(file: string): void {
@@ -101,18 +129,17 @@ class GameAudioModule {
   }
 
   playDig(): void {
-    const i = Math.floor(Math.random() * 5)
-    this.playSfx(`sfx_dig_${i}.ogg`)
+    this.setLoop('drill.ogg', true)
   }
 
   playCollect(type: EventType, opts?: { terminal?: boolean; won?: boolean }): void {
     if (opts?.terminal) {
       if (type === 'HOME') {
-        this.playSfx(opts.won ? 'sfx_win.ogg' : 'sfx_lava.ogg')
+        this.playSfx(opts.won ? 'finish_win.ogg' : 'finish_lose.ogg')
         return
       }
       if (type === 'LAVA') {
-        this.playSfx('sfx_lava.ogg')
+        this.playSfx('finish_lose.ogg')
         return
       }
     }
@@ -120,11 +147,120 @@ class GameAudioModule {
     if (f) this.playSfx(f)
   }
 
+  playUiClick(): void {
+    this.playSfx('click_ui.ogg')
+  }
+
+  playUiSlide(): void {
+    this.playSfx('click_ui_slide.ogg')
+  }
+
+  playStartGame(): void {
+    this.playSfx('start_game.ogg')
+  }
+
+  setLoop(file: string, on: boolean): void {
+    const { soundEnabled, sfxVolume, musicVolume } = useGameStore.getState().settings
+    const isMusic = MUSIC_LOOPS.has(file)
+    const volume = isMusic ? musicVolume : sfxVolume
+    if (!soundEnabled || volume <= 0) on = false
+
+    if (GAPLESS_LOOPS.has(file)) {
+      this._setGaplessLoop(file, on, volume)
+      return
+    }
+
+    const existing = this.loopers.get(file)
+    if (on) {
+      if (existing) {
+        existing.volume = volume
+        if (existing.paused) void existing.play().catch(() => {})
+        return
+      }
+      const a = new Audio(url(file))
+      a.loop = true
+      a.preload = 'auto'
+      a.volume = volume
+      this.loopers.set(file, a)
+      void a.play().catch(() => {})
+      return
+    }
+    if (existing) {
+      existing.pause()
+      existing.currentTime = 0
+      this.loopers.delete(file)
+    }
+  }
+
+  private _setGaplessLoop(file: string, on: boolean, volume: number): void {
+    if (on) {
+      const existing = this.looperNodes.get(file)
+      if (existing) {
+        existing.gain.gain.value = volume
+        return
+      }
+      const buf = this.buffers.get(file)
+      const ctx = this.ctx
+      if (!buf || !ctx) {
+        // Buffer not ready yet — HTML5 Audio fallback until ensureBuffers upgrades it
+        const htmlFallback = this.loopers.get(file)
+        if (htmlFallback) {
+          htmlFallback.volume = volume
+          if (htmlFallback.paused) void htmlFallback.play().catch(() => {})
+          return
+        }
+        const a = new Audio(url(file))
+        a.loop = true
+        a.preload = 'auto'
+        a.volume = volume
+        this.loopers.set(file, a)
+        void a.play().catch(() => {})
+        return
+      }
+      // Drop any HTML5 fallback before switching to WebAudio
+      const htmlFallback = this.loopers.get(file)
+      if (htmlFallback) {
+        htmlFallback.pause()
+        this.loopers.delete(file)
+      }
+      void ctx.resume()
+      const g = ctx.createGain()
+      g.gain.value = volume
+      const src = ctx.createBufferSource()
+      src.buffer = buf
+      src.loop = true
+      src.connect(g)
+      g.connect(ctx.destination)
+      src.start()
+      this.looperNodes.set(file, { src, gain: g })
+    } else {
+      const existing = this.looperNodes.get(file)
+      if (existing) {
+        try { existing.src.stop() } catch { /* already stopped */ }
+        existing.src.disconnect()
+        existing.gain.disconnect()
+        this.looperNodes.delete(file)
+      }
+      const htmlFallback = this.loopers.get(file)
+      if (htmlFallback) {
+        htmlFallback.pause()
+        htmlFallback.currentTime = 0
+        this.loopers.delete(file)
+      }
+    }
+  }
+
   private applyMusicFromStore(): void {
-    if (!this.music) return
-    const { soundEnabled, musicVolume } = useGameStore.getState().settings
-    this.music.volume = soundEnabled ? musicVolume : 0
-    if (!soundEnabled || musicVolume <= 0) this.music.pause()
+    const { soundEnabled, sfxVolume, musicVolume } = useGameStore.getState().settings
+    for (const [file, looper] of this.loopers.entries()) {
+      const volume = MUSIC_LOOPS.has(file) ? musicVolume : sfxVolume
+      looper.volume = soundEnabled ? volume : 0
+      if (!soundEnabled) looper.pause()
+    }
+    for (const [file, nodes] of this.looperNodes.entries()) {
+      const volume = MUSIC_LOOPS.has(file) ? musicVolume : sfxVolume
+      nodes.gain.gain.value = soundEnabled ? volume : 0
+    }
   }
 
   private async ensureBuffers(): Promise<void> {
@@ -137,13 +273,15 @@ class GameAudioModule {
     try {
       if (!this.ctx) this.ctx = new AudioContext({ latencyHint: 'interactive' })
       const ctx = this.ctx
-      for (const name of SFX_LIST) {
+      const allFiles = ([...SFX_LIST] as string[]).concat([...GAPLESS_LOOPS])
+      for (const name of allFiles) {
         const res = await fetch(url(name))
         if (!res.ok) continue
         const raw = await res.arrayBuffer()
         const buf = await ctx.decodeAudioData(raw.slice(0))
         this.buffers.set(name, buf)
       }
+      this.upgradeFallbackLoops()
     } catch (e) {
       console.warn('[GameAudio] preload failed', e)
     } finally {
@@ -151,10 +289,40 @@ class GameAudioModule {
     }
   }
 
+  /** После загрузки буферов переводим GAPLESS_LOOPS с HTML5 fallback на WebAudio. */
+  private upgradeFallbackLoops(): void {
+    for (const file of GAPLESS_LOOPS) {
+      const htmlFallback = this.loopers.get(file)
+      if (!htmlFallback || htmlFallback.paused) continue
+      const volume = htmlFallback.volume
+      htmlFallback.pause()
+      this.loopers.delete(file)
+      const buf = this.buffers.get(file)
+      const ctx = this.ctx
+      if (!buf || !ctx) continue
+      void ctx.resume()
+      const g = ctx.createGain()
+      g.gain.value = volume
+      const src = ctx.createBufferSource()
+      src.buffer = buf
+      src.loop = true
+      src.connect(g)
+      g.connect(ctx.destination)
+      src.start()
+      this.looperNodes.set(file, { src, gain: g })
+    }
+  }
+
   private _playBuffer(file: string, vol: number): void {
     const ctx = this.ctx
     const buf = this.buffers.get(file)
-    if (!ctx || !buf) return
+    if (!ctx || !buf) {
+      // Fallback for files that failed WebAudio decode on some devices/codecs.
+      const a = new Audio(url(file))
+      a.volume = Math.max(0, Math.min(1, vol))
+      void a.play().catch(() => {})
+      return
+    }
     void ctx.resume()
     const g = ctx.createGain()
     g.gain.value = Math.max(0, Math.min(1, vol))

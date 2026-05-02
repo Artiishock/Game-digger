@@ -7,6 +7,7 @@ interface Props { width: number; height: number }
 export const GameCanvas: React.FC<Props> = ({ width, height }) => {
   const canvasRef   = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<GameRenderer | null>(null)
+  const startRafRef = useRef<number | null>(null)
 
   const phase  = useGameStore(s => s.phase)
   const events = useGameStore(s => s.events)
@@ -33,6 +34,10 @@ export const GameCanvas: React.FC<Props> = ({ width, height }) => {
 
     return () => {
       cancelAnimationFrame(rafId)
+      if (startRafRef.current !== null) {
+        cancelAnimationFrame(startRafRef.current)
+        startRafRef.current = null
+      }
       if (renderer) {
         renderer.destroy()
         renderer = null
@@ -41,12 +46,34 @@ export const GameCanvas: React.FC<Props> = ({ width, height }) => {
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Start round when events arrive
+  // Start round when events arrive — deferred one rAF so the browser can paint
+  // the BETTING→RUNNING UI transition before startRound() blocks the main thread.
   useEffect(() => {
-    if (phase === 'RUNNING' && events.length > 0 && rendererRef.current) {
-      rendererRef.current.startRound(events, speed)
+    if (phase !== 'RUNNING' || events.length === 0) return
+    const eventsSnap = events
+    const speedSnap  = speed
+    startRafRef.current = requestAnimationFrame(() => {
+      startRafRef.current = null
+      rendererRef.current?.startRound(eventsSnap, speedSnap)
+    })
+    return () => {
+      if (startRafRef.current !== null) {
+        cancelAnimationFrame(startRafRef.current)
+        startRafRef.current = null
+      }
     }
   }, [phase, events]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Skip lava death cinematic on any key press or screen tap
+  useEffect(() => {
+    const skip = () => rendererRef.current?.skipLavaDeath()
+    window.addEventListener('keydown', skip)
+    window.addEventListener('pointerdown', skip)
+    return () => {
+      window.removeEventListener('keydown', skip)
+      window.removeEventListener('pointerdown', skip)
+    }
+  }, [])
 
   // Resize
   useEffect(() => {

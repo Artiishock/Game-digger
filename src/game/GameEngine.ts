@@ -148,10 +148,14 @@ class GameEngine {
 
     try {
       let newBalance: number
+      /** В demo выплата считается из base_coeff математики; экран WIN тоже показывает этот множитель. */
+      let displayMult = multiplier
 
       if (RGS.isDemo()) {
+        const coeffSnap = Demo.peekPendingBaseCoeff()
         const res = await Demo.demoEndRound(bet, won ? multiplier : 0)
         newBalance = res.balance.amount
+        if (won && coeffSnap > 0) displayMult = coeffSnap
       } else {
         // Stake Engine: всегда закрываем раунд через /end-round, иначе
         // следующий /play получит "player has active bet". Если бэкенд
@@ -172,8 +176,9 @@ class GameEngine {
       store.setBalance(newBalance)
 
       if (won) {
-        const winDisplay = RGS.toDisplay(Math.round(bet * multiplier * RGS.MONEY_SCALE))
+        const winDisplay = RGS.toDisplay(Math.round(bet * displayMult * RGS.MONEY_SCALE))
         store.setLastWin(winDisplay)
+        store.setLastWinMult(displayMult)
         store.setPhase('WIN')
       } else {
         store.setLastWin(0)
@@ -182,14 +187,15 @@ class GameEngine {
 
       // ── Autoplay continuation ──────────────────────────────────────────────
       const ap = store.autoplay
-      if (ap.active && ap.remainingRounds > 0 && !this._abortAutoplay) {
+      if (ap.active && !this._abortAutoplay) {
         const winDisplay = won ? bet * multiplier : 0
-        if (!this._shouldStopAutoplay(ap, winDisplay, newBalance)) {
+        const shouldStop = this._shouldStopAutoplay(ap, winDisplay, newBalance)
+        const isLastRound = ap.remainingRounds <= 1
+        if (shouldStop || isLastRound) {
+          store.setAutoplay({ active: false, remainingRounds: 0 })
+        } else {
           store.decrementAutoplay()
           setTimeout(() => this.startRound(), GameConfig.round.autoplayDelayMs)
-        } else {
-          store.setAutoplay({ active: false })
-          store.setPhase('IDLE')
         }
       }
 

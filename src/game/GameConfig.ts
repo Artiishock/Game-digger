@@ -107,11 +107,11 @@ export const GameConfig = {
     /** Шаг пути WorldMap / интерполяция персонажа (должен совпадать с STEP_Y в WorldMap) */
     intervalTiles: 0.72,
     /** Плотнее ряды декора (только placeObstacles) */
-    decorIntervalTiles: 0.32,
+    decorIntervalTiles: 0.24,
     spawnChance:     1, // вероятность что в точке спавна появится предмет (0–1)
-    doubleChance:    0.62,  // второй декор в том же «кластере» — реже, меньше кучкования
+    doubleChance:    0.78,  // повышено: чаще второй декор в кластере
     /** Доп. попытка декора между основными рядами (0–1) */
-    decorExtraChance: 0.42,
+    decorExtraChance: 0.6,
 
     /**
      * Декор вдоль оси туннеля между соседними road-предметами (и от поверхности до первого).
@@ -122,7 +122,7 @@ export const GameConfig = {
       minSpanTiles:   1.08,
       stepTilesMin:   0.36,
       stepTilesMax:   0.78,
-      spawnChance:    0.58,
+      spawnChance:    0.72,
     },
 
     // Вероятности типов предметов (зависят от глубины)
@@ -197,7 +197,9 @@ export const GameConfig = {
      */
     worldLavaSpawnMask: 3,
     /** Скорость вылета вверх с анимацией die (px/с, игровое время). */
-    deathAscentSpeedPx: 100,
+    deathAscentSpeedPx: 500,
+    /** Запас, если декодированный `finish_lose.ogg` ещё недоступен — расчёт скорости вылета призрака. */
+    finishLoseSfxDurationFallbackSec: 2.0,
     /** Макс. длительность подъёма (с) — дальше принудительно переключение на героя наверху. */
     deathAscentMaxSec: 14,
     /**
@@ -219,9 +221,16 @@ export const GameConfig = {
   round: {
     winDelayMs:       800,   // задержка после HOME перед переходом в результат, мс
     loseDelayMs:      1000,  // задержка после LAVA перед переходом в результат, мс
+    /** После проигрыша в лаве: плавное «выплывание» камеры к idle (сек), затем сборка idle-сцены. 0 — сразу _returnToIdle. */
+    loseIdleGlideSec: 1,
     autoplayDelayMs:  1200,  // задержка между раундами в автоплее, мс
     /** Множитель «экран / глубина» для ppm — больше → дальше друг от друга символы по Y */
     depthSpreadScreenFactor: 2.6,
+    /** Порог множителя для оверлея WIN в `public/animations/{megawin|epicwin|bigwin}/` (Spine). */
+    megaWinMinMultiplier: 50,
+    epicWinMinMultiplier: 10,
+    /** Строго больше этого — уровень bigwin, пока множитель ниже epic. */
+    bigWinExclusiveAboveMultiplier: 3,
   },
 
   // ─── Герой: калибровка (px; углы — радианы) ────────────────────────────────

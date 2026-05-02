@@ -1,82 +1,122 @@
-import React, { useState } from 'react'
-import { useGameStore } from '../../store/gameStore'
-import { gameEngine } from '../../game/GameEngine'
-import { gameAudio } from '../../audio/GameAudio'
-import '../ui.css'
+import React, { useEffect, useRef, useState } from "react";
+import { useGameStore } from "../../store/gameStore";
+import { gameEngine } from "../../game/GameEngine";
+import { gameAudio } from "../../audio/GameAudio";
+import "../ui.css";
+
+const svgCache = new Map<string, string>();
+
+const loadSvg = async (url: string): Promise<string> => {
+  const cached = svgCache.get(url);
+  if (cached) return cached;
+  const res = await fetch(url);
+  const text = await res.text();
+  svgCache.set(url, text);
+  return text;
+};
 
 export const DigButton: React.FC = () => {
-  const phase      = useGameStore(s => s.phase)
-  const autoplay   = useGameStore(s => s.autoplay)
-  const setAP      = useGameStore(s => s.setAutoplayOpen)
-  const isAPOpen   = useGameStore(s => s.autoplayOpen)
+  const phase = useGameStore((s) => s.phase);
+  const autoplay = useGameStore((s) => s.autoplay);
+  const setAP = useGameStore((s) => s.setAutoplayOpen);
+  const isAPOpen = useGameStore((s) => s.autoplayOpen);
 
-  const [collapsed, setCollapsed] = useState(false)
+  const canDig = phase === "IDLE" || phase === "WIN" || phase === "LOSE";
+  const isRunning = phase === "RUNNING" || phase === "BETTING";
+  const isAutoActive = autoplay.active;
 
-  const canDig       = phase === 'IDLE' || phase === 'WIN' || phase === 'LOSE'
-  const isRunning    = phase === 'RUNNING' || phase === 'BETTING'
-  const isAutoActive = autoplay.active
+  const spinPushed = isRunning || isAutoActive;
+  const autoPushed = isAutoActive;
+
+  const iconRef = useRef<HTMLSpanElement>(null);
+  const [iconMarkup, setIconMarkup] = useState<string>("");
+  const iconUrl = spinPushed ? "/ui/spin_icon_push.svg" : "/ui/spin_icon.svg";
+
+  const autoIconRef = useRef<HTMLSpanElement>(null);
+  const [autoIconMarkup, setAutoIconMarkup] = useState<string>("");
+  const autoIconUrl = autoPushed
+    ? "/ui/autoplay_icon_push.svg"
+    : "/ui/autoplay_icon.svg";
+
+  useEffect(() => {
+    let cancelled = false;
+    loadSvg(iconUrl).then((markup) => {
+      if (!cancelled) setIconMarkup(markup);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [iconUrl]);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadSvg(autoIconUrl).then((markup) => {
+      if (!cancelled) setAutoIconMarkup(markup);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [autoIconUrl]);
+
+  useEffect(() => {
+    if (!iconMarkup || !iconRef.current) return;
+    if (!spinPushed) return;
+    const clickArea = iconRef.current.querySelector("#clickArea");
+    if (!clickArea) return;
+    clickArea.dispatchEvent(
+      new MouseEvent("click", { bubbles: false, cancelable: true })
+    );
+  }, [iconMarkup, spinPushed]);
+
+  useEffect(() => {
+    console.log(isAutoActive);
+  }, [isAutoActive]);
 
   const handleSpinClick = () => {
-    gameAudio.unlock()
-    if (isAutoActive)   gameEngine.stopAutoplay()
-    else if (canDig)    gameEngine.startRound()
-  }
+    gameAudio.unlock();
 
-  // Клик по стрелке — показать/скрыть кнопку
-  const handleArrowClick = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    setCollapsed(v => !v)
-  }
+    if (isAutoActive) gameEngine.stopAutoplay();
+    else if (canDig) gameEngine.startRound();
+  };
 
-  // Клик по badge — открыть/закрыть autoplay modal
-  const handleBadgeClick = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    setAP(!isAPOpen)
-  }
+  const handleAutospinClick = () => {
+    setAP(!isAPOpen);
+  };
 
-  const iconColor = isAutoActive
-    ? '#ffaa88'
-    : isRunning && !isAutoActive
-    ? 'rgba(255,255,255,0.25)'
-    : '#FFB830'
-
-  const btnClass = [
-    'ui-spin-btn',
-    isAutoActive               ? 'ui-spin-btn--auto'      : '',
-    isRunning && !isAutoActive ? 'ui-spin-btn--running'   : '',
-    collapsed                  ? 'ui-spin-btn--collapsed' : '',
-  ].filter(Boolean).join(' ')
 
   return (
-    <button
-      className={btnClass}
-      onClick={handleSpinClick}
-      disabled={isRunning && !isAutoActive}
-    >
-      {/* Стрелка — toggles collapsed, всегда слева */}
-      <div
-        className="ui-spin-arrow"
-        onClick={handleArrowClick}
-      />
-
-      <svg className="ui-spin-icon" width="52" height="52" viewBox="0 0 52 52" fill="none">
-        <path
-          d="M44 26C44 35.941 35.941 44 26 44C16.059 44 8 35.941 8 26C8 16.059 16.059 8 26 8C32 8 37.3 10.9 40.7 15.4"
-          stroke={iconColor} strokeWidth="4" strokeLinecap="round"
-        />
-        <path d="M38 8L42 16L34 16Z" fill={iconColor} />
-      </svg>
-
-      {/* Badge — открывает autoplay modal */}
-      <div
-        className={`ui-spin-badge ${isAutoActive ? 'ui-spin-badge--active' : ''}`}
-        onClick={handleBadgeClick}
+    <div className="ui-spin-control">
+      <button
+        className={`ui-autospin-btn${autoPushed ? " ui-autospin-btn--active" : ""}`}
+        onClick={handleAutospinClick}
+        type="button"
       >
-        {isAutoActive
-          ? `STOP ${autoplay.remainingRounds}`
-          : 'AUTOPLAY'
-        }
-      </div>
-    </button>
-  )
-}
+        <span
+          ref={autoIconRef}
+          className="ui-autospin-btn-icon"
+          aria-hidden="true"
+          dangerouslySetInnerHTML={{ __html: autoIconMarkup }}
+        />
+      </button>
+
+      <button
+        className={`ui-spin-btn${spinPushed ? " ui-spin-btn--active" : ""}`}
+        onClick={handleSpinClick}
+        disabled={isRunning && !isAutoActive}
+        type="button"
+      >
+        <span
+          ref={iconRef}
+          className="ui-spin-btn-icon"
+          aria-hidden="true"
+          dangerouslySetInnerHTML={{ __html: iconMarkup }}
+        />
+        {isAutoActive && (
+          <span className="ui-spin-btn-counter">
+            {autoplay.remainingRounds}
+          </span>
+        )}
+      </button>
+    </div>
+  );
+};

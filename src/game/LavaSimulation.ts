@@ -1,32 +1,7 @@
 import * as PIXI from 'pixi.js'
 import { GameAssets } from './gameAssets'
-import { GameConfig } from './GameConfig'
 
 export const CELL_PX = 40
-
-/** Овал в мире: rx поперёк (ux,uy), ry вдоль. */
-function ellipsePolyRotWorld(
-  cx: number,
-  cy: number,
-  rx: number,
-  ry: number,
-  ux: number,
-  uy: number,
-  steps: number,
-): number[] {
-  const len = Math.hypot(ux, uy)
-  const tx = len > 1e-6 ? ux / len : 0
-  const ty = len > 1e-6 ? uy / len : 1
-  const px = -ty
-  const py = tx
-  const out: number[] = []
-  for (let i = 0; i <= steps; i++) {
-    const a = (i / steps) * Math.PI * 2
-    const ca = Math.cos(a), sa = Math.sin(a)
-    out.push(cx + rx * ca * px + ry * sa * tx, cy + rx * ca * py + ry * sa * ty)
-  }
-  return out
-}
 
 const SIM_CELL     = CELL_PX / 2   // 20px
 const MAX_AMOUNT   = 1.0
@@ -99,9 +74,7 @@ export class LavaSimulation {
     this._threshFilter       = new PIXI.Filter(undefined, METABALL_FRAG, { uTime: 0.0 })
     this._inner.filters      = [this._blurFilter, this._threshFilter]
 
-    // _caveMaskGfx больше не нужен как маска — threshold шейдер сам обрезает
-    // Лава ограничена через cells которые регистрируются только внутри пещер
-    this._caveMaskGfx = new PIXI.Graphics()  // оставляем для совместимости методов
+    this._caveMaskGfx = new PIXI.Graphics()
     this.container.addChild(this._inner)
 
     // Вариант A: TilingSprite поверх metaballs через MULTIPLY + маска из blobGfx
@@ -110,6 +83,10 @@ export class LavaSimulation {
     this._texLayer.addChild(this._texMaskGfx)
     this._texLayer.mask = this._texMaskGfx
     this.container.addChild(this._texLayer)
+
+    // Маска пещеры — лава не выходит за границы зарегистрированных форм
+    this.container.addChild(this._caveMaskGfx)
+    this.container.mask = this._caveMaskGfx
 
     const proceduralTex = this._makeProceduralLavaTex()
     // Размер покрывает экран с запасом — позиция обновляется каждый кадр
@@ -256,7 +233,7 @@ export class LavaSimulation {
   }
 
   // Открывает ячейки туннеля только если туннель пересекает ячейку с лавой (amount > 0)
-  openAreaIfNearLava(wx: number, wy: number, rx: number, ry: number, ux: number, uy: number) {
+  openAreaIfNearLava(wx: number, wy: number, rx: number, ry: number, _ux: number, _uy: number) {
     const rm = Math.max(rx, ry) + 4
     const cr = Math.ceil(rm / SIM_CELL) + 1
     const cx = Math.floor(wx / SIM_CELL)
@@ -272,11 +249,9 @@ export class LavaSimulation {
     }
     if (!hasLavaNear) return
 
-    // Регистрируем ячейки (по описанной окружности овала)
+    // Регистрируем ячейки для физики течения (лава статичная, но коллизия нужна).
+    // Маску пещеры НЕ расширяем — статичная лава не вытекает за пределы rect-зоны.
     this._registerCircleCells(wx, wy, rm, undefined)
-    const steps = GameConfig.tunnelScratch.ellipsePolySteps ?? 36
-    const poly = ellipsePolyRotWorld(wx, wy, rx, ry, ux, uy, steps)
-    this._caveMaskGfx.beginFill(0xffffff).drawPolygon(poly).endFill()
   }
 
   addLavaSource(
@@ -689,6 +664,23 @@ export class LavaSimulation {
       if (loose && cell && cell.amount >= MIN_FLOW) continue
       this.cells.delete(key)
     }
+  }
+
+  /**
+   * Сбрасывает состояние симуляции для повторного использования между раундами.
+   * Фильтры, контейнеры и шейдеры не пересоздаются — только чистим данные.
+   */
+  reset() {
+    if (this._destroyed) return
+    this.cells.clear()
+    this.dirty.clear()
+    this.blobGfx.clear()
+    this.glowGfx.clear()
+    this._caveMaskGfx.clear()
+    this._texMaskGfx.clear()
+    this.time = 0
+    this._texOffX = 0
+    this._texOffY = 0
   }
 
   destroy() {
