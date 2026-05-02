@@ -1476,16 +1476,16 @@ export class GameRenderer {
 
   private _initLavaSimulation() {
     if (this.lavaSimulation) {
-      this.lavaSimulation.destroy()
-      const old = this.lavaSimulation as any
-      if (old.container?.parent) old.container.parent.removeChild(old.container)
-      if (old.glowGfx?.parent)   old.glowGfx.parent.removeChild(old.glowGfx)
+      // Reuse existing instance — avoid destroying/recreating GL shaders on every round.
+      this.lavaSimulation.reset()
+      this.lavaSimulation.setViewport(this.W, this.H)
+    } else {
+      this.lavaSimulation = new LavaSimulation()
+      this.lavaSimulation.setViewport(this.W, this.H)
+      const lava = this.lavaSimulation as any
+      this.worldChunkLayer.addChild(lava.glowGfx)
+      this.worldChunkLayer.addChild(lava.container)
     }
-    this.lavaSimulation = new LavaSimulation()
-    this.lavaSimulation.setViewport(this.W, this.H)
-    const lava = this.lavaSimulation as any
-    this.worldChunkLayer.addChild(lava.glowGfx)
-    this.worldChunkLayer.addChild(lava.container)
     if (this.tileWorld) {
       this.tileWorld.lavaSimulation = this.lavaSimulation
     }
@@ -1816,7 +1816,6 @@ export class GameRenderer {
         if (pe) {
           this._caveZones.push({ x: pe.x, y: pe.y + TILE * 0.5, r: TILE * 3.6 })
         }
-        this.tileWorld.update(tc.x - this.W * 0.5, tc.y - this.H * 0.55, this.W, this.H)
         if (!ok) {
           console.warn('[GameRenderer] terminal lava cave spawn returned false, using fallback zone only')
         } else {
@@ -2304,7 +2303,7 @@ export class GameRenderer {
       if (this.tileWorld) this.tileWorld.update(this.camX, this.camY, this.W, this.H)
       // Декор/предметы должны быть видны уже во время start-интро.
       // Коллизии остаются выключены, т.к. running=false.F
-      if (this.spawner) this.spawner.update(this.charX, this.charY, this.H * 5)
+      if (this.spawner) this.spawner.update(this.charY, this.camX, this.camY, this.W, this.H)
       this.miner.update(gameDt, 1, true)
       this._pUpdate(gameDt, dt)
       this.miner.syncStartCarveLatchAfterSpineTick()

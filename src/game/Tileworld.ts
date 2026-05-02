@@ -94,9 +94,6 @@ const TUNNEL_BG_FALLBACK = mulRgb(COL[T.DIRT]![0], 0.58)
 const TUNNEL_BG_X = -500000
 const TUNNEL_BG_W = 1_000_000
 const TUNNEL_BG_H = 1_000_000
-/** Тёмный фон чанка вокруг выкопа (`darkBg`, маска). */
-const CHUNK_DARK_BG_COLOR = 0x5d3011
-
 /** Полупрозрачный тон поверх текстуры дна туннеля — цвет и альфа задаются отдельно. */
 const TUNNEL_FLOOR_TINT_COLOR = 0x000000
 const TUNNEL_FLOOR_TINT_ALPHA = 0.42
@@ -169,6 +166,7 @@ function buildOverrides(
   pathWaypoints: number[]  = [],
   pathSurfY:     number    = TILE,
   pathProtectY:  number    = Infinity,
+  skipAir = false,
 ): TileOverride {
   const out: TileOverride = new Map()
   const set = (tc: number, tr: number, type: T) => {
@@ -242,9 +240,11 @@ function buildOverrides(
     }
   }
 
-  for (let tc = tc0; tc <= tc1; tc++)
-    for (let tr = Math.max(tr0, 5); tr <= tr1; tr++)
-      if (caveNoise(tc, tr, worldSeed) > 0.62) set(tc, tr, T.AIR)
+  if (!skipAir) {
+    for (let tc = tc0; tc <= tc1; tc++)
+      for (let tr = Math.max(tr0, 5); tr <= tr1; tr++)
+        if (caveNoise(tc, tr, worldSeed) > 0.62) set(tc, tr, T.AIR)
+  }
 
   for (let tc = tc0; tc <= tc1; tc++) {
     for (let tr = Math.max(tr0, 10); tr <= tr1; tr++) {
@@ -434,11 +434,14 @@ export class TileWorld {
   /** Переиспользование в scratchAt вместо new Graphics() каждый кадр */
   private _scratchDb = new PIXI.Graphics()
   private _scratchWb = new PIXI.Graphics()
-  private _scratchDl = new PIXI.Graphics()
   private _scratchGb = new PIXI.Graphics()
   private _scratchGl = new PIXI.Graphics()
   private lastPt: {x:number,y:number}|null = null
   renderer: PIXI.Renderer|null = null
+
+  /** Буферные чанки, ожидающие сборки (не попадают в viewport). Строятся по 3 в кадр. */
+  private _buildQueue: Array<{col: number; row: number}> = []
+  private _buildQueueKeys = new Set<string>()
 
   private _pendingCaves: CavePath[] = []
   private _lastCavePath: CavePath | null = null
@@ -468,7 +471,7 @@ export class TileWorld {
   /** Земля / заливка под выкопом; оверлей затемнения — поверх этого контейнера. */
   private _tunnelBgContent = new PIXI.Container()
   private _tunnelBgDim = new PIXI.Graphics()
-  private _tunnelBgTiles = new Map<string, PIXI.Sprite>()
+  private _tunnelBgPanels = new Map<string, { spr: PIXI.Sprite; rt: PIXI.RenderTexture }>()
   private _tunnelBgGroundTiling: PIXI.TilingSprite | null = null
   private _tunnelBgColorFill: PIXI.Graphics | null = null
 
@@ -566,11 +569,12 @@ export class TileWorld {
    * Вызвать после `TileWorld.loadGrassTex()`, если мир создали до резолва Promise.
    */
   rebuildTunnelBgFromTextures(): void {
-    for (const spr of this._tunnelBgTiles.values()) {
-      this._tunnelBgContent.removeChild(spr)
-      spr.destroy({ texture: false })
+    for (const p of this._tunnelBgPanels.values()) {
+      this._tunnelBgContent.removeChild(p.spr)
+      p.spr.destroy({ texture: false })
+      p.rt.destroy(true)
     }
-    this._tunnelBgTiles.clear()
+    this._tunnelBgPanels.clear()
     if (this._tunnelBgGroundTiling) {
       this._tunnelBgContent.removeChild(this._tunnelBgGroundTiling)
       this._tunnelBgGroundTiling.destroy()
@@ -607,48 +611,64 @@ export class TileWorld {
 
   private _syncTunnelBgEarthTiles(camX: number, camY: number, screenW: number, screenH: number): void {
     if (this._tunnelBgMode !== 'earthTiles') return
-    // Perf: smaller prefetch margin is enough for fast scroll without popping.
+    if (!this.renderer) return
     const margin = TILE * 3
     const wx0 = camX - margin
     const wx1 = camX + screenW + margin
     const wy0 = Math.max(0, camY - margin)
     const wy1 = camY + screenH + margin
-    const gc0 = Math.floor(wx0 / TILE)
-    const gc1 = Math.floor(wx1 / TILE)
-    const gr0 = Math.floor(wy0 / TILE)
-    const gr1 = Math.floor(wy1 / TILE)
+
+    // Perf: bake chunk-sized panels (CPW×CPH) instead of individual tile sprites.
+    // ~140 Sprites → ~6 baked Sprites per viewport.
+    const pc0 = Math.floor(wx0 / CPW)
+    const pc1 = Math.floor(wx1 / CPW)
+    const pr0 = Math.floor(wy0 / CPH)
+    const pr1 = Math.floor(wy1 / CPH)
 
     const needed = new Set<string>()
-    for (let gr = gr0; gr <= gr1; gr++) {
-      if (gr < 0) continue
-      for (let gc = gc0; gc <= gc1; gc++) {
-        needed.add(`${gc}_${gr}`)
-      }
+    for (let pr = pr0; pr <= pr1; pr++) {
+      if (pr < 0) continue
+      for (let pc = pc0; pc <= pc1; pc++) needed.add(`${pc}_${pr}`)
     }
 
-    for (const k of [...this._tunnelBgTiles.keys()]) {
+    for (const k of [...this._tunnelBgPanels.keys()]) {
       if (!needed.has(k)) {
-        const spr = this._tunnelBgTiles.get(k)!
-        this._tunnelBgContent.removeChild(spr)
-        spr.destroy({ texture: false })
-        this._tunnelBgTiles.delete(k)
+        const p = this._tunnelBgPanels.get(k)!
+        this._tunnelBgContent.removeChild(p.spr)
+        p.spr.destroy({ texture: false })
+        p.rt.destroy(true)
+        this._tunnelBgPanels.delete(k)
       }
     }
 
     for (const k of needed) {
-      if (this._tunnelBgTiles.has(k)) continue
-      const [gc, gr] = k.split('_').map(Number) as [number, number]
-      const vi = this._pickEarthVariant(gc, gr)
-      const tex = TileWorld.earthTex[vi]
-      if (!tex) continue
-      const spr = new PIXI.Sprite(tex)
-      spr.width = TILE
-      spr.height = TILE
-      spr.x = gc * TILE
-      spr.y = gr * TILE
+      if (this._tunnelBgPanels.has(k)) continue
+      const [pcStr, prStr] = k.split('_')
+      const pc = Number(pcStr), pr = Number(prStr)
+
+      const tmpLayer = new PIXI.Container()
+      for (let ly = 0; ly < CHUNK_H; ly++) {
+        for (let lx = 0; lx < CHUNK_W; lx++) {
+          const gCol = pc * CHUNK_W + lx
+          const gRow = pr * CHUNK_H + ly
+          const vi = this._pickEarthVariant(gCol, gRow)
+          const tex = TileWorld.earthTex[vi]
+          if (!tex) continue
+          const cell = new PIXI.Sprite(tex)
+          cell.width = TILE; cell.height = TILE
+          cell.x = lx * TILE; cell.y = ly * TILE
+          tmpLayer.addChild(cell)
+        }
+      }
+      const rt = PIXI.RenderTexture.create({ width: CPW, height: CPH })
+      this.renderer.render(tmpLayer, { renderTexture: rt, clear: true })
+      tmpLayer.destroy({ children: true, texture: false, baseTexture: false })
+
+      const spr = new PIXI.Sprite(rt)
+      spr.x = pc * CPW; spr.y = pr * CPH
       spr.roundPixels = true
       this._tunnelBgContent.addChild(spr)
-      this._tunnelBgTiles.set(k, spr)
+      this._tunnelBgPanels.set(k, { spr, rt })
     }
   }
 
@@ -664,14 +684,10 @@ export class TileWorld {
     uy: number,
     lineFrom: { x: number; y: number } | null,
     carveGrass: boolean,
-    fullPass: boolean,
   ) {
     if (!this.renderer) return
     const ts = GameConfig.tunnelScratch
     const steps = ts.ellipsePolySteps ?? 36
-    const inset = ts.darkInsetPx
-    const rxBg = Math.max(2, rx - inset)
-    const ryBg = Math.max(2, ry - inset)
     // Толщина «нитки» между субточками ≈ ширина поперёк копания, не max(rx,ry) — иначе туннель раздувается.
     const lineW = 2 * rx + 2
 
@@ -689,15 +705,6 @@ export class TileWorld {
         this.brush.clear()
         this.brush.beginFill(0x000000).drawPolygon(poly).endFill()
         this.renderer.render(this.brush, { renderTexture: (chunk as any).maskRT, clear: false })
-
-        // Perf: darkMask/lava masks are much more expensive and visually tolerant to
-        // being updated a bit less often. We update them only on the final stamp of a segment.
-        if (fullPass && (chunk as any).darkMaskRT) {
-          const polyBg = tunnelEllipsePolyRotatedLocal(lx, ly, rxBg, ryBg, ux, uy, steps)
-          this._scratchDb.clear()
-          this._scratchDb.beginFill(0x000000).drawPolygon(polyBg).endFill()
-          this.renderer.render(this._scratchDb, { renderTexture: (chunk as any).darkMaskRT, clear: false })
-        }
 
         // Per-chunk lava mask is disabled (lava is rendered via LavaSimulation).
         const grassMaskRT = (chunk as any).grassMaskRT as PIXI.RenderTexture | undefined
@@ -723,13 +730,6 @@ export class TileWorld {
           this.line.moveTo(plx, ply).lineTo(lx, ly)
           this.renderer.render(this.line, { renderTexture: (chunk as any).maskRT, clear: false })
 
-          if (fullPass && (chunk as any).darkMaskRT) {
-            const lineBg = Math.max(2, lineW - inset * 2)
-            this._scratchDl.clear()
-            this._scratchDl.lineStyle(lineBg, 0x000000)
-            this._scratchDl.moveTo(plx, ply).lineTo(lx, ly)
-            this.renderer.render(this._scratchDl, { renderTexture: (chunk as any).darkMaskRT, clear: false })
-          }
           if (grassMaskRT && carveGrass) {
             this._scratchGl.clear()
             this._scratchGl.lineStyle(lineW, 0x000000)
@@ -808,7 +808,6 @@ export class TileWorld {
 
     const nSteps = segLen < 0.5 ? 1 : Math.max(2, Math.ceil(segLen / spacing))
 
-    const hadLastPt = this.lastPt != null
     let prev: { x: number; y: number } | null = null
     for (let i = 0; i <= nSteps; i++) {
       const t = i / nSteps
@@ -817,8 +816,7 @@ export class TileWorld {
       // Траву режем тем же полигоном что и землю (+ «нитка» между шагами), по всей длине сегмента.
       // Иначе остаётся «крышка» травы над первым шагом туннеля.
       const carveGrass = true
-      const fullPass = i === nSteps || !hadLastPt
-      this._scratchWorldTunnelStamp(wx, wy, rx, ry, stampUx, stampUy, prev, carveGrass, fullPass)
+      this._scratchWorldTunnelStamp(wx, wy, rx, ry, stampUx, stampUy, prev, carveGrass)
       prev = { x: wx, y: wy }
     }
 
@@ -843,32 +841,26 @@ export class TileWorld {
     this._decorLavaCaveCount = 0
     this.overrides.clear()
     this.invalidateOverrides()
+    this._buildQueue.length = 0
+    this._buildQueueKeys.clear()
 
     // Сбрасываем маски чанков в "цельный грунт" (white) и очищаем лаву (black).
     if (!this.renderer) return
     for (const chunk of this.chunks.values()) {
       const maskRT = (chunk as any).maskRT as PIXI.RenderTexture | undefined
-      const darkMaskRT = (chunk as any).darkMaskRT as PIXI.RenderTexture | undefined
       const lavaRT = (chunk as any).lavaRT as PIXI.RenderTexture | undefined
       const grassMaskRT = (chunk as any).grassMaskRT as PIXI.RenderTexture | undefined
-      if (!maskRT || !darkMaskRT) continue
-      const w = maskRT.width
-      const h = maskRT.height
-      const wh = new PIXI.Graphics().beginFill(0xffffff).drawRect(0, 0, w, h).endFill()
-      const bl = new PIXI.Graphics().beginFill(0x000000).drawRect(0, 0, w, h).endFill()
-      this.renderer.render(wh, { renderTexture: maskRT, clear: true })
-      this.renderer.render(wh, { renderTexture: darkMaskRT, clear: true })
+      if (!maskRT) continue
+      this._scratchDb.clear().beginFill(0xffffff).drawRect(0, 0, maskRT.width, maskRT.height).endFill()
+      this.renderer.render(this._scratchDb, { renderTexture: maskRT, clear: true })
       if (grassMaskRT) {
-        const whGrass = new PIXI.Graphics()
-          .beginFill(0xffffff)
-          .drawRect(0, 0, grassMaskRT.width, grassMaskRT.height)
-          .endFill()
-        this.renderer.render(whGrass, { renderTexture: grassMaskRT, clear: true })
-        whGrass.destroy()
+        this._scratchDb.clear().beginFill(0xffffff).drawRect(0, 0, grassMaskRT.width, grassMaskRT.height).endFill()
+        this.renderer.render(this._scratchDb, { renderTexture: grassMaskRT, clear: true })
       }
-      if (lavaRT) this.renderer.render(bl, { renderTexture: lavaRT, clear: true })
-      wh.destroy()
-      bl.destroy()
+      if (lavaRT) {
+        this._scratchDb.clear().beginFill(0x000000).drawRect(0, 0, lavaRT.width, lavaRT.height).endFill()
+        this.renderer.render(this._scratchDb, { renderTexture: lavaRT, clear: true })
+      }
     }
   }
 
@@ -916,7 +908,6 @@ export class TileWorld {
           col,
           row,
           (chunk as any).maskRT,
-          (chunk as any).darkMaskRT,
           (chunk as any).lavaRT,
           lavaContainer ?? null,
           offX,
@@ -981,33 +972,67 @@ export class TileWorld {
 
     if (needRebuild) {
       const oc0=colMin-6, oc1=colMax+6, or0=rowMin, or1=rowMax+8
-      const newOv=buildOverrides(oc0,or0,oc1,or1,this.seed,this.totalRows,this._pathWaypoints,this._pathSurfY,this._pathProtectY)
+      const skipAir = this.overridesBuilt &&
+        oc0===this._ovColMin && oc1===this._ovColMax &&
+        or0===this._ovRowMin && or1===this._ovRowMax
+      const newOv=buildOverrides(oc0,or0,oc1,or1,this.seed,this.totalRows,this._pathWaypoints,this._pathSurfY,this._pathProtectY,skipAir)
       for(const[k,v]of newOv)this.overrides.set(k,v)
       this._ovColMin=oc0;this._ovColMax=oc1;this._ovRowMin=or0;this._ovRowMax=or1
       this.overridesBuilt=true
     }
 
-    for(let row=rowMin;row<=rowMax;row++)
-      for(let col=colMin;col<=colMax;col++){
-        const key=`${col}_${row}`
-        if(!this.chunks.has(key)) this._buildChunk(col,row)
+    // Visible viewport (no buffer) — build immediately to avoid blank tiles on screen.
+    const vc0 = Math.floor(camX / CPW)
+    const vc1 = Math.ceil((camX + screenW) / CPW)
+    const vr0 = Math.max(0, Math.floor(camY / CPH))
+    const vr1 = Math.ceil((camY + screenH) / CPH)
+
+    for (let row = rowMin; row <= rowMax; row++) {
+      for (let col = colMin; col <= colMax; col++) {
+        const key = `${col}_${row}`
+        if (this.chunks.has(key) || this._buildQueueKeys.has(key)) continue
+        const inViewport = col >= vc0 && col <= vc1 && row >= vr0 && row <= vr1
+        if (inViewport) {
+          this._buildChunk(col, row)
+        } else {
+          this._buildQueue.push({ col, row })
+          this._buildQueueKeys.add(key)
+        }
       }
+    }
+
+    // Drain build queue — 3 buffer chunks per frame to spread GPU cost.
+    const drainN = Math.min(3, this._buildQueue.length)
+    for (let i = 0; i < drainN; i++) {
+      const item = this._buildQueue.shift()!
+      const k = `${item.col}_${item.row}`
+      this._buildQueueKeys.delete(k)
+      if (!this.chunks.has(k)) this._buildChunk(item.col, item.row)
+    }
 
     this._extendBg(colMin, colMax, rowMin, rowMax)
 
     const cull = 4
-    for(const[key,chunk]of this.chunks){
-      if(chunk.col<colMin-cull||chunk.col>colMax+cull||
-         chunk.row<rowMin-cull||chunk.row>rowMax+cull){
+    for (const [key, chunk] of this.chunks) {
+      if (chunk.col < colMin-cull || chunk.col > colMax+cull ||
+          chunk.row < rowMin-cull || chunk.row > rowMax+cull) {
         this._forgetEarthVariantsForChunk(chunk.col, chunk.row)
         this.chunkContainer.removeChild(chunk.gfx)
         chunk.gfx.destroy({children:true})
         ;(chunk as any).maskRT?.destroy(true)
-        ;(chunk as any).darkMaskRT?.destroy(true)
         ;(chunk as any).lavaRT?.destroy(true)
         ;(chunk as any).grassMaskRT?.destroy(true)
         ;(chunk as any).earthRT?.destroy(true)
         this.chunks.delete(key)
+      }
+    }
+
+    // Purge queue entries that fell outside cull bounds.
+    for (let i = this._buildQueue.length - 1; i >= 0; i--) {
+      const { col, row } = this._buildQueue[i]!
+      if (col < colMin-cull || col > colMax+cull || row < rowMin-cull || row > rowMax+cull) {
+        this._buildQueueKeys.delete(`${col}_${row}`)
+        this._buildQueue.splice(i, 1)
       }
     }
 
@@ -1098,15 +1123,9 @@ export class TileWorld {
     maskSpr.name = 'maskSpr'
     maskSpr.renderable = false
 
-    const darkMaskRT  = PIXI.RenderTexture.create({width:CPW, height:CPH})
-    const darkMaskSpr = new PIXI.Sprite(darkMaskRT)
-    darkMaskSpr.name = 'darkMaskSpr'
-    darkMaskSpr.renderable = false
-
-    // Lava is rendered via LavaSimulation (separate container in GameRenderer).
-    // Keeping per-chunk lava container+mask is expensive (mask stack), so we skip it.
+    // Perf: darkBg/darkMaskRT removed — darkInsetPx=5 (5px border, barely visible),
+    // but each sprite-mask costs a GPU push/pop per chunk per frame. -1 mask = -50% mask ops.
     const lavaRT: PIXI.RenderTexture | null = null
-    const lavaMaskSpr: PIXI.Sprite | null = null
     let grassMaskRT: PIXI.RenderTexture | null = null
     let grassMaskSpr: PIXI.Sprite | null = null
     if (topGrassSpr) {
@@ -1118,30 +1137,19 @@ export class TileWorld {
     }
 
     if (this.renderer) {
-      const wh = new PIXI.Graphics().beginFill(0xffffff).drawRect(0,0,CPW,CPH).endFill()
-      this.renderer.render(wh, {renderTexture:maskRT, clear:true})
-      this.renderer.render(wh, {renderTexture:darkMaskRT, clear:true})
+      // Perf: reuse scratch Graphics instead of allocating new ones per chunk.
+      this._scratchDb.clear().beginFill(0xffffff).drawRect(0, 0, CPW, CPH).endFill()
+      this.renderer.render(this._scratchDb, {renderTexture:maskRT, clear:true})
       if (grassMaskRT) {
-        const whGrass = new PIXI.Graphics()
-          .beginFill(0xffffff)
-          .drawRect(0, 0, CPW, CPH + GRASS_MASK_HEADROOM)
-          .endFill()
-        this.renderer.render(whGrass, {renderTexture:grassMaskRT, clear:true})
-        whGrass.destroy()
+        this._scratchWb.clear().beginFill(0xffffff).drawRect(0, 0, CPW, CPH + GRASS_MASK_HEADROOM).endFill()
+        this.renderer.render(this._scratchWb, {renderTexture:grassMaskRT, clear:true})
       }
-      wh.destroy()
     }
-
-    // Тёмный фон чанка (`CHUNK_DARK_BG_COLOR`) — виден везде, скрывается в туннеле/пещере
-    const darkBg = new PIXI.Graphics()
-    darkBg.name = 'chunkDarkBg'
-    darkBg.beginFill(CHUNK_DARK_BG_COLOR).drawRect(0, 0, CPW, CPH).endFill()
-    darkBg.mask = darkMaskSpr
 
     const lavaContainer: PIXI.Container | null = null
 
     for (const cave of this._pendingCaves) {
-      this._applyCavePathToChunk(cave, col, row, maskRT, darkMaskRT, lavaRT, lavaContainer, offX, offY)
+      this._applyCavePathToChunk(cave, col, row, maskRT, lavaRT, lavaContainer, offX, offY)
     }
 
     content.mask = maskSpr
@@ -1150,22 +1158,19 @@ export class TileWorld {
     const container = new PIXI.Container()
     container.name = `chunk(${col},${row})`
     container.x = offX; container.y = offY
-    container.addChild(darkBg)
-    container.addChild(darkMaskSpr)
     container.addChild(content)
     if (topGrassSpr) container.addChild(topGrassSpr)
     container.addChild(maskSpr)
     if (grassMaskSpr) container.addChild(grassMaskSpr)
 
     this.chunkContainer.addChild(container)
-    this.chunks.set(key, {gfx:container, col, row, ...{maskRT, darkMaskRT, lavaRT, grassMaskRT, earthRT, lavaContainer}} as any)
+    this.chunks.set(key, {gfx:container, col, row, ...{maskRT, lavaRT, grassMaskRT, earthRT, lavaContainer}} as any)
   }
 
   private _applyCavePathToChunk(
     cave: CavePath,
     col: number, row: number,
     maskRT: PIXI.RenderTexture,
-    darkMaskRT: PIXI.RenderTexture | null,
     lavaRT: PIXI.RenderTexture | null,
     lavaContainer: PIXI.Container | null,
     offX: number, offY: number
@@ -1215,35 +1220,6 @@ export class TileWorld {
 
     this.renderer.render(g, { renderTexture: maskRT, clear: false })
 
-    if (darkMaskRT) {
-      const gDark = new PIXI.Graphics()
-      if (cave.rect) {
-        const { cx, cy, hw, hh, cr } = cave.rect
-        const inset = 10
-        const rx0 = cx - hw - offX + inset
-        const ry0 = cy - hh - offY + inset
-        const rw = Math.max(0, 2 * hw - inset * 2)
-        const rh = Math.max(0, 2 * hh - inset * 2)
-        const r2 = Math.max(0, cr - inset)
-        if (rw > 0 && rh > 0) (gDark as any).beginFill(0x000000).drawRoundedRect(rx0, ry0, rw, rh, r2).endFill()
-      } else if (cave.points.length === 1) {
-        const p = cave.points[0]!
-        gDark.beginFill(0x000000).drawCircle(p.x - offX, p.y - offY, Math.max(0, p.r - 10)).endFill()
-      } else {
-        for (let i = 0; i < cave.points.length - 1; i++) {
-          const a = cave.points[i]!, b = cave.points[i + 1]!
-          const lax = a.x - offX, lay = a.y - offY
-          const lbx = b.x - offX, lby = b.y - offY
-          const minX = Math.min(lax,lbx)-Math.max(a.r,b.r), maxX = Math.max(lax,lbx)+Math.max(a.r,b.r)
-          const minY = Math.min(lay,lby)-Math.max(a.r,b.r), maxY = Math.max(lay,lby)+Math.max(a.r,b.r)
-          if (maxX < 0 || minX > CPW || maxY < 0 || minY > CPH) continue
-          drawCapsule(gDark, lax, lay, Math.max(0,a.r-10), lbx, lby, Math.max(0,b.r-10), 0x000000)
-        }
-      }
-      this.renderer.render(gDark, { renderTexture: darkMaskRT, clear: false })
-      gDark.destroy()
-    }
-
     if (lavaRT && lavaContainer) {
       const gWhite = new PIXI.Graphics()
       if (cave.rect) {
@@ -1279,11 +1255,12 @@ export class TileWorld {
   }
 
   destroy() {
+    this._buildQueue.length = 0
+    this._buildQueueKeys.clear()
     for(const c of this.chunks.values()){
       this._forgetEarthVariantsForChunk(c.col, c.row)
       c.gfx.destroy({children:true})
       ;(c as any).maskRT?.destroy(true)
-      ;(c as any).darkMaskRT?.destroy(true)
       ;(c as any).lavaRT?.destroy(true)
       ;(c as any).grassMaskRT?.destroy(true)
       ;(c as any).earthRT?.destroy(true)
@@ -1293,10 +1270,14 @@ export class TileWorld {
     this._pendingCaves.length = 0
     this._decorLavaCaveCount = 0
     this.brush.destroy(); this.line.destroy()
-    this._scratchDb.destroy(); this._scratchWb.destroy(); this._scratchDl.destroy()
+    this._scratchDb.destroy(); this._scratchWb.destroy()
     this._scratchGb.destroy(); this._scratchGl.destroy()
     this._caveGfx.destroy()
-    this._tunnelBgTiles.clear()
+    for (const p of this._tunnelBgPanels.values()) {
+      p.spr.destroy({ texture: false })
+      p.rt.destroy(true)
+    }
+    this._tunnelBgPanels.clear()
     this._tunnelBgGroundTiling = null
     this._tunnelBgColorFill = null
     this.bgLight.destroy({ children: true })

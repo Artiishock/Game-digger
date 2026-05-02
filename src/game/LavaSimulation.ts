@@ -666,6 +666,23 @@ export class LavaSimulation {
     }
   }
 
+  /**
+   * Сбрасывает состояние симуляции для повторного использования между раундами.
+   * Фильтры, контейнеры и шейдеры не пересоздаются — только чистим данные.
+   */
+  reset() {
+    if (this._destroyed) return
+    this.cells.clear()
+    this.dirty.clear()
+    this.blobGfx.clear()
+    this.glowGfx.clear()
+    this._caveMaskGfx.clear()
+    this._texMaskGfx.clear()
+    this.time = 0
+    this._texOffX = 0
+    this._texOffY = 0
+  }
+
   destroy() {
     if (this._destroyed) return
     this._destroyed = true
