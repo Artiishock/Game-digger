@@ -227,8 +227,8 @@ export const GameConfig = {
     /** Множитель «экран / глубина» для ppm — больше → дальше друг от друга символы по Y */
     depthSpreadScreenFactor: 2.6,
     /** Порог множителя для оверлея WIN в `public/animations/{megawin|epicwin|bigwin}/` (Spine). */
-    megaWinMinMultiplier: 50,
-    epicWinMinMultiplier: 10,
+    megaWinMinMultiplier: 150,
+    epicWinMinMultiplier: 450,
     /** Строго больше этого — уровень bigwin, пока множитель ниже epic. */
     bigWinExclusiveAboveMultiplier: 3,
   },

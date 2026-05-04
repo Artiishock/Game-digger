@@ -2,7 +2,7 @@ import { useGameStore } from '../store/gameStore'
 import type { EventType } from '../rgs/client'
 import type { GamePhase } from '../store/gameStore'
 import { GameConfig } from '../game/GameConfig'
-import type { WinCelebrateKind } from '../ui/winCelebration'
+import { resolveWinCelebration, type WinCelebrateKind } from '../ui/winCelebration'
 
 function baseUrl(): string {
   const b = import.meta.env.BASE_URL || '/'
@@ -49,6 +49,9 @@ const MUSIC_LOOPS = new Set([
 // Files requiring gap-free looping via Web Audio API (HTML5 Audio has a seek-gap on loop)
 const GAPLESS_LOOPS = new Set(['drill.ogg'])
 
+// Background tracks controlled by gradual volume fading rather than hard on/off
+const FADE_TRACKS = new Set(['background_2.ogg', 'background_3.ogg'])
+
 class GameAudioModule {
   private ctx: AudioContext | null = null
   private buffers = new Map<string, AudioBuffer>()
@@ -56,6 +59,11 @@ class GameAudioModule {
   private loadDone = false
   private loopers = new Map<string, HTMLAudioElement>()
   private looperNodes = new Map<string, { src: AudioBufferSourceNode; gain: GainNode }>()
+  private fadeIntervals = new Map<string, ReturnType<typeof setInterval>>()
+  private fadeTargetVolumes = new Map<string, number>()
+  private readonly FADE_DURATION_MS = 2000
+  private readonly FADE_STEP_MS = 50
+  private _loseInProgress = false
 
   /** Вызывать по первому клику пользователя (DIG), чтобы снять блокировку autoplay. */
   unlock(): void {
@@ -77,17 +85,47 @@ class GameAudioModule {
   }
 
   syncPhase(phase: GamePhase, multiplier = 1): void {
+    if (phase === 'RUNNING') this._loseInProgress = false
+
     this.setLoop('drill.ogg', phase === 'RUNNING')
+
+    if (this._loseInProgress) return
+
     const inPlayableScene =
       phase === 'IDLE' || phase === 'BETTING' || phase === 'RUNNING' || phase === 'WIN' || phase === 'LOSE'
-    this.setLoop('background_1.ogg', inPlayableScene)
+
     this.setLoop('ambient.ogg', inPlayableScene)
-    this.setLoop('background_2.ogg', phase === 'RUNNING')
-    this.setLoop(
-      'background_3.ogg',
-      phase === 'RUNNING' && multiplier >= GameConfig.round.bigWinExclusiveAboveMultiplier,
-    )
     this.setLoop('iddle.ogg', phase === 'IDLE')
+
+    const { soundEnabled, musicEnabled, musicVolume } = useGameStore.getState().settings
+    const targetVol = soundEnabled && musicEnabled ? musicVolume : 0
+
+    if (inPlayableScene) {
+      this.setLoop('background_1.ogg', true)
+
+      this._ensureLoopStartedAt('background_2.ogg', 0)
+      this._ensureLoopStartedAt('background_3.ogg', 0)
+
+      this._fadeLooper('background_2.ogg', phase === 'RUNNING' ? targetVol : 0)
+
+      const bigWin = GameConfig.round.bigWinExclusiveAboveMultiplier
+      this._fadeLooper('background_3.ogg', phase === 'RUNNING' && multiplier >= bigWin ? targetVol : 0)
+    } else {
+      this._stopFadingLoop('background_2.ogg')
+      this._stopFadingLoop('background_3.ogg')
+      this.setLoop('background_1.ogg', false)
+    }
+  }
+
+  /** Останавливает всю музыку немедленно при смерти игрока (LAVA) и блокирует перезапуск до нового раунда. */
+  stopMusicForLose(): void {
+    this._loseInProgress = true
+    this._stopFadingLoop('background_2.ogg')
+    this._stopFadingLoop('background_3.ogg')
+    this.setLoop('background_1.ogg', false)
+    this.setLoop('ambient.ogg', false)
+    this.setLoop('iddle.ogg', false)
+    this.setLoop('drill.ogg', false)
   }
 
   private readonly _WIN_FANFARE: Record<WinCelebrateKind, string> = {
@@ -132,10 +170,15 @@ class GameAudioModule {
     this.setLoop('drill.ogg', true)
   }
 
-  playCollect(type: EventType, opts?: { terminal?: boolean; won?: boolean }): void {
+  playCollect(type: EventType, opts?: { terminal?: boolean; won?: boolean; multiplier?: number }): void {
     if (opts?.terminal) {
       if (type === 'HOME') {
-        this.playSfx(opts.won ? 'finish_win.ogg' : 'finish_lose.ogg')
+        if (opts.won) {
+          const hasFanfare = opts.multiplier != null && resolveWinCelebration(opts.multiplier) != null
+          if (!hasFanfare) this.playSfx('finish_win.ogg')
+        } else {
+          this.playSfx('finish_lose.ogg')
+        }
         return
       }
       if (type === 'LAVA') {
@@ -160,10 +203,10 @@ class GameAudioModule {
   }
 
   setLoop(file: string, on: boolean): void {
-    const { soundEnabled, sfxVolume, musicVolume } = useGameStore.getState().settings
+    const { soundEnabled, musicEnabled, sfxVolume, musicVolume } = useGameStore.getState().settings
     const isMusic = MUSIC_LOOPS.has(file)
     const volume = isMusic ? musicVolume : sfxVolume
-    if (!soundEnabled || volume <= 0) on = false
+    if (!soundEnabled || (isMusic && !musicEnabled) || volume <= 0) on = false
 
     if (GAPLESS_LOOPS.has(file)) {
       this._setGaplessLoop(file, on, volume)
@@ -185,6 +228,91 @@ class GameAudioModule {
       void a.play().catch(() => {})
       return
     }
+    if (existing) {
+      const fadeInterval = this.fadeIntervals.get(file)
+      if (fadeInterval) {
+        clearInterval(fadeInterval)
+        this.fadeIntervals.delete(file)
+      }
+      this.fadeTargetVolumes.delete(file)
+      existing.pause()
+      existing.currentTime = 0
+      this.loopers.delete(file)
+    }
+  }
+
+  /** Starts a loop at the given initial volume without overriding an already-running instance. */
+  private _ensureLoopStartedAt(file: string, initialVolume: number): void {
+    const existing = this.loopers.get(file)
+    if (existing) {
+      // First render play() may have been blocked by autoplay policy — retry on user-gesture context
+      if (existing.paused) void existing.play().catch(() => {})
+      return
+    }
+    const { soundEnabled, musicEnabled } = useGameStore.getState().settings
+    if (!soundEnabled || !musicEnabled) return
+    const a = new Audio(url(file))
+    a.loop = true
+    a.preload = 'auto'
+    a.volume = initialVolume
+    this.loopers.set(file, a)
+    void a.play().catch(() => {})
+  }
+
+  /** Gradually fades a looper to targetVolume over FADE_DURATION_MS. No-ops if already heading there. */
+  private _fadeLooper(file: string, targetVolume: number): void {
+    const prevTarget = this.fadeTargetVolumes.get(file)
+    if (prevTarget === targetVolume && this.fadeIntervals.has(file)) return
+
+    this.fadeTargetVolumes.set(file, targetVolume)
+
+    const existing = this.fadeIntervals.get(file)
+    if (existing) {
+      clearInterval(existing)
+      this.fadeIntervals.delete(file)
+    }
+
+    const looper = this.loopers.get(file)
+    if (!looper) return
+
+    const startVolume = looper.volume
+    if (Math.abs(targetVolume - startVolume) < 0.001) {
+      looper.volume = targetVolume
+      return
+    }
+
+    const steps = Math.ceil(this.FADE_DURATION_MS / this.FADE_STEP_MS)
+    const delta = (targetVolume - startVolume) / steps
+
+    const interval = setInterval(() => {
+      const l = this.loopers.get(file)
+      if (!l) {
+        clearInterval(interval)
+        this.fadeIntervals.delete(file)
+        return
+      }
+      const next = l.volume + delta
+      if ((delta > 0 && next >= targetVolume) || (delta < 0 && next <= targetVolume)) {
+        l.volume = Math.max(0, Math.min(1, targetVolume))
+        clearInterval(interval)
+        this.fadeIntervals.delete(file)
+      } else {
+        l.volume = Math.max(0, Math.min(1, next))
+      }
+    }, this.FADE_STEP_MS)
+
+    this.fadeIntervals.set(file, interval)
+  }
+
+  /** Stops a fade-controlled loop immediately (used when leaving the playable scene). */
+  private _stopFadingLoop(file: string): void {
+    const interval = this.fadeIntervals.get(file)
+    if (interval) {
+      clearInterval(interval)
+      this.fadeIntervals.delete(file)
+    }
+    this.fadeTargetVolumes.delete(file)
+    const existing = this.loopers.get(file)
     if (existing) {
       existing.pause()
       existing.currentTime = 0
@@ -251,15 +379,36 @@ class GameAudioModule {
   }
 
   private applyMusicFromStore(): void {
-    const { soundEnabled, sfxVolume, musicVolume } = useGameStore.getState().settings
+    const { soundEnabled, musicEnabled, sfxVolume, musicVolume } = useGameStore.getState().settings
     for (const [file, looper] of this.loopers.entries()) {
-      const volume = MUSIC_LOOPS.has(file) ? musicVolume : sfxVolume
-      looper.volume = soundEnabled ? volume : 0
-      if (!soundEnabled) looper.pause()
+      const isMusic = MUSIC_LOOPS.has(file)
+      const muted = !soundEnabled || (isMusic && !musicEnabled)
+      if (muted) {
+        const fadeInterval = this.fadeIntervals.get(file)
+        if (fadeInterval) {
+          clearInterval(fadeInterval)
+          this.fadeIntervals.delete(file)
+        }
+        looper.pause()
+        continue
+      }
+      const baseVolume = isMusic ? musicVolume : sfxVolume
+      if (FADE_TRACKS.has(file)) {
+        const fadeTarget = this.fadeTargetVolumes.get(file)
+        if (fadeTarget !== undefined && fadeTarget > 0) {
+          if (looper.paused) void looper.play().catch(() => {})
+          this._fadeLooper(file, baseVolume)
+        }
+      } else {
+        looper.volume = baseVolume
+        if (looper.paused) void looper.play().catch(() => {})
+      }
     }
     for (const [file, nodes] of this.looperNodes.entries()) {
-      const volume = MUSIC_LOOPS.has(file) ? musicVolume : sfxVolume
-      nodes.gain.gain.value = soundEnabled ? volume : 0
+      const isMusic = MUSIC_LOOPS.has(file)
+      const volume = isMusic ? musicVolume : sfxVolume
+      const active = soundEnabled && (!isMusic || musicEnabled)
+      nodes.gain.gain.value = active ? volume : 0
     }
   }
 

@@ -12,12 +12,12 @@ export const SettingsPanel: React.FC = () => {
       <div className="sys-settings-section">
         <div className="sys-settings-toggle-item">
           <div>
-            <div className="sys-settings-toggle-title">AMBIENT MUSIC</div>
-            <div className="sys-settings-toggle-desc">Turn off/on ambient music</div>
+            <div className="sys-settings-toggle-title"> MUSIC</div>
+            <div className="sys-settings-toggle-desc">Turn off/on  music</div>
           </div>
           <SysToggle
-            checked={settings.soundEnabled}
-            onChange={v => upd({ soundEnabled: v })}
+            checked={settings.musicEnabled}
+            onChange={v => upd({ musicEnabled: v })}
           />
         </div>
 

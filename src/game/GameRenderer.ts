@@ -2877,8 +2877,11 @@ export class GameRenderer {
         won = rgsTermEv.type === 'HOME'
       }
 
-      if (type === 'HOME') gameAudio.playCollect('HOME', { terminal: true, won })
-      else if (type === 'LAVA') gameAudio.playCollect('LAVA', { terminal: true })
+      if (type === 'HOME') gameAudio.playCollect('HOME', { terminal: true, won, multiplier: this.multiplier })
+      else if (type === 'LAVA') {
+        gameAudio.stopMusicForLose()
+        gameAudio.playCollect('LAVA', { terminal: true })
+      }
 
       this._logTerminal('object', won ? 'HOME' : 'LAVA')
       if (won) {

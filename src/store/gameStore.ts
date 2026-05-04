@@ -33,6 +33,7 @@ export interface SessionStats {
 
 export interface SettingsState {
   soundEnabled:    boolean
+  musicEnabled:    boolean
   musicVolume:     number   // 0–1
   sfxVolume:       number   // 0–1
   spaceEnabled:    boolean
@@ -114,6 +115,7 @@ const DEFAULT_AUTOPLAY: AutoplayConfig = {
 
 const DEFAULT_SETTINGS: SettingsState = {
   soundEnabled:  true,
+  musicEnabled:  true,
   musicVolume:   0.6,
   sfxVolume:     0.8,
   spaceEnabled:  true,
