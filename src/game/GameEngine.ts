@@ -93,13 +93,17 @@ class GameEngine {
     const store = useGameStore.getState()
     if (store.phase === 'BETTING' || store.phase === 'RUNNING') return
 
+    performance.mark('dr-round-click')
     store.setPhase('BETTING')
     store.resetStats()
 
     const bet = store.bet
 
     try {
+      performance.mark('dr-rgs-start')
       const response = await this._playWithRecovery(bet)
+      performance.mark('dr-rgs-end')
+      performance.measure('[DR] RGS /play', 'dr-rgs-start', 'dr-rgs-end')
 
       store.setBalance(response.balance?.amount ?? 0)
       const evs = response.round?.events ?? []
@@ -108,6 +112,7 @@ class GameEngine {
         throw new RGS.RgsError('ERR_GEN')
       }
       store.setEvents(evs, response.round?.roundID ?? '')
+      performance.mark('dr-phase-running')
       store.setPhase('RUNNING')
 
     } catch (err) {

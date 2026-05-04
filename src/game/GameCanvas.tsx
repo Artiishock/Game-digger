@@ -54,6 +54,8 @@ export const GameCanvas: React.FC<Props> = ({ width, height }) => {
     const speedSnap  = speed
     startRafRef.current = requestAnimationFrame(() => {
       startRafRef.current = null
+      performance.mark('dr-raf-fired')
+      performance.measure('[DR] RUNNING→RAF (React repaint)', 'dr-phase-running', 'dr-raf-fired')
       rendererRef.current?.startRound(eventsSnap, speedSnap)
     })
     return () => {

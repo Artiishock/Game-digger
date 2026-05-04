@@ -1126,7 +1126,7 @@ export class GameRenderer {
   private minerLayer:   PIXI.Container = new PIXI.Container()
   private miner: SpriteCharacter
   private liveWinBadge: PIXI.Container = new PIXI.Container()
-  private liveWinTitleText: PIXI.Text = new PIXI.Text('WIN', {
+  private liveWinTitleText: PIXI.Text = new PIXI.Text('MULTIPLIER', {
     fontFamily: 'Arial Black, Arial, sans-serif',
     fontSize: 14,
     fontWeight: '800',
@@ -1670,6 +1670,7 @@ export class GameRenderer {
   // ─── Round ────────────────────────────────────────────────────────────────
 
   startRound(events:RoundEvent[],_spd:number){
+    const _t0 = performance.now()
     const startX = this.miner.root.x
     const startY = this.miner.root.y
     const startCamX = this.camX
@@ -1738,6 +1739,8 @@ export class GameRenderer {
     }
     this._initLavaSimulation()
 
+    const _t1 = performance.now() // after tileWorld reset + lava init
+
     this._promotedCount=0
     this._speedMult = 1.0; this._speedTarget = 1.0; this._speedChangeTimer = 0
     this._arcSpeedSmoothed = CHAR_SPEED
@@ -1794,6 +1797,8 @@ export class GameRenderer {
     this.camX = startCamX
     this.camY = startCamY
 
+    const _t2 = performance.now() // after buildRoundPath + path geometry
+
     // Передаём путь в TileWorld — лава не генерируется в коридоре
     // (для обоих типов раундов — персонаж не должен случайно попасть в лаву)
     this.tileWorld.setPathWaypoints(this._waypoints, this.surfY)
@@ -1823,6 +1828,8 @@ export class GameRenderer {
         }
       }
     }
+
+    const _t3 = performance.now() // after setPathWaypoints + terminal cave
 
     // Передаём точные позиции road items + safe objects в spawner
     this.spawner.setRgsEvents(
@@ -1855,7 +1862,11 @@ export class GameRenderer {
       return this._caveZones.some(z => Math.hypot(x - z.x, y - z.y) <= z.r + r + TILE * 0.18)
     }
 
+    const _t4 = performance.now() // after spawner.setRgsEvents
+
     this.tileWorld.update(this.camX,this.camY,this.W,this.H)
+    const _t5 = performance.now() // after tileWorld.update (chunk builds)
+
     this.minerLayer.addChild(this.miner.root, this.liveWinBadge)
     this.liveWinAmountCached = ''
     this._updateLiveWinBadge()
@@ -1863,6 +1874,19 @@ export class GameRenderer {
     this.miner.root.x=this.charX;this.miner.root.y=this.charY
     this.miner.root.scale.x=1
     this._syncLayerScroll()
+
+    const _t6 = performance.now() // end of startRound
+    performance.mark('dr-renderer-end')
+    performance.measure('[DR] renderer.startRound total', 'dr-raf-fired', 'dr-renderer-end')
+    console.table({
+      'tileWorld reset + lava':  { ms: (_t1 - _t0).toFixed(1) },
+      'buildRoundPath + geom':   { ms: (_t2 - _t1).toFixed(1) },
+      'setPathWaypoints + cave': { ms: (_t3 - _t2).toFixed(1) },
+      'spawner.setRgsEvents':    { ms: (_t4 - _t3).toFixed(1) },
+      'tileWorld.update (chunks)':{ ms: (_t5 - _t4).toFixed(1) },
+      'rest (miner/sync)':       { ms: (_t6 - _t5).toFixed(1) },
+      '── RENDERER TOTAL':       { ms: (_t6 - _t0).toFixed(1) },
+    })
 
     const awaitHeroStart = this.miner.heroHasStartDigClip()
     if (awaitHeroStart) {

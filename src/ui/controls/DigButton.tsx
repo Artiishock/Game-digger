@@ -20,6 +20,7 @@ export const DigButton: React.FC = () => {
   const autoplay = useGameStore((s) => s.autoplay);
   const setAP = useGameStore((s) => s.setAutoplayOpen);
   const isAPOpen = useGameStore((s) => s.autoplayOpen);
+  const spaceEnabled = useGameStore((s) => s.settings.spaceEnabled);
 
   const canDig = phase === "IDLE" || phase === "WIN" || phase === "LOSE";
   const isRunning = phase === "RUNNING" || phase === "BETTING";
@@ -78,6 +79,20 @@ export const DigButton: React.FC = () => {
     if (isAutoActive) gameEngine.stopAutoplay();
     else if (canDig) gameEngine.startRound();
   };
+
+  const handleSpinClickRef = useRef(handleSpinClick);
+  useEffect(() => { handleSpinClickRef.current = handleSpinClick; });
+
+  useEffect(() => {
+    if (!spaceEnabled) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || e.repeat) return;
+      e.preventDefault();
+      handleSpinClickRef.current();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [spaceEnabled]);
 
   const handleAutospinClick = () => {
     setAP(!isAPOpen);

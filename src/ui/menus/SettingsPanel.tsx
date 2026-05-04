@@ -77,8 +77,8 @@ export const SettingsPanel: React.FC = () => {
             <div className="sys-settings-toggle-desc">Press space bar to spin</div>
           </div>
           <SysToggle
-            checked={settings.highQuality}
-            onChange={v => upd({ highQuality: v })}
+            checked={settings.spaceEnabled}
+            onChange={v => upd({ spaceEnabled: v })}
           />
         </div>
       </div>

@@ -626,8 +626,48 @@ export function placeObstacles(
     if (depth >= 118 && depth <= 192) for (let tc = -16; tc <= 16; tc++) collectLava(tc, 1.08, 30, 0.88, 0.52, worldSeed ^ 0xFF11)
   }
 
+  // ── Spatial grids для быстрых проверок коллизий ────────────────────────────
+  // Заменяют O(n) linear scan placed[] и lavaSpots[] в tryPlace (вызывается ~280k раз).
+  const PGRID = TILE * 3   // cell size для placed items
+  const LGRID = TILE * 2   // cell size для lava spots
+  const _placedGrid = new Map<number, Array<{x:number; y:number; r:number}>>()
+  const _lavaGrid   = new Map<number, Array<{x:number; y:number; r:number}>>()
+
+  const _pgKey = (gx: number, gy: number) => gx * 65536 + gy
+  const _lgKey = (gx: number, gy: number) => gx * 65536 + gy
+
+  const _pgAdd = (x: number, y: number, r: number) => {
+    const k = _pgKey(Math.floor(x / PGRID), Math.floor(y / PGRID))
+    const c = _placedGrid.get(k)
+    if (c) c.push({ x, y, r }); else _placedGrid.set(k, [{ x, y, r }])
+  }
+  const _pgHit = (x: number, y: number, minDist: number): boolean => {
+    const cx = Math.floor(x / PGRID), cy = Math.floor(y / PGRID)
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+      const items = _placedGrid.get(_pgKey(cx + dx, cy + dy))
+      if (!items) continue
+      for (const p of items) if (Math.hypot(x - p.x, y - p.y) < minDist + p.r) return true
+    }
+    return false
+  }
+  const _lgHit = (x: number, y: number, r: number): boolean => {
+    const cx = Math.floor(x / LGRID), cy = Math.floor(y / LGRID)
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+      const items = _lavaGrid.get(_lgKey(cx + dx, cy + dy))
+      if (!items) continue
+      for (const p of items) if (Math.hypot(x - p.x, y - p.y) < r + p.r) return true
+    }
+    return false
+  }
+
+  // Populate _lavaGrid (built once, queried ~280k times in tryPlace)
+  for (const lv of lavaSpots) {
+    const k = _lgKey(Math.floor(lv.x / LGRID), Math.floor(lv.y / LGRID))
+    const c = _lavaGrid.get(k)
+    if (c) c.push(lv); else _lavaGrid.set(k, [lv])
+  }
+
   // ── Декорации ──────────────────────────────────────────────────────────────
-  const placed: Array<{ x: number; y: number; r: number }> = []
   const roadOccupancy = roadPoints.map(rp => {
     const sz = rp.type === 'HOME' ? DECOR_HOME_PLACE_SZ : (ITEM_SZ[rp.type] ?? 60)
     const r = rp.type === 'HOME' ? (sz * Math.SQRT1_2) : (sz / 2)
@@ -637,10 +677,16 @@ export function placeObstacles(
   /** Минимум между центрами декора (чуть больше проплешин между объектами). */
   const decorClearance = TILE * 1.2
 
-  /** Горизонтальные пределы: по полосе возможных X траектории в окне по Y + отступ экрана (decorGenerationHorizontalExtent). */
+  /** Горизонтальные пределы (с кэшем: tunnelXEnvelopeAroundY дорогая, ~405 iter × path.len). */
+  const _boundsCache = new Map<number, { minX: number; maxX: number; midX: number }>()
   const decorBoundsAtY = (worldY: number): { minX: number; maxX: number; midX: number } => {
+    const key = Math.round(worldY / 10)
+    const c = _boundsCache.get(key)
+    if (c) return c
     const { minX, maxX } = decorGenerationHorizontalExtent(path, worldY, viewportWidthPx)
-    return { minX, maxX, midX: (minX + maxX) * 0.5 }
+    const r = { minX, maxX, midX: (minX + maxX) * 0.5 }
+    _boundsCache.set(key, r)
+    return r
   }
 
   /** Принудительная постановка декора в заданную точку (для пост-заполнения видимой полосы по маршруту). */
@@ -658,14 +704,10 @@ export function placeObstacles(
     for (const rp of roadOccupancy) {
       if (Math.hypot(x - rp.x, worldY - rp.y) < r + rp.r + TILE * 0.08) return false
     }
-    for (const lv of lavaSpots) {
-      if (Math.hypot(x - lv.x, worldY - lv.y) < r + lv.r) return false
-    }
+    if (_lgHit(x, worldY, r)) return false
     const minD = r + decorClearance
-    for (const p of placed) {
-      if (Math.hypot(x - p.x, worldY - p.y) < minD + p.r) return false
-    }
-    placed.push({ x, y: worldY, r })
+    if (_pgHit(x, worldY, minD)) return false
+    _pgAdd(x, worldY, r)
     objects.push({ x, y: worldY, w: sz, h: sz, kind: 'decor', decorVisual: type })
     return true
   }
@@ -684,15 +726,10 @@ export function placeObstacles(
       for (const rp of roadOccupancy) {
         if (Math.hypot(x - rp.x, worldY - rp.y) < r + rp.r + TILE * 0.08) return false
       }
-      // Не ставим декор в зонах будущей лавы.
-      for (const lv of lavaSpots) {
-        if (Math.hypot(x - lv.x, worldY - lv.y) < r + lv.r) return false
-      }
+      if (_lgHit(x, worldY, r)) return false
       const minD = r + decorClearance
-      for (const p of placed) {
-        if (Math.hypot(x - p.x, worldY - p.y) < minD + p.r) return false
-      }
-      placed.push({ x, y: worldY, r })
+      if (_pgHit(x, worldY, minD)) return false
+      _pgAdd(x, worldY, r)
       objects.push({ x, y: worldY, w: sz, h: sz, kind: 'decor', decorVisual: type })
       return true
     }
@@ -996,8 +1033,11 @@ export function buildRoundPath(
     isLoss ? deepestY + TILE * 8 : surfY,
   )
 
+  const _wt0 = performance.now()
+
   // Pass 1: путь без road items (случайное блуждание)
   const roughPath  = buildTunnel(surfY, terminalY, worldSeed, [], isLoss)
+  const _wt1 = performance.now()
 
   // Pass 2: road items на грубом пути
   const roughRoad = placeRoadItems(roadEvents, roughPath, surfY)
@@ -1005,9 +1045,11 @@ export function buildRoundPath(
   // Pass 2b: ложные цели (петли маршрута) + подвод к лаве для LOSS
   const ghostTargets = buildGhostWaypoints(roughRoad, worldSeed, isLoss)
   const tunnelTargets = [...roughRoad, ...ghostTargets].sort((a, b) => a.worldY - b.worldY)
+  const _wt2 = performance.now()
 
   // Pass 3: финальный туннель через реальные + призрачные цели
   const path = buildTunnel(surfY, terminalY, worldSeed, tunnelTargets, isLoss)
+  const _wt3 = performance.now()
 
   // Pass 4: road items точно на финальном туннеле + на оси туннеля (проекция на полилинию)
   let roadPoints = placeRoadItems(roadEvents, path, surfY)
@@ -1018,9 +1060,19 @@ export function buildRoundPath(
       console.warn(`[WorldMap] road ${rp.type}: dist до оси=${d.toFixed(2)}px`)
     }
   }
+  const _wt4 = performance.now()
 
   // Pass 5: объекты вне туннеля (капсульная проверка)
   const obstacles  = placeObstacles(path, surfY, terminalY, worldSeed, roadPoints, viewportWidthPx)
+  const _wt5 = performance.now()
+  console.table({
+    'P1 buildTunnel rough':    { ms: (_wt1-_wt0).toFixed(1), pts: roughPath.length },
+    'P2 roadItems+ghost':      { ms: (_wt2-_wt1).toFixed(1) },
+    'P3 buildTunnel final':    { ms: (_wt3-_wt2).toFixed(1), pts: path.length },
+    'P4 snapRoadPoints':       { ms: (_wt4-_wt3).toFixed(1) },
+    'P5 placeObstacles':       { ms: (_wt5-_wt4).toFixed(1) },
+    '── terminalY (px)':       { ms: terminalY.toFixed(0) },
+  })
 
   // Waypoints для GameRenderer (только X)
   const waypoints  = path.map(p => p.x)
