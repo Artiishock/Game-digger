@@ -180,7 +180,7 @@ const InputRow: React.FC<{
       className={`ui-checkbox ${checked ? "ui-checkbox--checked" : ""}`}
       onClick={() => onCheckChange(!checked)}
     >
-      {checked && <span className="ui-checkbox-tick">✓</span>}
+      {checked && <span className="ui-checkbox-tick"></span>}
     </div>
 
     <span className="ui-input-row-label">{label}</span>
