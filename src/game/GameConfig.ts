@@ -105,13 +105,13 @@ export const GameConfig = {
   // ─── Спавн предметов ─────────────────────────────────────────────────────────
   spawn: {
     /** Шаг пути WorldMap / интерполяция персонажа (должен совпадать с STEP_Y в WorldMap) */
-    intervalTiles: 0.72,
+    intervalTiles: 0.2,
     /** Плотнее ряды декора (только placeObstacles) */
     decorIntervalTiles: 0.24,
     spawnChance:     1, // вероятность что в точке спавна появится предмет (0–1)
-    doubleChance:    0.78,  // повышено: чаще второй декор в кластере
+    doubleChance:    0.88,  // повышено: чаще второй декор в кластере
     /** Доп. попытка декора между основными рядами (0–1) */
-    decorExtraChance: 0.6,
+    decorExtraChance: 0.9,
 
     /**
      * Декор вдоль оси туннеля между соседними road-предметами (и от поверхности до первого).
@@ -122,7 +122,7 @@ export const GameConfig = {
       minSpanTiles:   1.08,
       stepTilesMin:   0.36,
       stepTilesMax:   0.78,
-      spawnChance:    0.72,
+      spawnChance:    1,
     },
 
     // Вероятности типов предметов (зависят от глубины)
@@ -147,7 +147,7 @@ export const GameConfig = {
 
   // ─── Движение персонажа ───────────────────────────────────────────────────────
   movement: {
-    charSpeed:          500,    // спуск в туннеле (ниже — спокойнее, естественнее)
+    charSpeed:          600,    // спуск в туннеле (ниже — спокойнее, естественнее)
     idleSpeed:          70,    // скорость в режиме idle (пикс/сек)
     speedMultMin:       0.97,  // узкий диапазон — почти постоянная скорость спуска
     speedMultMax:       1.03,
@@ -230,7 +230,7 @@ export const GameConfig = {
     megaWinMinMultiplier: 150,
     epicWinMinMultiplier: 450,
     /** Строго больше этого — уровень bigwin, пока множитель ниже epic. */
-    bigWinExclusiveAboveMultiplier: 3,
+    bigWinExclusiveAboveMultiplier: 50,
   },
 
   // ─── Герой: калибровка (px; углы — радианы) ────────────────────────────────

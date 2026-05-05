@@ -42,8 +42,6 @@ const MUSIC_LOOPS = new Set([
   'background_1.ogg',
   'background_2.ogg',
   'background_3.ogg',
-  'ambient.ogg',
-  'iddle.ogg',
 ])
 
 // Files requiring gap-free looping via Web Audio API (HTML5 Audio has a seek-gap on loop)
@@ -85,9 +83,7 @@ class GameAudioModule {
   }
 
   syncPhase(phase: GamePhase, multiplier = 1): void {
-    if (phase === 'RUNNING') this._loseInProgress = false
-
-    this.setLoop('drill.ogg', phase === 'RUNNING')
+    this.setLoop('drill.ogg', phase === 'RUNNING' && !this._loseInProgress)
 
     if (this._loseInProgress) return
 
@@ -117,14 +113,30 @@ class GameAudioModule {
     }
   }
 
-  /** Останавливает всю музыку немедленно при смерти игрока (LAVA) и блокирует перезапуск до нового раунда. */
+  /** Вызывать из _returnToIdle() — снимает подавление музыки и возобновляет треки. */
+  resumeMusicAfterLose(): void {
+    if (!this._loseInProgress) return
+    this._loseInProgress = false
+    const store = useGameStore.getState()
+    this.syncPhase(store.phase, store.stats.multiplier)
+  }
+
+  /** Ставит всю музыку на паузу при смерти (LAVA), сохраняя позицию. Блокирует перезапуск до нового раунда. */
   stopMusicForLose(): void {
     this._loseInProgress = true
-    this._stopFadingLoop('background_2.ogg')
-    this._stopFadingLoop('background_3.ogg')
-    this.setLoop('background_1.ogg', false)
-    this.setLoop('ambient.ogg', false)
-    this.setLoop('iddle.ogg', false)
+
+    // Fade tracks — отменяем плавное изменение, ставим на паузу без сброса позиции
+    for (const file of FADE_TRACKS) {
+      const interval = this.fadeIntervals.get(file)
+      if (interval) { clearInterval(interval); this.fadeIntervals.delete(file) }
+      this.loopers.get(file)?.pause()
+    }
+
+    // Остальные музыкальные треки — тоже только пауза
+    for (const file of ['background_1.ogg', 'ambient.ogg', 'iddle.ogg'] as const) {
+      this.loopers.get(file)?.pause()
+    }
+
     this.setLoop('drill.ogg', false)
   }
 

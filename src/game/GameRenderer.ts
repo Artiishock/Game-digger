@@ -1145,6 +1145,8 @@ export class GameRenderer {
     align: 'center',
   })
   private liveWinAmountCached = ''
+  private _liveWinBadgeFading = false
+  private _liveWinBadgeFadeT = 1
   private _cloudT = 0
   private _cloudPrevCamX: number | null = null
   private _treeRunDx: [number, number, number] = [...TREE_X_RUN_DX]
@@ -1394,11 +1396,24 @@ export class GameRenderer {
     this.liveWinAmountText.position.set(0, LIVE_WIN_AMOUNT_OFFSET_Y)
   }
 
-  private _updateLiveWinBadge(): void {
+  private _updateLiveWinBadge(dt = 0): void {
     const store = useGameStore.getState()
-    if (!this.running || this.idleActive || this._ended) {
+    if ((!this.running || this.idleActive || this._ended) && !this._liveWinBadgeFading) {
       this.liveWinBadge.visible = false
       return
+    }
+
+    if (this._liveWinBadgeFading) {
+      this._liveWinBadgeFadeT = Math.max(0, this._liveWinBadgeFadeT - dt / 0.5)
+      this.liveWinBadge.alpha = this._liveWinBadgeFadeT
+      if (this._liveWinBadgeFadeT <= 0) {
+        this._liveWinBadgeFading = false
+        this.liveWinBadge.visible = false
+        this.liveWinBadge.alpha = 1
+        return
+      }
+    } else {
+      this.liveWinBadge.alpha = 1
     }
 
     const visibleMultiplier = this.stoneBreakActive
@@ -1709,7 +1724,7 @@ export class GameRenderer {
     this.objectsLayer.removeChildren()  // ← чистим объекты
 
     const lastEv  = events[events.length-1]
-    const depthM  = Math.max(lastEv.depth,50)
+    const depthM  = Math.max(lastEv.depth,20)
     const spread = GameConfig.round.depthSpreadScreenFactor ?? 2.5
     this.ppm      = Math.max(TILE*2, Math.round((this.H * spread)/depthM/TILE)*TILE)
 
@@ -2132,6 +2147,8 @@ export class GameRenderer {
 
     this._lavaDeathCinematic = true
     this._lavaLossTimeoutPending = false
+    this._liveWinBadgeFading = true
+    this._liveWinBadgeFadeT = 1
     this._lavaDeathX = this.charX
     this._lavaDeathRootY = this.miner.root.y
     this._lavaFrozenCamX = this.camX
@@ -2261,6 +2278,7 @@ export class GameRenderer {
     if (this.tileWorld) this.tileWorld.update(this.camX, this.camY, this.W, this.H)
     // Spine: реальный dt кадра — иначе deathSceneMotionScale на gameDtM даёт рваный die.
     this._pUpdate(gameDtM, dt)
+    this._updateLiveWinBadge(dt)
   }
 
   // ─── Tick ─────────────────────────────────────────────────────────────────
@@ -2655,7 +2673,7 @@ export class GameRenderer {
     if (!this._ended && !this.stoneBreakActive && !this.goldBreakActive && this.charY > minDepthForLava && lavaHit) {
       this._ended=true
       this.running=false
-      gameAudio.setLoop('drill.ogg', false)
+      gameAudio.stopMusicForLose()
       this.miner.playDie({ loop: true })
       gameAudio.playSfx('finish_lose.ogg')
       this._burst(this.charX,this.charY,C.lava,20)
@@ -2986,6 +3004,7 @@ export class GameRenderer {
   }
 
   private _returnToIdle(){
+    gameAudio.resumeMusicAfterLose()
     gameAudio.setLoop('gold.ogg', false)
     gameAudio.setLoop('stone.ogg', false)
     this._cleanupLavaDeathCinematic()
@@ -3027,6 +3046,9 @@ export class GameRenderer {
     // Как в конструкторе: не тянем X из charX (после раунда/лавы — герой вдали от стартовой сцены)
     this.running = false
     this._ended = false
+    this._liveWinBadgeFading = false
+    this._liveWinBadgeFadeT = 1
+    this.liveWinBadge.alpha = 1
     this._lossRound = false
     this._lossTerminalDescent = false
     this._lossLavaCenterX = null

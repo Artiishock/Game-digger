@@ -294,8 +294,8 @@ function roadToEvents(
   for (const token of road) {
     const parsed = parseToken(token)
 
-    depth    += 1.2 + rng() * 1.8   // 1.2–3.0 м на предмет
-    distance += 1.8 + rng() * 2.8   // 1.8–4.6 м пути
+    depth    += 1.2 + rng() * 0.5   // 1.2–3.0 м на предмет
+    distance += 1.8 + rng() * 1.8   // 1.8–4.6 м пути
 
     const ev: RoundEvent = {
       type:     parsed.type,

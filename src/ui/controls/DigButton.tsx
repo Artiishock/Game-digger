@@ -77,7 +77,10 @@ export const DigButton: React.FC = () => {
     gameAudio.unlock();
 
     if (isAutoActive) gameEngine.stopAutoplay();
-    else if (canDig) gameEngine.startRound();
+    else if (canDig) {
+      gameAudio.playStartGame();
+      gameEngine.startRound();
+    }
   };
 
   const handleSpinClickRef = useRef(handleSpinClick);
