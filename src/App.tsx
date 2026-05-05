@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { GameCanvas } from "./game/GameCanvas";
 import { Hud } from "./ui/hud/Hud";
 import { DigButton } from "./ui/controls/DigButton";
@@ -7,6 +7,7 @@ import { ResultOverlay } from "./ui/modals/ResultOverlay";
 import { AutoplayModal } from "./ui/modals/AutoplayModal";
 import { BurgerMenu } from "./ui/menus/BurgerMenu";
 import { ErrorScreen } from "./ui/modals/ErrorScreen";
+import { StartScreen } from "./ui/StartScreen";
 import { useGameStore } from "./store/gameStore";
 import { shallow } from "zustand/shallow";
 import { gameAudio } from "./audio/GameAudio";
@@ -30,7 +31,8 @@ export const App: React.FC = () => {
   const multiplier = useGameStore(s => s.stats.multiplier)
   const settings = useGameStore(s => s.settings, shallow)
   const prevPhase = useRef<string>('')
-  const [assetsReady, setAssetsReady] = React.useState(false)
+  const [assetsReady, setAssetsReady] = useState(false)
+  const [gameStarted, setGameStarted] = useState(false)
 
   // ── Boot ─────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -131,6 +133,16 @@ ${d.toLocaleTimeString("en-GB", {
           <div className="ui-boot-title">DEEP RUSH</div>
         </div>
       </div>
+    );
+  }
+
+  if (!gameStarted) {
+    return (
+      <StartScreen
+        width={width}
+        height={height}
+        onStart={() => setGameStarted(true)}
+      />
     );
   }
 
