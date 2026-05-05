@@ -478,6 +478,10 @@
   font-variant-numeric: tabular-nums;
   text-align: center;
   text-shadow: 0 2px 0 rgba(0, 0, 0, 1);
+
+    min-width: 120px;
+  text-align: center;
+  white-space: nowrap;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -4685,6 +4689,7 @@
   .ui-bet-amount {
     font-size: 20px;
     font-weight: 900;
+      min-width: 80px;
   }
 
   .ui-bet-adj {
@@ -5239,6 +5244,7 @@
   .ui-bet-amount {
     font-size: 12px;
     font-weight: 900;
+    min-width: 50px;
   }
 
   .ui-bet-adj {
