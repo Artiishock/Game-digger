@@ -62,8 +62,10 @@ interface GameStore {
   lastWinMult: number   // multiplier from math engine
 
   // Round
-  events:    RoundEvent[]
-  roundID:   string
+  events:     RoundEvent[]
+  roundID:    string
+  worldSeed:  number
+  replayMode: boolean
 
   // Live stats (updated every frame by PixiJS renderer)
   stats:     SessionStats
@@ -87,7 +89,9 @@ interface GameStore {
   setBet:      (bet: number)            => void
   setCurrency: (c: string)              => void
   setSessionID:(id: string)             => void
-  setEvents:   (events: RoundEvent[], roundID: string) => void
+  setEvents:      (events: RoundEvent[], roundID: string) => void
+  setWorldSeed:   (seed: number) => void
+  setReplayMode:  (mode: boolean) => void
   setLastWin:     (win: number)          => void
   setLastWinMult: (mult: number)         => void
   setSpeed:    (speed: SpeedMode)       => void
@@ -139,8 +143,10 @@ export const useGameStore = create<GameStore>((set) => ({
   lastWin:     0,
   lastWinMult: 0,
 
-  events:  [],
-  roundID: '',
+  events:     [],
+  roundID:    '',
+  worldSeed:  0,
+  replayMode: false,
   stats:   { depth: 0, distance: 0, multiplier: 0 },
 
   speed: 1,
@@ -162,7 +168,9 @@ export const useGameStore = create<GameStore>((set) => ({
   setCurrency: (currency) => set({ currency }),
   setSessionID:(sessionID)=> set({ sessionID }),
 
-  setEvents: (events, roundID) => set({ events, roundID }),
+  setEvents:     (events, roundID) => set({ events, roundID }),
+  setWorldSeed:  (worldSeed)      => set({ worldSeed }),
+  setReplayMode: (replayMode)     => set({ replayMode }),
   setLastWin:     (lastWin)     => set({ lastWin }),
   setLastWinMult: (lastWinMult) => set({ lastWinMult }),
   setSpeed:   (speed)    => set({ speed }),

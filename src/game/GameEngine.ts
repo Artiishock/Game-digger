@@ -89,6 +89,17 @@ class GameEngine {
 
   // ─── Single round ──────────────────────────────────────────────────────────
 
+  startReplay(events: RGS.RoundEvent[], worldSeed: number): void {
+    const store = useGameStore.getState()
+    if (store.phase === 'BETTING' || store.phase === 'RUNNING') return
+    store.setMenuOpen(false)
+    store.setWorldSeed(worldSeed)
+    store.setReplayMode(true)
+    store.resetStats()
+    store.setEvents(events, store.roundID)
+    store.setPhase('RUNNING')
+  }
+
   async startRound(): Promise<void> {
     const store = useGameStore.getState()
     if (store.phase === 'BETTING' || store.phase === 'RUNNING') return
@@ -150,6 +161,18 @@ class GameEngine {
   async onRoundComplete(multiplier: number, won: boolean): Promise<void> {
     const store = useGameStore.getState()
     const bet   = store.bet
+
+    if (store.replayMode) {
+      if (won) {
+        store.setLastWin(RGS.toDisplay(Math.round(bet * multiplier * RGS.MONEY_SCALE)))
+        store.setLastWinMult(multiplier)
+        store.setPhase('WIN')
+      } else {
+        store.setLastWin(0)
+        store.setPhase('LOSE')
+      }
+      return
+    }
 
     try {
       let newBalance: number

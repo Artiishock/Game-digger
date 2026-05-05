@@ -1728,18 +1728,23 @@ export class GameRenderer {
     const spread = GameConfig.round.depthSpreadScreenFactor ?? 2.5
     this.ppm      = Math.max(TILE*2, Math.round((this.H * spread)/depthM/TILE)*TILE)
 
-    const baseSeed = events.reduce((a,e,i)=>a^(e.depth*31+i*97),0x1337) >>> 0
-    const randSalt = (() => {
-      try {
-        const arr = new Uint32Array(1)
-        crypto.getRandomValues(arr)
-        return arr[0]!
-      } catch {
-        return Math.floor(Math.random() * 0xFFFFFFFF) >>> 0
-      }
-    })()
-    // Соль на каждый запуск раунда: даже при одинаковых events маршрут/декор не повторяются.
-    this.worldSeed = (baseSeed ^ randSalt) >>> 0
+    const store = useGameStore.getState()
+    if (store.replayMode && store.worldSeed !== 0) {
+      this.worldSeed = store.worldSeed
+    } else {
+      const baseSeed = events.reduce((a,e,i)=>a^(e.depth*31+i*97),0x1337) >>> 0
+      const randSalt = (() => {
+        try {
+          const arr = new Uint32Array(1)
+          crypto.getRandomValues(arr)
+          return arr[0]!
+        } catch {
+          return Math.floor(Math.random() * 0xFFFFFFFF) >>> 0
+        }
+      })()
+      this.worldSeed = (baseSeed ^ randSalt) >>> 0
+      store.setWorldSeed(this.worldSeed)
+    }
     if (!this.tileWorld) {
       TileWorld.loadGrassTex().then(() => {
         this.tileWorld?.rebuildTunnelBgFromTextures()

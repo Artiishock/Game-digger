@@ -1,5 +1,7 @@
 import React from "react";
 import { useGameStore } from "../../store/gameStore";
+import type { RoundEvent } from "../../rgs/client";
+import { gameEngine } from "../../game/GameEngine";
 
 // ─── Info Panel ────────────────────────────────────────────────────────────────
 
@@ -227,6 +229,9 @@ interface ReplayRound {
   balBefore: number;
   balAfter: number;
   currency: string;
+  roundID: string;
+  worldSeed: number;
+  events: RoundEvent[];
 }
 
 // In-memory round history (populated by App.tsx after each round)
@@ -269,7 +274,10 @@ export const ReplayPanel: React.FC = () => {
                   {r.win.toFixed(2)}
                 </td>
                 <td>
-                  <button className="replay-button">
+                  <button
+                    className="replay-button"
+                    onClick={() => gameEngine.startReplay(r.events, r.worldSeed)}
+                  >
                     <span
                       className="replay-icon"
                       aria-hidden="true"

@@ -87,13 +87,18 @@ export const App: React.FC = () => {
 
     if ((phase === "WIN" || phase === "LOSE") && prev === "RUNNING") {
       const store = useGameStore.getState();
+
+      if (store.replayMode) {
+        store.setReplayMode(false);
+        return;
+      }
+
       const balAfterDisplay = toDisplay(store.balance);
       const bet = store.bet;
       const win = store.lastWin;
       const profit = win - bet;
 
       const d = new Date();
-
       const time = `${d.toLocaleDateString("en-GB")}
 ${d.toLocaleTimeString("en-GB", {
   hour: "2-digit",
@@ -109,6 +114,9 @@ ${d.toLocaleTimeString("en-GB", {
         profit,
         balBefore: balAfterDisplay - profit,
         balAfter: balAfterDisplay,
+        roundID: store.roundID,
+        worldSeed: store.worldSeed,
+        events: store.events,
       });
     }
   }, [phase]);
