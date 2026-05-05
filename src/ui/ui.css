@@ -2717,7 +2717,7 @@
   width: 59px;
   height: 32px;
   border-radius: 2.67px;
-  background: #52525c;
+  background: #D2314C;
   position: relative;
   border: none;
   padding: 0;
@@ -2734,7 +2734,7 @@
 .sys-toggle-knob {
   position: absolute;
   top: 2.67px;
-  left: 2.67px;
+  left: 4.67px;
   width: 27px;
   height: 27px;
   border-radius: 2.54px;
