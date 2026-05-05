@@ -127,6 +127,7 @@
   font-family: "Inter", sans-serif;
   -webkit-text-stroke: 2px #000000;
   paint-order: stroke fill;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 1);
 }
 
 .ui-win-amount {
@@ -138,6 +139,7 @@
   font-family: "Inter", sans-serif;
   -webkit-text-stroke: 2px #000000;
   paint-order: stroke fill;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 1);
 }
 
 .ui-topright {
@@ -230,6 +232,7 @@
   font-family: "Inter", sans-serif;
   -webkit-text-stroke: 2px #000000;
   paint-order: stroke fill;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 1);
 }
 
 .ui-depth-value {
@@ -240,6 +243,7 @@
   font-family: "Inter", sans-serif;
   -webkit-text-stroke: 2px #000000;
   paint-order: stroke fill;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 1);
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -290,6 +294,7 @@
   font-family: "Inter", sans-serif;
   -webkit-text-stroke: 2px #000000;
   paint-order: stroke fill;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 1);
 }
 
 .ui-credit-value {
@@ -301,6 +306,7 @@
   font-family: "Inter", sans-serif;
   -webkit-text-stroke: 2px #000000;
   paint-order: stroke fill;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 1);
 }
 
 .ui-group-wrapper {
@@ -415,6 +421,7 @@
   font-family: "Inter", sans-serif;
   -webkit-text-stroke: 2px #000000;
   paint-order: stroke fill;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 1);
 }
 
 .ui-bet-controls {
@@ -470,6 +477,7 @@
   paint-order: stroke fill;
   font-variant-numeric: tabular-nums;
   text-align: center;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 1);
 }
 
 /* ═══════════════════════════════════════════════════════
