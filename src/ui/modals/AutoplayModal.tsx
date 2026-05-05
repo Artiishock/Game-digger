@@ -26,6 +26,7 @@ export const AutoplayModal: React.FC = () => {
   if (!isOpen) return null;
 
   const canStart = phase === "IDLE" || phase === "WIN" || phase === "LOSE";
+  const hasCustomRounds = customRounds.trim().length > 0;
 
   const handleStart = () => {
     const r = customRounds ? parseInt(customRounds) : rounds;
@@ -99,9 +100,11 @@ export const AutoplayModal: React.FC = () => {
               />
 
               <button
-                className="ui-ap-start-btn"
+                className={`ui-ap-start-btn ${!hasCustomRounds ? "ui-ap-start-btn--hidden" : ""}`}
                 onClick={handleStart}
-                disabled={!canStart}
+                disabled={!canStart || !hasCustomRounds}
+                aria-hidden={!hasCustomRounds}
+                tabIndex={hasCustomRounds ? 0 : -1}
               ></button>
             </div>
           </div>

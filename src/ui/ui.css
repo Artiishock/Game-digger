@@ -1289,6 +1289,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
+
+    mask-image: url("/ui/play_right_bg.png");
+  mask-size: 100% 100%;
+  mask-position: center;
+  mask-repeat: no-repeat;
+
+  -webkit-mask-image: url("/ui/play_right_bg.png");
+  -webkit-mask-size: 100% 100%;
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
 }
 
 .ui-ap-start-btn::before {
@@ -1298,12 +1308,12 @@
 
   background-color: #5c5e6a;
 
-  mask-image: url("/ui/input_right_bg.png");
+  mask-image: url("/ui/play_right_bg.png");
   mask-size: 100% 100%;
   mask-position: center;
   mask-repeat: no-repeat;
 
-  -webkit-mask-image: url("/ui/input_right_bg.png");
+  -webkit-mask-image: url("/ui/play_right_bg.png");
   -webkit-mask-size: 100% 100%;
   -webkit-mask-position: center;
   -webkit-mask-repeat: no-repeat;
@@ -1336,6 +1346,12 @@
   -webkit-mask-position: center;
   -webkit-mask-repeat: no-repeat;
 }
+
+.ui-ap-input:placeholder-shown + .ui-ap-start-btn {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 
 /* ═══════════════════════════════════════════════════════ RULES START SCREEN ═══════════════════════════════════════════════════════ */
 
