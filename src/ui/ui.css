@@ -2661,7 +2661,7 @@
 }
 
 .sys-settings-slider-icon {
-  width: 48px;
+  width: 40px;
   color: #ffffff;
   font-size: 30px;
   line-height: 1;
@@ -2686,6 +2686,7 @@
   border-radius: 999px;
   cursor: pointer;
   user-select: none;
+  touch-action: none;
 }
 
 .sys-slider-fill {
@@ -2712,6 +2713,12 @@
 
   pointer-events: none;
 }
+
+.sys-slider-fill,
+.sys-slider-thumb {
+  transition: none;
+}
+
 
 .sys-toggle {
   width: 59px;

@@ -1,4 +1,4 @@
-import React, { useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useGameStore } from '../../store/gameStore'
 import { gameAudio } from '../../audio/GameAudio'
 import '../ui.css'
@@ -106,19 +106,85 @@ const SysToggle: React.FC<{ checked: boolean; onChange: (v: boolean) => void }> 
 
 const SysSlider: React.FC<{ value: number; onChange: (v: number) => void }> = ({ value, onChange }) => {
   const trackRef = useRef<HTMLDivElement>(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const [localValue, setLocalValue] = useState(value)
+  const isDraggingRef = useRef(false)
+  const rafRef = useRef<number | null>(null)
+  const latestValueRef = useRef(value)
 
-  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!trackRef.current) return
+  useEffect(() => {
+    if (!isDraggingRef.current) {
+      setLocalValue(value)
+      latestValueRef.current = value
+    }
+  }, [value])
+
+  const getValueFromClientX = (clientX: number) => {
+    if (!trackRef.current) return latestValueRef.current
+
     const rect = trackRef.current.getBoundingClientRect()
-    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-    gameAudio.playUiSlide()
-    onChange(ratio)
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
   }
 
+  const commitValue = (nextValue: number) => {
+    latestValueRef.current = nextValue
+    setLocalValue(nextValue)
+
+    if (rafRef.current !== null) return
+
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null
+      onChange(latestValueRef.current)
+    })
+  }
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+
+    trackRef.current?.setPointerCapture(e.pointerId)
+    isDraggingRef.current = true
+    setIsDragging(true)
+
+    gameAudio.playUiSlide()
+    commitValue(getValueFromClientX(e.clientX))
+  }
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingRef.current) return
+    commitValue(getValueFromClientX(e.clientX))
+  }
+
+  const stopDragging = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (trackRef.current?.hasPointerCapture(e.pointerId)) {
+      trackRef.current.releasePointerCapture(e.pointerId)
+    }
+
+    isDraggingRef.current = false
+    setIsDragging(false)
+    onChange(latestValueRef.current)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current)
+      }
+    }
+  }, [])
+
+  const displayValue = isDragging ? localValue : value
+
   return (
-    <div className="sys-slider-track" ref={trackRef} onClick={handleClick}>
-      <div className="sys-slider-fill" style={{ width: `${value * 100}%` }} />
-      <div className="sys-slider-thumb" style={{ left: `${value * 100}%` }} />
+    <div
+      className={`sys-slider-track ${isDragging ? 'sys-slider-track--dragging' : ''}`}
+      ref={trackRef}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={stopDragging}
+      onPointerCancel={stopDragging}
+    >
+      <div className="sys-slider-fill" style={{ width: `${displayValue * 100}%` }} />
+      <div className="sys-slider-thumb" style={{ left: `${displayValue * 100}%` }} />
     </div>
   )
 }
