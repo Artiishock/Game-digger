@@ -684,25 +684,19 @@
   transform: translateX(-50%);
 }
 
-.ui-modal-title {
-  font-family: var(--font-display);
-  font-size: 28px;
-  letter-spacing: 0.06em;
-  color: var(--gold);
-}
 
 .ui-menu-modal .ui-modal-title {
   grid-column: 2;
   justify-self: center;
-  font-family: Inter, var(--font-display), sans-serif;
   font-size: 52px;
   line-height: 100%;
-  letter-spacing: 0;
   color: #facb32;
   font-weight: 800;
   text-align: center;
   text-transform: uppercase;
   white-space: nowrap;
+  letter-spacing: 0.06em;
+
 }
 
 .ui-modal-close {
@@ -2667,7 +2661,7 @@
 }
 
 .sys-settings-slider-icon {
-  width: 34px;
+  width: 48px;
   color: #ffffff;
   font-size: 30px;
   line-height: 1;
