@@ -1353,6 +1353,133 @@
 }
 
 
+
+
+/* AUTOPLAY NUMERIC KEYBOARD */
+.ui-keyboard-focus-dim {
+  position: fixed;
+  inset: 0;
+  z-index: 240;
+  background: rgba(12, 11, 23, 0.75);
+  /* backdrop-filter: blur(35px); */
+}
+
+.ui-keyboard-anchor {
+  position: relative;
+}
+
+.ui-keyboard-anchor--active {
+  z-index: 260;
+}
+
+.ui-keyboard-anchor--active .ui-ap-input,
+.ui-keyboard-anchor--active .ui-input-row-field-wrap,
+.ui-keyboard-anchor--active .ui-input-row-field {
+  position: relative;
+  z-index: 1;
+}
+
+.ui-num-keyboard {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 8px);
+  z-index: 2;
+
+  width: 306px;
+  height: 70px;
+  box-sizing: border-box;
+  padding: 9px 10px;
+
+  display: grid;
+  grid-template-columns: 200px 40px 40px;
+  column-gap: 5px;
+  align-items: center;
+
+  border-radius: 16px;
+  background: #2a2a34;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
+
+  transform: translateX(-50%);
+}
+
+.ui-modal--keyboard-active {
+  pointer-events: none;
+}
+
+.ui-modal--keyboard-active .ui-keyboard-anchor--active,
+.ui-modal--keyboard-active .ui-num-keyboard {
+  pointer-events: auto;
+}
+
+.ui-num-keyboard__digits,
+.ui-num-keyboard__tools {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ui-num-keyboard__digit-row {
+  display: flex;
+  gap: 0;
+}
+
+.ui-num-keyboard__confirm {
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ui-num-keyboard__btn {
+  width: 40px;
+  height: 24px;
+  padding: 0;
+  margin: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  outline: none;
+  cursor: pointer;
+
+  color: #a0a0b2;
+  font-family: Inter, var(--font-body), sans-serif;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 100%;
+}
+
+.ui-num-keyboard__btn:hover {
+  background: #6068ff;
+}
+
+.ui-num-keyboard__btn--icon img,
+.ui-num-keyboard__btn--confirm img {
+  display: block;
+  max-width: 24px;
+  max-height: 20px;
+  pointer-events: none;
+}
+
+.ui-num-keyboard__btn--confirm {
+  height: 24px;
+  width: 40px;
+}
+
+.ui-ap-start-btn--hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+
+
+
+
+
 /* ═══════════════════════════════════════════════════════ RULES START SCREEN ═══════════════════════════════════════════════════════ */
 
 .rules-start-screen {
