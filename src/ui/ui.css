@@ -157,8 +157,8 @@
 }
 
 .ui-icon-btn {
-  width: 50px;
-  height: 50px;
+  width: 51.5px;
+  height: 53px;
 
   cursor: pointer;
   display: flex;
@@ -272,7 +272,7 @@
   justify-content: center;
 
   flex-shrink: 0;
-  width: 260px;
+  /* width: 260px; */
   height: 120px;
   background: rgba(6, 6, 6, 0.5);
   border: 1px solid #9f9f9f;
@@ -282,7 +282,7 @@
 }
 
 .ui-credit-label {
-  font-size: 18px;
+  font-size: 24px;
   font-weight: 800;
   color: #facb32;
   line-height: 1;
@@ -293,7 +293,7 @@
 }
 
 .ui-credit-value {
-  font-size: 26px;
+  font-size: 32px;
   font-weight: 800;
   color: #ffffff;
   line-height: 1;
@@ -479,7 +479,7 @@
 .ui-spin-control {
   position: absolute;
   right: 0;
-  bottom: 30%;
+  bottom: 40%;
   z-index: 60;
   display: flex;
   flex-direction: column;
@@ -488,8 +488,8 @@
 }
 
 .ui-spin-btn {
-  width: 200px;
-  height: 200px;
+  width: 190px;
+  height: 190px;
 
   background-color: transparent;
   background-image: url("/ui/spin_bg.png");
@@ -512,6 +512,7 @@
 
   opacity: 1;
   transition: opacity 0.15s;
+  font-family: Inter, var(--font-body), sans-serif;
 }
 
 .ui-spin-btn--active {
@@ -528,8 +529,8 @@
 }
 
 .ui-spin-btn-icon > svg {
-  width: 100%;
-  height: 100%;
+  width: 95%;
+  height: 95%;
   display: block;
 }
 
@@ -554,8 +555,8 @@
 /* AUTOSPIN */
 
 .ui-autospin-btn {
-  width: 100px;
-  height: 100px;
+  width: 90px;
+  height: 90px;
   background-color: transparent;
   background-image: url("/ui/autoplay_bg.png");
   background-size: cover;
@@ -591,8 +592,8 @@
 }
 
 .ui-autospin-btn-icon > svg {
-  width: 100%;
-  height: 100%;
+  width: 95%;
+  height: 95%;
   display: block;
 }
 
@@ -4322,8 +4323,8 @@
   }
 
   .ui-icon-btn {
-    width: 50px;
-    height: 50px;
+    width: 51.5px;
+    height: 53px;
   }
 
   .ui-icon,
@@ -4537,8 +4538,8 @@
   }
 
   .ui-icon-btn {
-    width: 50px;
-    height: 50px;
+    width: 51.5px;
+    height: 53px;
   }
 
   .ui-icon,
@@ -4771,8 +4772,8 @@
   }
 
   .ui-icon-btn {
-    width: 50px;
-    height: 50px;
+    width: 51.5px;
+    height: 53px;
   }
 
   .ui-icon,
@@ -4810,7 +4811,7 @@
 
   .ui-spin-control {
     right: 0;
-    bottom: 34%;
+    bottom: 45%;
     gap: 10px;
   }
 
@@ -4890,8 +4891,8 @@
   }
 
   .ui-speed-btn {
-    width: 32px;
-    height: 34px;
+    width: 31.5px;
+    height: 33px;
   }
 
   .ui-speed-icon {
@@ -4934,6 +4935,8 @@
   .ui-bet-label {
     grid-column: 1;
     grid-row: 1;
+      justify-self: end;
+  text-align: right;
     font-size: 12px;
     font-weight: 800;
     margin-bottom: -17px;
@@ -4946,14 +4949,16 @@
   .ui-bet-amount {
     grid-column: 1;
     grid-row: 2;
+      justify-self: end;
+  text-align: right;
     font-size: 12px;
     font-weight: 900;
     margin-top: -17px;
   }
 
   .ui-bet-adj {
-    width: 30px;
-    height: 30px;
+    width: 31.5px;
+    height: 33px;
   }
 
   .ui-bet-icon {
@@ -5060,8 +5065,8 @@
   }
 
   .ui-icon-btn {
-    width: 50px;
-    height: 50px;
+    width: 51.5px;
+    height: 53px;
   }
 
   .ui-icon,
@@ -5178,8 +5183,8 @@
   }
 
   .ui-speed-btn {
-    width: 32px;
-    height: 34px;
+    width: 31.5px;
+    height: 33px;
   }
 
   .ui-speed-icon {
@@ -5229,8 +5234,8 @@
   }
 
   .ui-bet-adj {
-    width: 30px;
-    height: 30px;
+    width: 31.5px;
+    height: 33px;
   }
 
   .ui-bet-icon {
@@ -5284,3 +5289,19 @@
     display: block;
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
