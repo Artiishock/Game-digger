@@ -23,7 +23,7 @@ const slides = [
     image: "/rules/places.png",
     alt: "Places",
     title: "GET TO A SAFE PLACE TO SECURE THE WINNINGS",
-    fontSize: "22px",
+    fontSize: "24px",
   },
 ];
 
@@ -76,12 +76,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart
               </div>
 
               <div
-                className="rules-title"
-                style={{
-                  fontSize: slides[activeSlideIndex].fontSize,
-                  letterSpacing: isPlacesSlide ? "-0.6px" : undefined,
-                }}
-              >
+                className="rules-title">
                 {slides[activeSlideIndex].title}
               </div>
 
