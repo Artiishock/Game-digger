@@ -113,9 +113,9 @@ export const BurgerMenu: React.FC = () => {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="ui-modal-header">
-          <span className="ui-modal-title">SYSTEM SETTINGS</span>
+          <span className="ui-modal-title">SETTINGS</span>
           <button className="ui-modal-close" onClick={() => setOpen(false)}>
-            <img src={cross} alt="Close" className="sys-settings-slider-icon" />
+            <img src={cross} alt="Close" className="sys-settings-slider-icon-cross" />
           </button>
         </div>
 
