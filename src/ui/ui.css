@@ -1366,6 +1366,26 @@
 }
 
 
+@media (hover: none), (pointer: coarse) {
+  .ui-pill:hover::before,
+  .ui-ap-start-btn:hover:not(:disabled)::before,
+  .ui-checkbox:hover::before,
+  .ui-check-row:hover .ui-checkbox::before,
+  .ui-input-row:hover .ui-checkbox::before {
+    background-color: #5c5e6a;
+  }
+
+  .ui-check-row:hover,
+  .ui-input-row:hover {
+    color: #a0a0b2;
+  }
+
+  .ui-check-row:hover .ui-checkbox--checked::before,
+  .ui-input-row:hover .ui-checkbox--checked::before {
+    background-color: #6068ff;
+  }
+}
+
 
 
 /* AUTOPLAY NUMERIC KEYBOARD */
@@ -1470,6 +1490,14 @@
   background: #6068ff;
 }
 
+@media (hover: none), (pointer: coarse) {
+  .ui-num-keyboard__btn:hover,
+  .ui-num-keyboard__btn:active,
+  .ui-num-keyboard__btn:focus {
+    background: transparent;
+  }
+}
+
 .ui-num-keyboard__btn--icon img,
 .ui-num-keyboard__btn--confirm img {
   display: block;
@@ -1489,6 +1517,23 @@
 }
 
 
+/* AUTOPLAY NUMERIC KEYBOARD FIX */
+.ui-modal--keyboard-active {
+  overflow: visible;
+}
+
+.ui-modal--keyboard-active .ui-modal-body {
+  overflow: visible;
+}
+
+.ui-modal--keyboard-active .ui-keyboard-anchor--active {
+  position: relative;
+  z-index: 270;
+}
+
+.ui-modal--keyboard-active .ui-num-keyboard {
+  z-index: 280;
+}
 
 
 
@@ -2421,6 +2466,10 @@
     width: 11px;
     height: 11px;
   }
+
+  .ui-num-keyboard {
+    left: -10%;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -2567,6 +2616,15 @@
   .ui-overlay:has(.ui-modal--sm) .ui-ap-start-btn::after {
     width: 11px;
     height: 11px;
+  }
+
+
+  .ui-input-row .ui-num-keyboard {
+    left: -20%;
+  }
+
+  .ui-ap-custom .ui-num-keyboard {
+    left: 120%;
   }
 }
 
