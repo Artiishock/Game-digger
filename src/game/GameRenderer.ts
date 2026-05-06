@@ -2604,7 +2604,10 @@ export class GameRenderer {
       const kxb = GameConfig.movement.tunnelXSmoothing
       this.charX += (txb - this.charX) * Math.min(1, kxb * gameDt)
       this._rebuildTunnelCumLengths()
-      this._pathArcS = projectWorldXYToTunnelArcLength(this._tunnelPath, this._tunnelCumLen, this.charX, this.charY)
+      this._pathArcS = Math.max(
+        this._pathArcS,
+        projectWorldXYToTunnelArcLength(this._tunnelPath, this._tunnelCumLen, this.charX, this.charY),
+      )
       const ptB = pointOnTunnelAtArcLength(this._tunnelPath, this._tunnelCumLen, this._pathArcS)
       this._pathTangentNx = ptB.nx
       this._pathTangentNy = ptB.ny
