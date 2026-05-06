@@ -47,6 +47,11 @@ export const AutoplayModal: React.FC = () => {
 
   const closeKeyboard = (event: React.MouseEvent<HTMLDivElement>) => {
     stopEvent(event);
+
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+
     setActiveInput(null);
   };
 
@@ -192,6 +197,7 @@ export const AutoplayModal: React.FC = () => {
                   placeholder=""
                   value={customRounds}
                   onFocus={() => setActiveInput("customRounds")}
+                  onClick={() => setActiveInput("customRounds")}
                   onChange={(e) => {
                     setRounds(0);
                     setCustomRounds(e.target.value.replace(/\D/g, ""));
@@ -351,6 +357,7 @@ const InputRow: React.FC<{
         className="ui-input-row-field"
         value={value}
         onFocus={() => onFocusInput(inputId)}
+        onClick={() => onFocusInput(inputId)}
         onChange={(e) => onChange(e.target.value.replace(/[^\d.]/g, ""))}
         placeholder={placeholder}
       />
