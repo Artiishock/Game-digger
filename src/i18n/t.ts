@@ -642,7 +642,7 @@ export function T(phrase: string): string {
 // Available in browser console: __setLang('ru')  __setLang('en')  __setLang('tr')
 if (typeof window !== 'undefined') {
   const supported = Object.keys(MAPS).join(' | ')
-  ;(window as Record<string, unknown>).__setLang = (lang: string) => {
+  ;(window as unknown as Record<string, unknown>).__setLang = (lang: string) => {
     const code = lang.split('-')[0].toLowerCase()
     if (!MAPS[code]) {
       console.warn(`[i18n] unknown lang "${code}". Supported: ${supported}`)

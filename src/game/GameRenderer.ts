@@ -1092,6 +1092,7 @@ class ObjectSpawner {
 // ─── Particles ────────────────────────────────────────────────────────────────
 
 interface Particle{gfx:PIXI.Graphics;vx:number;vy:number;life:number}
+interface FloatText{txt:PIXI.Text;vy:number;life:number}
 
 // ─── Деревья (слой _sceneryLayer): настройка размера и позиции ─────────────
 /** Мир Y базовой линии (якорь спрайта 0.5, 1 = низ текстуры) */
@@ -1177,6 +1178,7 @@ export class GameRenderer {
   private charScreenY=0
   private multiplier=0; private depth=0; private distance=0
   private particles:Particle[]=[]
+  private floatTexts:FloatText[]=[]
   private ppm=TILE*2
   private rgsQueue:RoundEvent[]=[]
   private rgsEvents:RoundEvent[]=[]   // оригинальный список — нужен для вычисления дельты
@@ -1700,6 +1702,7 @@ export class GameRenderer {
     this._lavaLossTimeoutPending = false
     this.multiplier=0;this.depth=0;this.distance=0
     this.particles=[]
+    this.floatTexts=[]
     this.rgsQueue=[...events]
     this.rgsEvents=events
     this._lossRound = events.some(e => e.type === 'LAVA')
@@ -2418,6 +2421,7 @@ export class GameRenderer {
         )
         this.stoneBreakTickTimer = 0.5 / spd   // следующий тик через 1 игровую секунду
         store.updateStats({ multiplier: Math.round(this.stoneBreakDisplayMult * 100) / 100 })
+        if (stepSize > 0) this._floatText(this.charX, this.charY, `-${Math.round(stepSize * 100) / 100}`, C.stone)
       }
 
       // Переключение стадий анимации камня:
@@ -2469,6 +2473,7 @@ export class GameRenderer {
         )
         this.goldBreakTickTimer = 0.5 / spd   // следующий тик через 1 игровую секунду
         store.updateStats({ multiplier: Math.round(this.goldBreakDisplayMult * 100) / 100 })
+        if (stepSize > 0) this._floatText(this.charX, this.charY, `+${Math.round(stepSize * 100) / 100}`, C.gold)
       }
       if (Math.random() < 0.3) {
         this._burst(this.charX, this.charY, C.gold, 3)
@@ -3049,6 +3054,7 @@ export class GameRenderer {
       this.tileWorld.setPathWaypoints([], this.surfY)
     }
 
+    this.floatTexts=[]
     this.objectsLayer.removeChildren()  // ← чистим объекты при возврате
     this.minerLayer.addChild(this.miner.root)
     // Как в конструкторе: не тянем X из charX (после раунда/лавы — герой вдали от стартовой сцены)
@@ -3093,6 +3099,19 @@ export class GameRenderer {
 
   // ─── Particles ────────────────────────────────────────────────────────────
 
+  private _floatText(wx:number,wy:number,label:string,color:number){
+    const txt=new PIXI.Text(label,{
+      fontFamily:'Arial,sans-serif',fontWeight:'900',fontSize:24,
+      fill:color,stroke:0x000000,strokeThickness:3,
+      dropShadow:true,dropShadowColor:0x000000,dropShadowBlur:0,dropShadowDistance:2,
+    })
+    txt.anchor.set(0.5,0.5)
+    txt.x=wx+(Math.random()-0.5)*40
+    txt.y=wy-40
+    this.objectsLayer.addChild(txt)
+    this.floatTexts.push({txt,vy:-(120+Math.random()*40),life:1})
+  }
+
   private _burst(wx:number,wy:number,col:number,n:number){
     for(let i=0;i<n;i++){
       const g=new PIXI.Graphics()
@@ -3125,6 +3144,12 @@ export class GameRenderer {
       if(p.life<=0){this.objectsLayer.removeChild(p.gfx);p.gfx.destroy();return false}
       p.gfx.x+=p.vx*dt;p.gfx.y+=p.vy*dt;p.vy+=260*dt
       p.gfx.alpha=p.life;p.gfx.scale.set(p.life*0.7+0.3);return true
+    })
+    this.floatTexts=this.floatTexts.filter(f=>{
+      f.life-=dt*1.1
+      if(f.life<=0){this.objectsLayer.removeChild(f.txt);f.txt.destroy();return false}
+      f.txt.y+=f.vy*dt;f.vy*=Math.pow(0.92,dt*60)
+      f.txt.alpha=f.life;f.txt.scale.set(0.8+f.life*0.4);return true
     })
 
     if (this.lavaSimulation) {

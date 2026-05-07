@@ -12,7 +12,31 @@
  *    100_000    =  $0.10
  */
 
+import _currencyList from '../../public/Supported_currencies.json'
+
 export const MONEY_SCALE = 1_000_000
+
+// ─── Currency helpers ─────────────────────────────────────────────────────────
+
+export interface CurrencyEntry {
+  currency:     string   // full name, e.g. "United States Dollar"
+  abbreviation: string   // ISO code,  e.g. "USD"
+  display:      string   // symbol,    e.g. "$"
+  example:      string   // formatted, e.g. "$10.00"
+}
+
+const _currencyMap: Record<string, CurrencyEntry> = Object.fromEntries(
+  (_currencyList as CurrencyEntry[]).map((e) => [e.abbreviation, e])
+)
+
+/** Returns the display symbol for a currency code, falls back to the code itself.
+ *  getCurrencySymbol('USD') → '$'
+ *  getCurrencySymbol('XGC') → 'GC'
+ *  getCurrencySymbol('FUN') → 'FUN'
+ */
+export function getCurrencySymbol(code: string): string {
+  return _currencyMap[code]?.display ?? code
+}
 
 // ─── URL params (injected by Stake Engine) ───────────────────────────────────
 
@@ -308,8 +332,13 @@ export function toApi(displayAmount: number): number {
 
 export function formatMoney(apiAmount: number, currency: string): string {
   const d = toDisplay(apiAmount)
-  if (currency === 'FUN' || currency === 'XGC' || currency === 'XSC') {
+  // Non-ISO currencies (demo, Stake virtual): use display symbol from JSON
+  if (!_currencyMap[currency]) {
     return `${d.toFixed(2)} ${currency}`
+  }
+  if (currency === 'XGC' || currency === 'XSC') {
+    const sym = getCurrencySymbol(currency)
+    return `${d.toFixed(2)} ${sym}`
   }
   try {
     return new Intl.NumberFormat('en-US', {
@@ -319,6 +348,6 @@ export function formatMoney(apiAmount: number, currency: string): string {
       maximumFractionDigits: 4,
     }).format(d)
   } catch {
-    return `${d.toFixed(2)} ${currency}`
+    return `${d.toFixed(2)} ${getCurrencySymbol(currency)}`
   }
 }
