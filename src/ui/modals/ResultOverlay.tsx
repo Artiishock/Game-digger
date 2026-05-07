@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useGameStore } from '../../store/gameStore'
 import { gameAudio } from '../../audio/GameAudio'
 import { resolveWinCelebration, type WinCelebrateKind } from '../winCelebration'
+import { t } from '../../i18n/t'
 import { WinCelebrationSpine } from '../WinCelebrationSpine'
 import '../ui.css'
 
@@ -124,14 +125,14 @@ export const ResultOverlay: React.FC = () => {
 
       {lastWin > 0 && (
         <div className="ui-result-win-info">
-          <div className="ui-result-win-sub">Выигрыш</div>
+          <div className="ui-result-win-sub">{t('win')}</div>
           <div className="ui-result-win-amt">{animatedWin.toFixed(2)} {currency}</div>
-          <div className="ui-result-win-mult">×{animatedMult.toFixed(2)} от ставки</div>
+          <div className="ui-result-win-mult">×{animatedMult.toFixed(2)} {t('play amount')}</div>
         </div>
       )}
 
       {!autoplay.active && (
-        <div className="ui-result-hint">Нажмите в любое место, чтобы закрыть</div>
+        <div className="ui-result-hint">{t('press anywhere to close')}</div>
       )}
     </div>
   )

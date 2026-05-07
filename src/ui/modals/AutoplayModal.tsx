@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { t, T } from "../../i18n/t";
 import { useGameStore } from "../../store/gameStore";
 import { gameEngine } from "../../game/GameEngine";
 import "../ui.css";
@@ -150,7 +151,7 @@ export const AutoplayModal: React.FC = () => {
         onClick={(event) => event.stopPropagation()}
       >
         <div className="ui-ap-section ui-ap-section--autoplay">
-          <div className="ui-ap-section-label">AUTO PLAY</div>
+          <div className="ui-ap-section-label">{T('play feature')}</div>
 
           <div className="ui-pills">
             {PRESET_ROUNDS.map((r) => (
@@ -182,7 +183,7 @@ export const AutoplayModal: React.FC = () => {
           </div>
 
           <div className="ui-ap-custom">
-            <div className="ui-ap-custom-label">Custom number of rounds</div>
+            <div className="ui-ap-custom-label">{t('custom number of plays')}</div>
 
             <div className="ui-ap-custom-row">
               <div
@@ -229,17 +230,17 @@ export const AutoplayModal: React.FC = () => {
         </div>
 
         <div className="ui-ap-section ui-ap-section--stop">
-          <div className="ui-ap-section-label">STOP CONDITIONS</div>
+          <div className="ui-ap-section-label">{T('stop conditions')}</div>
 
           <div className="ui-stop-conditions">
             <CheckRow
-              label="One any way"
+              label={t('on any win')}
               checked={stopAnyWin}
               onChange={setStopAnyWin}
             />
 
             <InputRow
-              label="If single win exceeds"
+              label={t('if single win exceeds')}
               checked={stopWinOverActive}
               onCheckChange={setStopWinOverActive}
               value={stopWinOver}
@@ -255,7 +256,7 @@ export const AutoplayModal: React.FC = () => {
             />
 
             <InputRow
-              label="If cash balance increases by"
+              label={t('if balance increases by')}
               checked={stopBalUpActive}
               onCheckChange={setStopBalUpActive}
               value={stopBalUp}
@@ -271,7 +272,7 @@ export const AutoplayModal: React.FC = () => {
             />
 
             <InputRow
-              label="If cash balance decreases by"
+              label={t('if balance decreases by')}
               checked={stopBalDownActive}
               onCheckChange={setStopBalDownActive}
               value={stopBalDown}

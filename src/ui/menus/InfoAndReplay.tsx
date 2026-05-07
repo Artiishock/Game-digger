@@ -1,4 +1,5 @@
 import React from "react";
+import { t } from "../../i18n/t";
 import { useGameStore } from "../../store/gameStore";
 import type { RoundEvent } from "../../rgs/client";
 import { gameEngine } from "../../game/GameEngine";
@@ -7,183 +8,108 @@ import { gameEngine } from "../../game/GameEngine";
 
 export const InfoPanel: React.FC = () => (
   <div className="info-panel">
-    {/* HOW TO PLAY */}
     <section className="info-section">
-      <h3 className="info-section-title">How to Play</h3>
-
+      <h3 className="info-section-title">{t('how to play')}</h3>
       <div className="info-section-content">
-        <p className="info-text">
-          Choose your bet amount using the controls in the “Bet” field and press
-          the “Start” button. The character will begin the descent. At the start
-          of each round, the multiplier is always x1.0.
-        </p>
-
-        <p className="info-text">
-          During the descent, the character may encounter bombs, rocks, coins,
-          gold nuggets, or diamonds. A bomb halves the current multiplier, rocks
-          subtract from it, coins and gold nuggets increase it, and diamonds
-          multiply the current multiplier by their value.
-        </p>
-
-        <p className="info-text">
-          If the character reaches the house without falling into lava, the
-          player wins, and all multipliers are applied to the bet. If the
-          character hits lava, the bet is lost.
-        </p>
+        <p className="info-text">{t('how to play p1')}</p>
+        <p className="info-text">{t('how to play p2')}</p>
+        <p className="info-text">{t('how to play p3')}</p>
       </div>
     </section>
 
-    {/* MULTIPLIERS */}
     <section className="info-section">
-      <h3 className="info-section-title">Multiplier Objects</h3>
-
+      <h3 className="info-section-title">{t('multiplier objects')}</h3>
       <div className="info-list">
         <div className="info-list-row">
-          <span className="info-list-label">Coins</span>
+          <span className="info-list-label">{t('coins')}</span>
           <span className="info-list-value">+1 / +2 / +3 / +5 / +10</span>
         </div>
-
         <div className="info-list-row">
-          <span className="info-list-label">Gold Nuggets</span>
+          <span className="info-list-label">{t('gold nuggets')}</span>
           <span className="info-list-value">+1 / +2 / +3 / +4</span>
         </div>
-
         <div className="info-list-row">
-          <span className="info-list-label">Diamonds</span>
+          <span className="info-list-label">{t('diamonds')}</span>
           <span className="info-list-value">x2 / x3 / x4 / x5</span>
         </div>
-
         <div className="info-list-row">
-          <span className="info-list-label">Rocks</span>
+          <span className="info-list-label">{t('rocks')}</span>
           <span className="info-list-value">-1 / -2 / -3 / -4</span>
         </div>
-
         <div className="info-list-row">
-          <span className="info-list-label">Bomb</span>
+          <span className="info-list-label">{t('bomb')}</span>
           <span className="info-list-value">÷2</span>
         </div>
       </div>
     </section>
 
-    {/* WIN / LOSE */}
     <section className="info-section">
-      <h3 className="info-section-title">Win & Loss</h3>
-
+      <h3 className="info-section-title">{t('win and loss')}</h3>
       <div className="info-section-content">
         <p className="info-text">
-          <span className="info-text-strong">Win:</span> The character
-          successfully reaches the house without touching lava — your result is
-          counted as a win.
+          <span className="info-text-strong">{t('win')}:</span> {t('win desc')}
         </p>
-
         <p className="info-text">
-          <span className="info-text-strong">Loss:</span> The round ends in a
-          loss if the character falls into lava.
+          <span className="info-text-strong">{t('loss')}:</span> {t('loss desc')}
         </p>
       </div>
     </section>
 
-    {/* RULES */}
     <section className="info-section">
-      <h3 className="info-section-title">Rules</h3>
-
+      <h3 className="info-section-title">{t('rules')}</h3>
       <div className="info-section-content">
-        <p className="info-text">
-          The maximum win is capped at x250 of your bet.
-        </p>
-
-        <p className="info-text">
-          If your win exceeds your bet, it is rounded up to the nearest whole
-          number. If it is lower than your bet, it is rounded down.
-        </p>
-
-        <p className="info-text">
-          Opening the rules during a round will pause the game.
-        </p>
+        <p className="info-text">{t('rules p1')}</p>
+        <p className="info-text">{t('rules p2')}</p>
+        <p className="info-text">{t('rules p3')}</p>
       </div>
     </section>
 
-    {/* AUTOPLAY */}
     <section className="info-section">
-      <h3 className="info-section-title">Autoplay</h3>
-
+      <h3 className="info-section-title">{t('autoplay')}</h3>
       <div className="info-section-content">
-        <p className="info-text">
-          The game includes an autoplay mode. Press the “Auto” (A) button and
-          select the number of rounds. Press it again to stop autoplay.
-        </p>
-
-        <p className="info-text">You can also configure stop conditions:</p>
-
+        <p className="info-text">{t('autoplay p1')}</p>
+        <p className="info-text">{t('autoplay p2')}</p>
         <ul className="info-bullet-list">
-          <li>On any win</li>
-          <li>If a single win exceeds a set amount</li>
-          <li>If balance increases by a set amount</li>
-          <li>If balance decreases by a set amount</li>
+          <li>{t('autoplay li1')}</li>
+          <li>{t('autoplay li2')}</li>
+          <li>{t('autoplay li3')}</li>
+          <li>{t('autoplay li4')}</li>
         </ul>
       </div>
     </section>
 
-    {/* SETTINGS */}
     <section className="info-section">
-      <h3 className="info-section-title">Settings</h3>
-
+      <h3 className="info-section-title">{t('settings section')}</h3>
       <div className="info-section-content">
-        <p className="info-text">
-          You can adjust character speed using the four buttons (turtle, human,
-          rabbit, horse).
-        </p>
-
-        <p className="info-text">The menu provides:</p>
-
+        <p className="info-text">{t('settings p1')}</p>
+        <p className="info-text">{t('settings p2')}</p>
         <ul className="info-bullet-list">
-          <li>Music and sound volume control</li>
-          <li>Moving the “Start” button anywhere on screen</li>
-          <li>Battery saver mode (reduces visual effects)</li>
+          <li>{t('settings li1')}</li>
+          <li>{t('settings li2')}</li>
+          <li>{t('settings li3')}</li>
         </ul>
-
-        <p className="info-text">
-          You can also access rules and history from this menu.
-        </p>
+        <p className="info-text">{t('settings p3')}</p>
       </div>
     </section>
 
-    {/* RTP */}
     <section className="info-section">
-      <h3 className="info-section-title">Return to Player</h3>
-      <p className="info-text">The overall RTP is 96.7%.</p>
+      <h3 className="info-section-title">{t('return to player')}</h3>
+      <p className="info-text">{t('rtp value')}</p>
     </section>
 
-    {/* GENERATION */}
     <section className="info-section">
-      <h3 className="info-section-title">Path Generation</h3>
-
+      <h3 className="info-section-title">{t('path generation')}</h3>
       <ul className="info-bullet-list">
-        <li>The character's path is randomly generated each round.</li>
-        <li>
-          Objects are generated at the moment the “Start” button is pressed.
-        </li>
+        <li>{t('path generation li1')}</li>
+        <li>{t('path generation li2')}</li>
       </ul>
     </section>
 
-    {/* EXTRA */}
     <section className="info-section">
-      <h3 className="info-section-title">Additional Information</h3>
-
-      <p className="info-text">
-        In case of technical issues, all rounds and winnings may be voided.
-        Every 24 hours, unfinished rounds are automatically resolved.
-      </p>
-
-      <p className="info-text">
-        If a “Collect” option is available, winnings are credited automatically.
-        Otherwise, results are calculated as if the player chose the safest
-        option.
-      </p>
-
-      <p className="info-version">
-        Rules version 1.0 (April 26, 2026). Game version 1.0.0.
-      </p>
+      <h3 className="info-section-title">{t('additional information')}</h3>
+      <p className="info-text">{t('additional info p1')}</p>
+      <p className="info-text">{t('additional info p2')}</p>
+      <p className="info-version">{t('rules version')}</p>
     </section>
   </div>
 );
@@ -246,8 +172,8 @@ export const ReplayPanel: React.FC = () => {
   if (roundHistory.length === 0) {
     return (
       <div className="replay-panel replay-panel--empty">
-        <p className="replay-empty-title">Round history is empty</p>
-        <p className="replay-empty-text">Play your first round</p>
+        <p className="replay-empty-title">{t('plays history empty')}</p>
+        <p className="replay-empty-text">{t('come and play / join in the game')}</p>
       </div>
     );
   }
@@ -258,7 +184,7 @@ export const ReplayPanel: React.FC = () => {
         <table className="replay-table">
           <thead>
             <tr>
-              {["Time", "Currency", "Bet", "Win", "Replay"].map((h) => (
+              {[t('time'), t('currency'), t('play amount'), t('win'), t('replay')].map((h) => (
                 <th key={h}>{h}</th>
               ))}
             </tr>

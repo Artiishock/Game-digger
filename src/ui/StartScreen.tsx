@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { t } from "../i18n/t";
 
 interface StartScreenProps {
   width: number;
@@ -7,24 +8,9 @@ interface StartScreenProps {
 }
 
 const slides = [
-  {
-    image: "/rules/multipliers.png",
-    alt: "Multipliers",
-    title: "COLLECT MULTIPLIERS",
-    fontSize: "32px",
-  },
-  {
-    image: "/rules/treats.png",
-    alt: "Treats",
-    title: "AVOID THREATS",
-    fontSize: "32px",
-  },
-  {
-    image: "/rules/places.png",
-    alt: "Places",
-    title: "GET TO A SAFE PLACE TO SECURE THE WINNINGS",
-    fontSize: "24px",
-  },
+  { image: "/rules/multipliers.png", alt: "Multipliers", titleKey: "collect multipliers" },
+  { image: "/rules/treats.png",      alt: "Treats",      titleKey: "avoid threats" },
+  { image: "/rules/places.png",      alt: "Places",      titleKey: "get to safe place" },
 ];
 
 export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart }) => {
@@ -77,7 +63,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart
 
               <div
                 className="rules-title">
-                {slides[activeSlideIndex].title}
+                {t(slides[activeSlideIndex].titleKey)}
               </div>
 
               <button

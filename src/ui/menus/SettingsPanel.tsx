@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { t, T } from '../../i18n/t'
 import { useGameStore } from '../../store/gameStore'
 import { gameAudio } from '../../audio/GameAudio'
 import '../ui.css'
@@ -12,8 +13,8 @@ export const SettingsPanel: React.FC = () => {
       <div className="sys-settings-section">
         <div className="sys-settings-toggle-item">
           <div>
-            <div className="sys-settings-toggle-title"> MUSIC</div>
-            <div className="sys-settings-toggle-desc">Turn off/on  music</div>
+            <div className="sys-settings-toggle-title">{T('music')}</div>
+            <div className="sys-settings-toggle-desc">{t('music desc')}</div>
           </div>
           <SysToggle
             checked={settings.musicEnabled}
@@ -47,9 +48,9 @@ export const SettingsPanel: React.FC = () => {
       <div className="sys-settings-section">
         <div className="sys-settings-toggle-item">
           <div>
-            <div className="sys-settings-toggle-title">BATTERY SAVER</div>
+            <div className="sys-settings-toggle-title">{T('battery saver')}</div>
             <div className="sys-settings-toggle-desc">
-              Save battery life by reducing animation speed
+              {t('battery saver desc')}
             </div>
           </div>
           <SysToggle
@@ -60,9 +61,9 @@ export const SettingsPanel: React.FC = () => {
 
         <div className="sys-settings-toggle-item">
           <div>
-            <div className="sys-settings-toggle-title">INTRO SCREEN</div>
+            <div className="sys-settings-toggle-title">{T('intro screen')}</div>
             <div className="sys-settings-toggle-desc">
-              Show the intro screen before starting the game
+              {t('intro screen desc')}
             </div>
           </div>
           <SysToggle
@@ -73,8 +74,8 @@ export const SettingsPanel: React.FC = () => {
 
         <div className="sys-settings-toggle-item">
           <div>
-            <div className="sys-settings-toggle-title">ENABLE SPACE</div>
-            <div className="sys-settings-toggle-desc">Press space bar to spin</div>
+            <div className="sys-settings-toggle-title">{T('enable space')}</div>
+            <div className="sys-settings-toggle-desc">{t('enable space desc')}</div>
           </div>
           <SysToggle
             checked={settings.spaceEnabled}

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useGameStore } from "../../store/gameStore";
 import { SettingsPanel } from "./SettingsPanel";
 import { InfoPanel, ReplayPanel } from "./InfoAndReplay";
+import { t, T } from "../../i18n/t";
 import "../ui.css";
 import infoIcon from "/ui/info.svg";
 import historyIcon from "/ui/history.svg";
@@ -10,10 +11,10 @@ import cross from "/ui/cross.svg";
 
 type Tab = "settings" | "info" | "replay";
 
-const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: "info", label: "INFORMATION", icon: infoIcon },
-  { id: "replay", label: "HISTORY", icon: historyIcon },
-  { id: "settings", label: "SETTINGS", icon: settingsIcon },
+const TABS: { id: Tab; labelKey: string; icon: string }[] = [
+  { id: "info", labelKey: "information", icon: infoIcon },
+  { id: "replay", labelKey: "history", icon: historyIcon },
+  { id: "settings", labelKey: "settings", icon: settingsIcon },
 ];
 
 const THUMB_HEIGHT = 110;
@@ -113,28 +114,28 @@ export const BurgerMenu: React.FC = () => {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="ui-modal-header">
-          <span className="ui-modal-title">SETTINGS</span>
+          <span className="ui-modal-title">{T('settings')}</span>
           <button className="ui-modal-close" onClick={() => setOpen(false)}>
             <img src={cross} alt="Close" className="sys-settings-slider-icon-cross" />
           </button>
         </div>
 
         <div className="ui-tabs">
-          {TABS.map((t) => (
+          {TABS.map((tabItem) => (
             <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`ui-tab ${tab === t.id ? "ui-tab--active" : ""}`}
+              key={tabItem.id}
+              onClick={() => setTab(tabItem.id)}
+              className={`ui-tab ${tab === tabItem.id ? "ui-tab--active" : ""}`}
             >
               <span
                 className="ui-tab-icon"
                 aria-hidden="true"
                 style={{
-                  maskImage: `url(${t.icon})`,
-                  WebkitMaskImage: `url(${t.icon})`,
+                  maskImage: `url(${tabItem.icon})`,
+                  WebkitMaskImage: `url(${tabItem.icon})`,
                 }}
               />
-              <span>{t.label}</span>
+              <span>{T(tabItem.labelKey)}</span>
             </button>
           ))}
         </div>
@@ -160,7 +161,7 @@ export const BurgerMenu: React.FC = () => {
 
         {phase === "RUNNING" && (
           <div className="ui-modal-footer">
-            Игра приостановлена пока открыто меню
+            {t('game paused')}
           </div>
         )}
       </div>

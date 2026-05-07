@@ -25,9 +25,10 @@ export interface UrlParams {
 
 export function getUrlParams(): UrlParams {
   const p = new URLSearchParams(window.location.search)
+  const rawLang = p.get('locale') ?? p.get('lang') ?? 'en'
   return {
     sessionID: p.get('sessionID') ?? 'demo',
-    lang:      p.get('lang')      ?? 'en',
+    lang:      rawLang.split('-')[0].toLowerCase(),
     device:    (p.get('device')   ?? 'desktop') as 'mobile' | 'desktop',
     rgsUrl:    p.get('rgs_url')   ?? '',
   }

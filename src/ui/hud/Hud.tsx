@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useGameStore, type SpeedMode } from "../../store/gameStore";
 import { formatMoney, toDisplay } from "../../rgs/client";
 import "../ui.css";
+import { T } from "../../i18n/t";
 
 // ── Логика прогрессивных шагов ставки (из BottomControlBar) ──────────────────
 const STEP_MAP = [
@@ -205,7 +206,7 @@ export const Hud: React.FC = () => {
   const betModal = showBetModal ? (
     <div className="bet-modal-panel" ref={betModalRef}>
       <div className="bet-modal__header">
-        <span className="bet-modal__title">BET MULTIPLIER {betValue}×</span>
+        <span className="bet-modal__title">{T('play amount')} {T('multiplier')} {betValue}×</span>
         <button
           className="bet-modal__close"
           onClick={() => {
@@ -218,7 +219,7 @@ export const Hud: React.FC = () => {
       </div>
       <div className="bet-modal__body">
         <div className="bet-modal__section">
-          <span className="bet-modal__label">BET</span>
+          <span className="bet-modal__label">{T('play amount')}</span>
           <div className="bet-modal__control">
             <input
               type="range"
@@ -244,7 +245,7 @@ export const Hud: React.FC = () => {
         </div>
 
         <div className="bet-modal__section">
-          <span className="bet-modal__label">COIN VALUE</span>
+          <span className="bet-modal__label">{T('coins')}</span>
           <div className="bet-modal__control">
             <input
               type="range"
@@ -270,12 +271,12 @@ export const Hud: React.FC = () => {
         </div>
 
         <div className="bet-modal__section bet-modal__section--total">
-          <span className="bet-modal__label">TOTAL BET</span>
+          <span className="bet-modal__label">{T('total play')}</span>
           <span className="bet-modal__total-value">${totalBet.toFixed(2)}</span>
         </div>
 
         <button className="bet-modal__max-btn" onClick={handleBetMax}>
-          BET MAX
+          MAX {T('play')}
         </button>
       </div>
     </div>
@@ -286,7 +287,7 @@ export const Hud: React.FC = () => {
     <div className="ui-hud">
       {/* CREDIT */}
       <div className="ui-credit">
-        <span className="ui-credit-label">CREDIT</span>
+        <span className="ui-credit-label">{T('balance')}</span>
         <span className="ui-credit-value">
           {formatMoney(balance, currency)}
         </span>
@@ -324,7 +325,7 @@ export const Hud: React.FC = () => {
         {/* TOTAL BET + модальное окно */}
         <div className="ui-bet-block" ref={betBtnsRef}>
           {betModal}
-          <span className="ui-bet-label">TOTAL BET</span>
+          <span className="ui-bet-label">{T('total play')}</span>
           <div className="ui-bet-controls">
             <button
               className="ui-bet-adj"
