@@ -28,30 +28,35 @@ export const BalanceBetModal: React.FC<BalanceBetModalProps> = ({
   onSelect,
 }) => {
   return (
-    <div className="balance-bet-modal" onClick={(event) => event.stopPropagation()}>
-      <div className="balance-bet-modal__header">
-        <span className="balance-bet-modal__title">Balance (Fun)</span>
-        <button
-          className="balance-bet-modal__close"
-          type="button"
-          aria-label="Close balance bet modal"
-          onClick={onClose}
-        >
-          <img src="/ui/cross.svg" alt="" />
-        </button>
-      </div>
-
-      <div className="balance-bet-modal__grid">
-        {BALANCE_BET_OPTIONS.map((label) => (
+    <div className="balance-bet-modal-layer" onClick={onClose}>
+      <div
+        className="balance-bet-modal"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="balance-bet-modal__header">
+          <span className="balance-bet-modal__title">Balance (Fun)</span>
           <button
-            key={label}
-            className="balance-bet-modal__cell"
+            className="balance-bet-modal__close"
             type="button"
-            onClick={() => onSelect(Number(label))}
+            aria-label="Close balance bet modal"
+            onClick={onClose}
           >
-            <span>{label}</span>
+            <img src="/ui/cross.svg" alt="" />
           </button>
-        ))}
+        </div>
+
+        <div className="balance-bet-modal__grid">
+          {BALANCE_BET_OPTIONS.map((label) => (
+            <button
+              key={label}
+              className="balance-bet-modal__cell"
+              type="button"
+              onClick={() => onSelect(Number(label))}
+            >
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

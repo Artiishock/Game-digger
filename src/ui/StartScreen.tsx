@@ -32,7 +32,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart
 
   return (
     <div className="rules-start-screen" style={{ width, height }}>
-      <img className="rules-logo" src="/rules/logo_magnetic.png" alt="Magnetic" />
+      <img className="rules-logo" src="/rules/logo_magnetic.svg" alt="Magnetic" />
 
       <div className="rules-content">
         <img className="rules-banner" src="/rules/banner.png" alt="Deep Rush" />
