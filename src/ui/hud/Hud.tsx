@@ -1,21 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useGameStore, type SpeedMode } from "../../store/gameStore";
 import { formatMoney, toDisplay } from "../../rgs/client";
 import "../ui.css";
 import { T } from "../../i18n/t";
-
-// ── Логика прогрессивных шагов ставки (из BottomControlBar) ──────────────────
-const STEP_MAP = [
-  { upTo: 2, step: 1 },
-  { upTo: 3, step: 3 },
-  { upTo: 5, step: 5 },
-  { upTo: 8, step: 10 },
-  { upTo: 9, step: 20 },
-  { upTo: Infinity, step: 25 },
-];
-function getStep(pressCount: number): number {
-  return STEP_MAP.find((s) => pressCount <= s.upTo)?.step ?? 25;
-}
+import { BalanceBetModal } from "../modals/BalanceBetModal";
 
 // ── Скорости ─────────────────────────────────────────────────────────────────
 const SPEEDS: { mode: SpeedMode; label: string }[] = [
@@ -105,31 +93,20 @@ export const Hud: React.FC = () => {
   const minBet = levels[0] ?? 0.1;
   const maxBet = levels[levels.length - 1] ?? 1000;
 
-  // ── Bet modal state ───────────────────────────────────────────────────────
+  // ── Balance bet modal state ───────────────────────────────────────────────
   const [showBetModal, setShowBetModal] = useState(false);
-  const [betValue, setBetValue] = useState(bet);
-  const [coinValue, setCoinValue] = useState(1);
-  const [pressCount, setPressCount] = useState(0);
-  const betModalRef = useRef<HTMLDivElement>(null);
-  const betBtnsRef = useRef<HTMLDivElement>(null);
+  const groupRef = useRef<HTMLDivElement>(null);
 
-  // Синхронизация betValue при открытии модала
-  useEffect(() => {
-    if (showBetModal) setBetValue(bet);
-  }, [bet, showBetModal]);
-
-  // Закрытие по клику вне
+  // Закрытие по клику вне нижней группы управления
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      const target = e.target as Node;
       if (!showBetModal) return;
-      const insidePanel = betModalRef.current?.contains(target);
-      const insideBtns = betBtnsRef.current?.contains(target);
-      if (!insidePanel && !insideBtns) {
+      const target = e.target as Node;
+      if (!groupRef.current?.contains(target)) {
         setShowBetModal(false);
-        setPressCount(0);
       }
     };
+
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [showBetModal]);
@@ -137,63 +114,27 @@ export const Hud: React.FC = () => {
   // ── Кнопки + / − ─────────────────────────────────────────────────────────
   const handlePlus = () => {
     if (betDisabled) return;
-    const nextPress = pressCount + 1;
-    const step = getStep(nextPress);
-    const target = bet + step;
-    // Находим первый уровень >= target
-    const nextLevel =
-      levels.find((l) => l >= target) ?? levels[levels.length - 1];
-    if (nextLevel === bet) {
-      setPressCount(0);
-      return;
-    }
-    setPressCount(nextPress);
-    setBet(nextLevel);
-    setBetValue(nextLevel);
-    if (!showBetModal) {
-      setCoinValue(1);
-      setShowBetModal(true);
-    }
+    const idx = levels.findIndex((level) => level > bet);
+    setBet(idx >= 0 ? levels[idx] : maxBet);
   };
 
   const handleMinus = () => {
     if (betDisabled) return;
-    setPressCount(0);
-    const idx = levels.findIndex((l) => l >= bet);
-    const prev = idx > 0 ? levels[idx - 1] : levels[0];
-    setBet(prev);
-    setBetValue(prev);
-    if (!showBetModal) {
-      setCoinValue(1);
-      setShowBetModal(true);
+    let idx = -1;
+    for (let i = levels.length - 1; i >= 0; i--) {
+      if (levels[i] < bet) {
+        idx = i;
+        break;
+      }
     }
+    setBet(idx >= 0 ? levels[idx] : minBet);
   };
 
-  // ── Обработчики модала ────────────────────────────────────────────────────
-  const handleModalBetChange = (val: number) => {
-    const clamped = Math.max(minBet, Math.min(maxBet, val));
-    // Snap к ближайшему уровню
-    const snapped = levels.reduce((prev, curr) =>
-      Math.abs(curr - clamped) < Math.abs(prev - clamped) ? curr : prev,
-    );
-    setBetValue(snapped);
-    setBet(snapped);
-    setPressCount(0);
+  const handleModalSelect = (value: number) => {
+    if (betDisabled) return;
+    setBet(value);
+    setShowBetModal(false);
   };
-
-  const handleModalCoinChange = (val: number) => {
-    setCoinValue(Math.max(1, Math.min(100, Math.round(val))));
-    setPressCount(0);
-  };
-
-  const handleBetMax = () => {
-    setBet(maxBet);
-    setBetValue(maxBet);
-    setCoinValue(1);
-    setPressCount(0);
-  };
-
-  const totalBet = betValue * coinValue;
 
   const SPEED_ICONS: Record<number, string> = {
     0.75: "/ui/speedmode_0.75.svg",
@@ -201,86 +142,6 @@ export const Hud: React.FC = () => {
     2: "/ui/speedmode_2.svg",
     5: "/ui/speedmode_5.svg",
   };
-
-  // ── Bet modal JSX ─────────────────────────────────────────────────────────
-  const betModal = showBetModal ? (
-    <div className="bet-modal-panel" ref={betModalRef}>
-      <div className="bet-modal__header">
-        <span className="bet-modal__title">{T('play amount')} {T('multiplier')} {betValue}×</span>
-        <button
-          className="bet-modal__close"
-          onClick={() => {
-            setShowBetModal(false);
-            setPressCount(0);
-          }}
-        >
-          ×
-        </button>
-      </div>
-      <div className="bet-modal__body">
-        <div className="bet-modal__section">
-          <span className="bet-modal__label">{T('play amount')}</span>
-          <div className="bet-modal__control">
-            <input
-              type="range"
-              className="bet-modal__slider"
-              min={minBet}
-              max={maxBet}
-              step={0.01}
-              value={betValue}
-              onChange={(e) => handleModalBetChange(Number(e.target.value))}
-            />
-            <input
-              type="number"
-              className="bet-modal__input"
-              min={minBet}
-              max={maxBet}
-              value={betValue}
-              onChange={(e) => {
-                const v = parseFloat(e.target.value);
-                if (!isNaN(v)) handleModalBetChange(v);
-              }}
-            />
-          </div>
-        </div>
-
-        <div className="bet-modal__section">
-          <span className="bet-modal__label">{T('coins')}</span>
-          <div className="bet-modal__control">
-            <input
-              type="range"
-              className="bet-modal__slider"
-              min={1}
-              max={100}
-              step={1}
-              value={coinValue}
-              onChange={(e) => handleModalCoinChange(Number(e.target.value))}
-            />
-            <input
-              type="number"
-              className="bet-modal__input"
-              min={1}
-              max={100}
-              value={coinValue}
-              onChange={(e) => {
-                const v = parseInt(e.target.value);
-                if (!isNaN(v)) handleModalCoinChange(v);
-              }}
-            />
-          </div>
-        </div>
-
-        <div className="bet-modal__section bet-modal__section--total">
-          <span className="bet-modal__label">{T('total play')}</span>
-          <span className="bet-modal__total-value">${totalBet.toFixed(2)}</span>
-        </div>
-
-        <button className="bet-modal__max-btn" onClick={handleBetMax}>
-          MAX {T('play')}
-        </button>
-      </div>
-    </div>
-  ) : null;
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -293,7 +154,7 @@ export const Hud: React.FC = () => {
         </span>
       </div>
 
-      <div className="ui-group-wrapper">
+      <div className="ui-group-wrapper" ref={groupRef}>
         {/* SPEED BUTTONS */}
         <div className="ui-speed-group">
           {SPEEDS.map(({ mode, label }) => {
@@ -323,13 +184,22 @@ export const Hud: React.FC = () => {
         </div>
 
         {/* TOTAL BET + модальное окно */}
-        <div className="ui-bet-block" ref={betBtnsRef}>
-          {betModal}
+        {showBetModal && (
+          <BalanceBetModal
+            onClose={() => setShowBetModal(false)}
+            onSelect={handleModalSelect}
+          />
+        )}
+
+        <div
+          className="ui-bet-block"
+          onClick={() => !betDisabled && setShowBetModal(true)}
+        >
           <span className="ui-bet-label">{T('total play')}</span>
           <div className="ui-bet-controls">
             <button
               className="ui-bet-adj"
-              onClick={handleMinus}
+              onClick={(event) => { event.stopPropagation(); handleMinus(); }}
               disabled={betDisabled || bet <= minBet}
             >
               <span className="ui-bet-icon">
@@ -339,7 +209,7 @@ export const Hud: React.FC = () => {
             <span className="ui-bet-amount">{bet.toFixed(2)}</span>
             <button
               className="ui-bet-adj"
-              onClick={handlePlus}
+              onClick={(event) => { event.stopPropagation(); handlePlus(); }}
               disabled={betDisabled || bet >= maxBet}
             >
               <span className="ui-bet-icon">
