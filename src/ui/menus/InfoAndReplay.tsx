@@ -245,12 +245,27 @@ export const roundHistory: ReplayRound[] = [
   { time: '05/05/2026\n17:47:07', currency: 'FUN', bet: 1.00, win: 0.00, profit: -1.00, balBefore:  95.00, balAfter:  94.00, roundID: 'demo-7', worldSeed: 0, events: [] },
   { time: '05/05/2026\n17:47:00', currency: 'FUN', bet: 1.00, win: 3.00, profit:  2.00, balBefore:  94.00, balAfter:  96.00, roundID: 'demo-8', worldSeed: 0, events: [] },
   { time: '05/05/2026\n16:22:39', currency: 'FUN', bet: 1.00, win: 0.00, profit: -1.00, balBefore:  93.00, balAfter:  92.00, roundID: 'demo-9', worldSeed: 0, events: [] },
+  { time: '05/05/2026\n16:22:39', currency: 'FUN', bet: 1.00, win: 0.00, profit: -1.00, balBefore:  93.00, balAfter:  92.00, roundID: 'demo-9', worldSeed: 0, events: [] },
+  { time: '05/05/2026\n16:22:39', currency: 'FUN', bet: 1.00, win: 0.00, profit: -1.00, balBefore:  93.00, balAfter:  92.00, roundID: 'demo-9', worldSeed: 0, events: [] },
+  { time: '05/05/2026\n16:22:39', currency: 'FUN', bet: 1.00, win: 0.00, profit: -1.00, balBefore:  93.00, balAfter:  92.00, roundID: 'demo-9', worldSeed: 0, events: [] },
+  { time: '05/05/2026\n16:22:39', currency: 'FUN', bet: 1.00, win: 0.00, profit: -1.00, balBefore:  93.00, balAfter:  92.00, roundID: 'demo-9', worldSeed: 0, events: [] },
+  { time: '05/05/2026\n16:22:39', currency: 'FUN', bet: 1.00, win: 0.00, profit: -1.00, balBefore:  93.00, balAfter:  92.00, roundID: 'demo-9', worldSeed: 0, events: [] },
+  { time: '05/05/2026\n16:22:39', currency: 'FUN', bet: 1.00, win: 0.00, profit: -1.00, balBefore:  93.00, balAfter:  92.00, roundID: 'demo-9', worldSeed: 0, events: [] },
+  { time: '05/05/2026\n16:22:39', currency: 'FUN', bet: 1.00, win: 0.00, profit: -1.00, balBefore:  93.00, balAfter:  92.00, roundID: 'demo-9', worldSeed: 0, events: [] },
+  { time: '05/05/2026\n16:22:39', currency: 'FUN', bet: 1.00, win: 0.00, profit: -1.00, balBefore:  93.00, balAfter:  92.00, roundID: 'demo-9', worldSeed: 0, events: [] },
+
 ];
 
 export function addReplayRound(r: ReplayRound) {
   roundHistory.unshift(r);
   if (roundHistory.length > 50) roundHistory.pop();
 }
+
+const splitReplayTime = (time: string) => {
+  const normalized = time.trim().replace(/\s+/g, " ");
+  const [date = "", timeValue = ""] = normalized.split(" ");
+  return { date, timeValue };
+};
 
 export const ReplayPanel: React.FC = () => {
   if (roundHistory.length === 0) {
@@ -265,43 +280,52 @@ export const ReplayPanel: React.FC = () => {
   return (
     <div className="replay-panel replay-panel--filled">
       <div className="replay-table-wrap">
-        <table className="replay-table">
-          <thead>
-            <tr>
-              {["Time", "Currency", "Bet", "Win", "Replay"].map((h) => (
-                <th key={h}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-
-          <tbody>
-            {roundHistory.map((r, i) => (
-              <tr key={i}>
-                <td className="replay-time-cell">{r.time}</td>
-                <td>{r.currency}</td>
-                <td>{r.bet.toFixed(2)}</td>
-                <td className={r.win > 0 ? "replay-win" : "replay-muted"}>
-                  {r.win.toFixed(2)}
-                </td>
-                <td>
-                  <button
-                    className="replay-button"
-                    onClick={() => gameEngine.startReplay(r.events, r.worldSeed)}
-                  >
-                    <span
-                      className="replay-icon"
-                      aria-hidden="true"
-                      style={{
-                        mask: `url("/ui/replay_icon.svg") center / contain no-repeat`,
-                        WebkitMask: `url("/ui/replay_icon.svg") center / contain no-repeat`,
-                      }}
-                    />
-                  </button>
-                </td>
+        <div className="replay-table-shell">
+          <table className="replay-table">
+            <thead>
+              <tr>
+                {["Time", "Currency", "Bet", "Win", "Replay"].map((h) => (
+                  <th key={h}>{h}</th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+
+            <tbody>
+              {roundHistory.map((r, i) => {
+                const { date, timeValue } = splitReplayTime(r.time);
+
+                return (
+                  <tr key={i}>
+                    <td className="replay-time-cell">
+                      <span>{date}</span>
+                      <span>{timeValue}</span>
+                    </td>
+                    <td>{r.currency}</td>
+                    <td>{r.bet.toFixed(2)}</td>
+                    <td className={r.win > 0 ? "replay-win" : "replay-muted"}>
+                      {r.win.toFixed(2)}
+                    </td>
+                    <td>
+                      <button
+                        className="replay-button"
+                        onClick={() => gameEngine.startReplay(r.events, r.worldSeed)}
+                      >
+                        <span
+                          className="replay-icon"
+                          aria-hidden="true"
+                          style={{
+                            mask: `url("/ui/replay_icon.svg") center / contain no-repeat`,
+                            WebkitMask: `url("/ui/replay_icon.svg") center / contain no-repeat`,
+                          }}
+                        />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

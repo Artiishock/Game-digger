@@ -817,13 +817,14 @@ transform: scale(1.2, 1.2)
   text-transform: uppercase;
   transition:
     color 0.15s ease,
-    transform 0.15s ease;
+    font-size 0.15s ease;
 }
 
 .ui-tab:hover,
 .ui-tab--active {
   color: #f2fdff;
-  transform: scale(1.06);
+  font-size: 31px;
+  font-weight: 900;
 }
 
 .ui-tab-icon {
@@ -840,6 +841,16 @@ transform: scale(1.2, 1.2)
   -webkit-mask-repeat: no-repeat;
   -webkit-mask-position: center;
   -webkit-mask-size: contain;
+
+  transition:
+    width 0.15s ease,
+    height 0.15s ease;
+}
+
+.ui-tab:hover .ui-tab-icon,
+.ui-tab--active .ui-tab-icon {
+  width: 32px;
+  height: 32px;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -2474,6 +2485,7 @@ transform: scale(1.2, 1.2)
 .replay-panel--filled {
   max-width: none;
   min-height: 100%;
+  height: 100%;
   align-self: stretch;
   margin: 0;
 }
@@ -2497,13 +2509,16 @@ transform: scale(1.2, 1.2)
   color: #dbdbdb;
 }
 
+
+
+
 .replay-table-wrap {
   width: 100%;
-  min-height: 100%;
-  padding: 0 45px 25px;
+  height: calc(100% - 25px);
+  min-height: 0;
+  padding: 0 45px;
   box-sizing: border-box;
-  overflow-x: hidden;
-  overflow-y: visible;
+  overflow: hidden;
   scrollbar-width: none;
 }
 
@@ -2515,7 +2530,8 @@ transform: scale(1.2, 1.2)
   width: 100%;
   min-width: 0;
   table-layout: fixed;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-variant-numeric: tabular-nums;
   background-color: rgb(6, 6, 6, 0.65);
   margin: 0 5px;
@@ -2532,6 +2548,9 @@ transform: scale(1.2, 1.2)
   position: sticky;
   top: 0;
   z-index: 2;
+  background-color: transparent;
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 .replay-table th {
@@ -2544,6 +2563,7 @@ transform: scale(1.2, 1.2)
   text-transform: uppercase;
   white-space: normal;
   overflow-wrap: anywhere;
+  background-color: inherit;
 }
 
 .replay-table td {
@@ -2558,7 +2578,14 @@ transform: scale(1.2, 1.2)
 }
 
 .replay-time-cell {
-  white-space: pre-line;
+  vertical-align: middle;
+  text-align: left;
+  white-space: nowrap;
+  line-height: 1.15;
+}
+
+.replay-time-cell span {
+  display: block;
 }
 
 .replay-table td:last-child {
@@ -2574,13 +2601,41 @@ transform: scale(1.2, 1.2)
   border-bottom: 3px solid #f2fdff;
 }
 
-.replay-table tbody tr {
+.replay-table tbody td {
   border-bottom: 1px solid #a0a0b2;
 }
 
 .replay-table tbody tr:last-child td {
   border-bottom: none;
 }
+
+
+.replay-table-shell {
+  width: 100%;
+  height: 100%;
+  padding: 0 10px;
+  box-sizing: border-box;
+  border-radius: 12px;
+  background-color: rgba(6, 6, 6, 0.65);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+
+.replay-table-shell::-webkit-scrollbar {
+  display: none;
+}
+
+.replay-table {
+  width: 100%;
+  margin: 0;
+  border-collapse: separate;
+  border-spacing: 0;
+  background-color: transparent;
+}
+
+
+
 
 .replay-button {
   width: 170px;
@@ -2624,15 +2679,14 @@ transform: scale(1.2, 1.2)
   color: #d9d9d9;
 }
 
-.replay-button:hover,
-.replay-button:active,
-.replay-button--active {
-  background-color: #6068ff;
+.replay-button:hover {
+  background-color: rgba(96, 104, 255, 1);
 }
 
 .ui-menu-modal:has(.replay-panel--filled) .ui-modal-body {
   align-items: stretch;
   justify-content: flex-start;
+  overflow: hidden;
 }
 
 .ui-menu-modal:has(.replay-panel--filled) .ui-modal-scrollbar {
@@ -2692,6 +2746,13 @@ transform: scale(1.2, 1.2)
   align-self: flex-start;
   margin: 20px auto 30px;
 }
+
+
+
+
+
+
+
 /* ═══════════════════════════════════════════════════════
    MENU MODAL ADAPTIVE — tablet portrait only
    Desktop styles above are intentionally untouched.
@@ -2761,14 +2822,37 @@ transform: scale(1.2, 1.2)
 
   .ui-menu-modal .ui-tabs {
     gap: 10px;
-    padding-left: 38px;
-    padding-right: 38px;
+    padding-left: 0;
+    padding-right: 0;
     box-sizing: border-box;
+    margin: 20px 0;
   }
 
   .ui-menu-modal .ui-tab {
-    width: calc((100% - 20px) / 3);
-    height: 90px;
+    width: 120px;
+    height: 60px;
+    gap: 0;
+    font-size: 0;
+  }
+
+  .ui-menu-modal .ui-tab:hover,
+  .ui-menu-modal .ui-tab--active {
+    font-size: 0;
+  }
+
+  .ui-menu-modal .ui-tab-label {
+    display: none;
+  }
+
+  .ui-menu-modal .ui-tab-icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .ui-menu-modal .ui-tab:hover .ui-tab-icon,
+  .ui-menu-modal .ui-tab--active .ui-tab-icon {
+    width: 48px;
+    height: 48px;
   }
 
   .ui-menu-modal .sys-settings,
@@ -2810,9 +2894,9 @@ transform: scale(1.2, 1.2)
 
   .ui-menu-modal .replay-table-wrap {
     width: 100%;
-    height: 100%;
+    height: calc(100% - clamp(25px, 4.7vw, 35px));
     min-height: 0;
-    padding: 0 clamp(20px, 3.2vw, 24px) clamp(18px, 2.6vw, 22px);
+    padding: 0 clamp(20px, 3.2vw, 24px);
     box-sizing: border-box;
     overflow: hidden;
   }
@@ -2822,49 +2906,54 @@ transform: scale(1.2, 1.2)
     min-width: 0;
     margin: 0;
     table-layout: fixed;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     border-radius: 8px;
-    overflow: hidden;
-    background-color: rgba(6, 6, 6, 0.65);
+    overflow: visible;
   }
 
   .ui-menu-modal .replay-table th {
-    height: clamp(30px, 4.6vw, 34px);
+    height: clamp(36px, 7.39vw, 55px);
     padding: 0 8px;
-    font-size: clamp(11px, 1.65vw, 15px);
+    font-size: 20px;
     line-height: 1;
+    font-weight: 700;
     text-align: center;
     vertical-align: middle;
   }
 
   .ui-menu-modal .replay-table td {
-    height: clamp(43px, 6.4vw, 48px);
+    height: clamp(48px, 9.41vw, 70px);
     padding: 0 8px;
-    font-size: clamp(12px, 1.9vw, 15px);
+    font-size: 20px;
     line-height: 1.1;
+    font-weight: 500;
     text-align: center;
     vertical-align: middle;
   }
 
   .ui-menu-modal .replay-time-cell {
-    white-space: pre-line;
     line-height: 1.15;
+    text-align: left;
+    white-space: nowrap;
   }
 
   .ui-menu-modal .replay-button {
-    width: clamp(82px, 16vw, 100px);
-    height: clamp(24px, 3.8vw, 28px);
+    width: clamp(82px, 15.46vw, 115px);
+    height: clamp(28px, 5.38vw, 40px);
     border-radius: 4px;
     margin: 0 auto;
   }
 
   .ui-menu-modal .replay-icon {
-    width: clamp(15px, 2.4vw, 18px);
-    height: clamp(15px, 2.4vw, 18px);
+    width: 26px;
+    height: 26px;
   }
 
   .ui-menu-modal:has(.replay-panel--filled) .ui-modal-scrollbar {
-    display: none;
+    display: block;
+    bottom: clamp(25px, 4.7vw, 40px);
+    top: 100px;
   }
 }
 
@@ -2928,6 +3017,25 @@ transform: scale(1.2, 1.2)
   .ui-menu-modal .ui-tab {
     width: calc((100% - 20px) / 3);
     height: 90px;
+    font-size: 24px;
+    font-weight: 900;
+  }
+
+  .ui-menu-modal .ui-tab:hover,
+  .ui-menu-modal .ui-tab--active {
+    font-size: 31px;
+    font-weight: 900;
+  }
+
+  .ui-menu-modal .ui-tab-icon {
+    width: 25px;
+    height: 25px;
+  }
+
+  .ui-menu-modal .ui-tab:hover .ui-tab-icon,
+  .ui-menu-modal .ui-tab--active .ui-tab-icon {
+    width: 32px;
+    height: 32px;
   }
 
   .ui-menu-modal .ui-modal-body {
@@ -2997,9 +3105,9 @@ transform: scale(1.2, 1.2)
 
   .ui-menu-modal .replay-table-wrap {
     width: 100%;
-    height: 100%;
+    height: calc(100% - 25px);
     min-height: 0;
-    padding: 0 clamp(18px, 2.7vw, 24px) clamp(12px, 3.75vh, 15px);
+    padding: 0 clamp(18px, 2.7vw, 24px);
     box-sizing: border-box;
     overflow: hidden;
   }
@@ -3009,53 +3117,53 @@ transform: scale(1.2, 1.2)
     min-width: 0;
     margin: 0;
     table-layout: fixed;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     border-radius: 8px;
-    overflow: hidden;
-    background-color: rgba(6, 6, 6, 0.65);
+    overflow: visible;
   }
 
   .ui-menu-modal .replay-table th {
-    height: clamp(28px, 8.75vh, 35px);
+    height: clamp(36px, 7.39vh, 55px);
     padding: 0 8px;
-    font-size: clamp(9px, 1.2vw, 15px);
+    font-size: 20px;
     line-height: 1;
+    font-weight: 700;
     text-align: center;
     vertical-align: middle;
   }
 
   .ui-menu-modal .replay-table td {
-    height: clamp(33px, 9vh, 36px);
+    height: clamp(44px, 9.41vh, 70px);
     padding: 0 8px;
-    font-size: clamp(9px, 1.2vw, 15px);
+    font-size: 20px;
     line-height: 1.15;
+    font-weight: 500;
     text-align: center;
     vertical-align: middle;
   }
 
   .ui-menu-modal .replay-time-cell {
-    white-space: pre-line;
     line-height: 1.15;
+    text-align: left;
+    white-space: nowrap;
   }
 
-  .ui-menu-modal .replay-table thead tr:first-child th {
-    border-bottom-width: 2px;
-  }
 
   .ui-menu-modal .replay-button {
-    width: clamp(95px, 12.5vw, 113px);
-    height: clamp(19px, 5vh, 20px);
+    width: clamp(113px, 16.09vw, 185px);
+    height: clamp(26px, 5.38vh, 40px);
     border-radius: 4px;
     margin: 0 auto;
   }
 
   .ui-menu-modal .replay-icon {
-    width: clamp(13px, 1.55vw, 14px);
-    height: clamp(13px, 1.55vw, 14px);
+    width: 26px;
+    height: 26px;
   }
 
   .ui-menu-modal:has(.replay-panel--filled) .ui-modal-scrollbar {
-    display: none;
+    display: block;
   }
 }
 
@@ -3158,6 +3266,12 @@ transform: scale(1.2, 1.2)
   .ui-menu-modal .ui-tab-icon {
     width: 32px;
     height: 32px;
+  }
+
+  .ui-menu-modal .ui-tab:hover .ui-tab-icon,
+  .ui-menu-modal .ui-tab--active .ui-tab-icon {
+    width: 48px;
+    height: 48px;
   }
 
   .ui-menu-modal .ui-modal-body {
@@ -3309,9 +3423,10 @@ transform: scale(1.2, 1.2)
 
   .ui-menu-modal .replay-table-wrap {
     width: 100%;
-    height: 100%;
+    height: calc(100% - (clamp(10px, 3.75vh, 15px) * 2));
     min-height: 0;
-    padding: 0 clamp(10px, 3vw, 12px) clamp(12px, 1.8vh, 16px);
+    margin-top: clamp(10px, 3.75vh, 15px);
+    padding: 0 clamp(10px, 3vw, 12px);
     box-sizing: border-box;
     overflow: hidden;
   }
@@ -3321,53 +3436,60 @@ transform: scale(1.2, 1.2)
     min-width: 0;
     margin: 0;
     table-layout: fixed;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     border-radius: 8px;
-    overflow: hidden;
-    background-color: rgba(6, 6, 6, 0.65);
+    overflow: visible;
   }
 
   .ui-menu-modal .replay-table th {
-    height: clamp(30px, 4vh, 36px);
+    height: clamp(30px, 10vh, 40px);
     padding: 0 5px;
-    font-size: clamp(8px, 2.5vw, 10px);
+    font-size: 11px;
     line-height: 1;
+    font-weight: 800;
     text-align: center;
     vertical-align: middle;
   }
 
   .ui-menu-modal .replay-table td {
-    height: clamp(35px, 4.85vh, 44px);
+    height: clamp(35px, 10vh, 40px);
     padding: 0 5px;
-    font-size: clamp(8px, 2.35vw, 9px);
+    font-size: 10px;
     line-height: 1.15;
+    font-weight: 500;
     text-align: center;
     vertical-align: middle;
   }
 
   .ui-menu-modal .replay-time-cell {
-    white-space: pre-line;
     line-height: 1.15;
+    text-align: left;
+    white-space: nowrap;
   }
 
-  .ui-menu-modal .replay-table thead tr:first-child th {
-    border-bottom-width: 2px;
-  }
 
   .ui-menu-modal .replay-button {
-    width: clamp(45px, 14vw, 56px);
-    height: clamp(20px, 2.9vh, 26px);
+    width: clamp(56px, 15.56vw, 140px);
+    height: clamp(20px, 6.25vh, 25px);
     border-radius: 4px;
     margin: 0 auto;
   }
 
   .ui-menu-modal .replay-icon {
-    width: clamp(13px, 4vw, 16px);
-    height: clamp(13px, 4vw, 16px);
+    width: 13px;
+    height: 13px;
   }
 
   .ui-menu-modal:has(.replay-panel--filled) .ui-modal-scrollbar {
-    display: none;
+    display: block;
+    top: 15px;
+    bottom: 15px;
+  }
+
+  .ui-menu-modal:has(.replay-panel--filled) .ui-modal-scrollbar-thumb {
+    width: 12px;
+    height: 35px;
   }
 }
 
@@ -3473,6 +3595,12 @@ transform: scale(1.2, 1.2)
   .ui-menu-modal .ui-tab-icon {
     width: 32px;
     height: 32px;
+  }
+
+  .ui-menu-modal .ui-tab:hover .ui-tab-icon,
+  .ui-menu-modal .ui-tab--active .ui-tab-icon {
+    width: 48px;
+    height: 48px;
   }
 
   .ui-menu-modal .ui-modal-body {
@@ -3649,9 +3777,10 @@ transform: scale(1.2, 1.2)
 
   .ui-menu-modal .replay-table-wrap {
     width: 100%;
-    height: 100%;
+    height: calc(100% - clamp(32px, 10vw, 40px) - clamp(10px, 3.75vw, 15px));
     min-height: 0;
-    padding: 0 clamp(10px, 3vw, 12px) clamp(12px, 1.8vh, 16px);
+    margin-top: clamp(10px, 3.75vw, 15px);
+    padding: 0 clamp(10px, 3vw, 12px);
     box-sizing: border-box;
     overflow: hidden;
   }
@@ -3661,53 +3790,82 @@ transform: scale(1.2, 1.2)
     min-width: 0;
     margin: 0;
     table-layout: fixed;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     border-radius: 8px;
-    overflow: hidden;
-    background-color: rgba(6, 6, 6, 0.65);
+    overflow: visible;
   }
 
   .ui-menu-modal .replay-table th {
-    height: clamp(30px, 4vh, 36px);
-    padding: 0 5px;
-    font-size: clamp(8px, 2.5vw, 10px);
+    height: clamp(30px, 10vw, 40px);
+    padding: 0 3px;
+    font-size: clamp(8px, 2.75vw, 11px);
     line-height: 1;
+    font-weight: 800;
     text-align: center;
     vertical-align: middle;
   }
 
   .ui-menu-modal .replay-table td {
-    height: clamp(35px, 4.85vh, 44px);
-    padding: 0 5px;
-    font-size: clamp(8px, 2.35vw, 9px);
+    height: clamp(35px, 10vw, 40px);
+    padding: 0 3px;
+    font-size: clamp(8px, 2.5vw, 10px);
     line-height: 1.15;
+    font-weight: 500;
     text-align: center;
     vertical-align: middle;
   }
 
-  .ui-menu-modal .replay-time-cell {
-    white-space: pre-line;
-    line-height: 1.15;
+  .ui-menu-modal .replay-table th:nth-child(1),
+  .ui-menu-modal .replay-table td:nth-child(1) {
+    width: 22%;
   }
 
-  .ui-menu-modal .replay-table thead tr:first-child th {
-    border-bottom-width: 2px;
+  .ui-menu-modal .replay-table th:nth-child(2),
+  .ui-menu-modal .replay-table td:nth-child(2) {
+    width: 23%;
   }
+
+  .ui-menu-modal .replay-table th:nth-child(3),
+  .ui-menu-modal .replay-table td:nth-child(3),
+  .ui-menu-modal .replay-table th:nth-child(4),
+  .ui-menu-modal .replay-table td:nth-child(4) {
+    width: 16%;
+  }
+
+  .ui-menu-modal .replay-table th:nth-child(5),
+  .ui-menu-modal .replay-table td:nth-child(5) {
+    width: 23%;
+  }
+
+  .ui-menu-modal .replay-time-cell {
+    line-height: 1.15;
+    text-align: left;
+    white-space: nowrap;
+  }
+
 
   .ui-menu-modal .replay-button {
-    width: clamp(45px, 14vw, 56px);
-    height: clamp(20px, 2.9vh, 26px);
+    width: clamp(45px, 13.75vw, 55px);
+    height: clamp(20px, 6.25vw, 25px);
     border-radius: 4px;
     margin: 0 auto;
   }
 
   .ui-menu-modal .replay-icon {
-    width: clamp(13px, 4vw, 16px);
-    height: clamp(13px, 4vw, 16px);
+    width: clamp(11px, 3.25vw, 13px);
+    height: clamp(11px, 3.25vw, 13px);
   }
 
   .ui-menu-modal:has(.replay-panel--filled) .ui-modal-scrollbar {
-    display: none;
+    display: block;
+    top: clamp(10px, 3.75vw, 15px);
+    bottom: clamp(32px, 10vw, 40px);
+  }
+
+  .ui-menu-modal:has(.replay-panel--filled) .ui-modal-scrollbar-thumb {
+    width: 12px;
+    height: clamp(90px, 27.5vw, 110px);
   }
 }
 

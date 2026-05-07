@@ -27,6 +27,7 @@ export const BurgerMenu: React.FC = () => {
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
+  const thumbRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
   const dragStartYRef = useRef(0);
   const dragStartScrollTopRef = useRef(0);
@@ -34,13 +35,22 @@ export const BurgerMenu: React.FC = () => {
   const [thumbTop, setThumbTop] = useState(0);
   const [showScrollbar, setShowScrollbar] = useState(false);
 
+  const getScrollElement = () => {
+    if (tab === "replay") {
+      return bodyRef.current?.querySelector<HTMLDivElement>(".replay-table-shell") ?? bodyRef.current;
+    }
+
+    return bodyRef.current;
+  };
+
   const updateScrollThumb = () => {
-    const el = bodyRef.current;
+    const el = getScrollElement();
     if (!el) return;
 
     const track = trackRef.current;
+    const thumbHeight = thumbRef.current?.offsetHeight ?? THUMB_HEIGHT;
     const maxScroll = el.scrollHeight - el.clientHeight;
-    const maxThumbTop = (track?.clientHeight ?? el.clientHeight) - THUMB_HEIGHT;
+    const maxThumbTop = (track?.clientHeight ?? el.clientHeight) - thumbHeight;
 
     setShowScrollbar(maxScroll > 0);
 
@@ -53,7 +63,7 @@ export const BurgerMenu: React.FC = () => {
   };
 
   const handleThumbPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    const el = bodyRef.current;
+    const el = getScrollElement();
     if (!el) return;
 
     isDraggingRef.current = true;
@@ -65,12 +75,13 @@ export const BurgerMenu: React.FC = () => {
   };
 
   const handleThumbPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const el = bodyRef.current;
+    const el = getScrollElement();
     const track = trackRef.current;
     if (!el || !track || !isDraggingRef.current) return;
 
+    const thumbHeight = thumbRef.current?.offsetHeight ?? THUMB_HEIGHT;
     const maxScroll = el.scrollHeight - el.clientHeight;
-    const maxThumbTop = track.clientHeight - THUMB_HEIGHT;
+    const maxThumbTop = track.clientHeight - thumbHeight;
 
     if (maxScroll <= 0 || maxThumbTop <= 0) return;
 
@@ -89,16 +100,18 @@ export const BurgerMenu: React.FC = () => {
   };
 
   useEffect(() => {
-    const el = bodyRef.current;
+    const el = getScrollElement();
     if (!el || !isOpen) return;
 
     el.scrollTop = 0;
     updateScrollThumb();
+    const rafId = window.requestAnimationFrame(updateScrollThumb);
 
     el.addEventListener("scroll", updateScrollThumb);
     window.addEventListener("resize", updateScrollThumb);
 
     return () => {
+      window.cancelAnimationFrame(rafId);
       el.removeEventListener("scroll", updateScrollThumb);
       window.removeEventListener("resize", updateScrollThumb);
     };
@@ -134,7 +147,7 @@ export const BurgerMenu: React.FC = () => {
                   WebkitMaskImage: `url(${t.icon})`,
                 }}
               />
-              <span>{t.label}</span>
+              <span className="ui-tab-label">{t.label}</span>
             </button>
           ))}
         </div>
@@ -148,6 +161,7 @@ export const BurgerMenu: React.FC = () => {
         {showScrollbar && (
           <div className="ui-modal-scrollbar" ref={trackRef}>
             <div
+              ref={thumbRef}
               className="ui-modal-scrollbar-thumb"
               style={{ transform: `translateY(${thumbTop}px)` }}
               onPointerDown={handleThumbPointerDown}
