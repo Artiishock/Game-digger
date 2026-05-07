@@ -431,8 +431,8 @@
 }
 
 .ui-bet-adj {
-  width: 50px;
-  height: 50px;
+  width: 51.5px;
+  height: 53px;
 
   background-color: transparent;
   background-image: url("/ui/plus_minus_bg.png");
@@ -4327,8 +4327,8 @@
   }
 
   .ui-bet-adj {
-    width: 50px;
-    height: 50px;
+    width: 51.5px;
+    height: 53px;
   }
 
   .ui-bet-icon {
@@ -4565,8 +4565,8 @@
   }
 
   .ui-bet-adj {
-    width: 35px;
-    height: 35px;
+    width: 36.5px;
+    height: 38px;
   }
 
   .ui-spin-btn-icon,
