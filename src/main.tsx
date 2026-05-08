@@ -3,6 +3,22 @@ import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import './dev/demoMathConsole'
 
+if (import.meta.env.DEV) {
+  const originalWarn = console.warn.bind(console)
+  console.warn = (...args: unknown[]) => {
+    const joined = args
+      .map((arg) => (typeof arg === 'string' ? arg : ''))
+      .join(' ')
+    const isPixiRgb2HexDeprecation =
+      joined.includes('PixiJS Deprecation Warning') &&
+      joined.includes('utils.rgb2hex is deprecated')
+    if (isPixiRgb2HexDeprecation) {
+      return
+    }
+    originalWarn(...args)
+  }
+}
+
 const root = document.getElementById('root')
 if (!root) throw new Error('Root element not found')
 

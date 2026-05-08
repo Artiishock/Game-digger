@@ -81,7 +81,7 @@ const en: PhraseMap = {
 
   // ── info panel ──────────────────────────────────────────────────────────────
   'how to play':                     'How to Play',
-  'how to play p1':                  'Choose your bet amount using the controls in the "Bet" field and press the "Start" button. The character will begin the descent. At the start of each round, the multiplier is always x1.0.',
+  'how to play p1':                  'Choose your bet amount using the controls in the "Bet" field and press the "Start" button. The character will begin the descent. At the start of each round, the multiplier is always x0.0.',
   'how to play p2':                  'During the descent, the character may encounter bombs, rocks, coins, gold nuggets, or diamonds. A bomb halves the current multiplier, rocks subtract from it, coins and gold nuggets increase it, and diamonds multiply the current multiplier by their value.',
   'how to play p3':                  'If the character reaches the house without falling into lava, the player wins, and all multipliers are applied to the bet. If the character hits lava, the bet is lost.',
   'multiplier objects':              'Multiplier Objects',
@@ -202,7 +202,7 @@ const es: PhraseMap = {
 
   // ── info panel ──────────────────────────────────────────────────────────────
   'how to play':                     'Cómo jugar',
-  'how to play p1':                  'Elige tu monto de apuesta usando los controles en el campo "Apuesta" y presiona el botón "Inicio". El personaje comenzará el descenso. Al inicio de cada ronda, el multiplicador siempre es x1.0.',
+  'how to play p1':                  'Elige tu monto de apuesta usando los controles en el campo "Apuesta" y presiona el botón "Inicio". El personaje comenzará el descenso. Al inicio de cada ronda, el multiplicador siempre es x0.0.',
   'how to play p2':                  'Durante el descenso, el personaje puede encontrar bombas, rocas, monedas, pepitas de oro o diamantes. Una bomba reduce a la mitad el multiplicador actual, las rocas lo restan, las monedas y pepitas de oro lo aumentan, y los diamantes multiplican el multiplicador actual por su valor.',
   'how to play p3':                  'Si el personaje llega a la casa sin caer en la lava, el jugador gana y todos los multiplicadores se aplican a la apuesta. Si el personaje toca la lava, la apuesta se pierde.',
   'multiplier objects':              'Objetos multiplicadores',
@@ -444,7 +444,7 @@ const ru: PhraseMap = {
 
   // ── info panel ──────────────────────────────────────────────────────────────
   'how to play':                     'Как играть',
-  'how to play p1':                  'Выберите сумму ставки с помощью элементов управления в поле «Ставка» и нажмите кнопку «Старт». Персонаж начнёт спуск. В начале каждого раунда множитель всегда равен x1.0.',
+  'how to play p1':                  'Выберите сумму ставки с помощью элементов управления в поле «Ставка» и нажмите кнопку «Старт». Персонаж начнёт спуск. В начале каждого раунда множитель всегда равен x0.0.',
   'how to play p2':                  'Во время спуска персонаж может встретить бомбы, камни, монеты, золотые самородки или бриллианты. Бомба уменьшает текущий множитель вдвое, камни вычитают из него, монеты и самородки увеличивают, а бриллианты умножают текущий множитель на своё значение.',
   'how to play p3':                  'Если персонаж достигает домика, не упав в лаву, игрок побеждает и все множители применяются к ставке. Если персонаж попадает в лаву, ставка проиграна.',
   'multiplier objects':              'Объекты-множители',

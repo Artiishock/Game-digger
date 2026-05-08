@@ -33,6 +33,7 @@ export interface RoundRecord {
   expectedEvents:  RoundEvent[]
   collects:        CollectRecord[]
   finalMultiplier: number | null
+  settledMultiplier: number | null
   rgsRemainder:    RoundEvent[]   // события, оставшиеся в очереди после конца раунда
   startedAt:       number         // performance.now()
   endedAt:         number | null
@@ -51,7 +52,7 @@ function _ensureCurrent(): RoundRecord {
   // защита: не должно случаться, но лучше не бросать исключение
   _current = {
     roundSeq: 0, roundID: '?', bet: 0, isLoss: false,
-    expectedEvents: [], collects: [], finalMultiplier: null,
+    expectedEvents: [], collects: [], finalMultiplier: null, settledMultiplier: null,
     rgsRemainder: [], startedAt: performance.now(), endedAt: null,
   }
   return _current
@@ -78,6 +79,7 @@ export const GameLogger = {
       expectedEvents:  [...params.events],
       collects:        [],
       finalMultiplier: null,
+      settledMultiplier: null,
       rgsRemainder:    [],
       startedAt:       performance.now(),
       endedAt:         null,
@@ -141,10 +143,12 @@ export const GameLogger = {
     result:          'HOME' | 'LAVA'
     source:          'object' | 'simulation'
     finalMultiplier: number
+    settledMultiplier?: number
     rgsRemainder:    RoundEvent[]
   }): void {
     const round  = _ensureCurrent()
     round.finalMultiplier = params.finalMultiplier
+    round.settledMultiplier = params.settledMultiplier ?? params.finalMultiplier
     round.rgsRemainder    = [...params.rgsRemainder]
     round.endedAt         = performance.now()
     _current = null
@@ -157,22 +161,29 @@ export const GameLogger = {
     const dur    = ((round.endedAt - round.startedAt) / 1000).toFixed(1)
     const misses = round.collects.filter(c => !c.rgsMatched).length
     const missStr = misses > 0 ? `  ⚠️ RGS miss: ${misses}` : ''
+    const settledMult = round.settledMultiplier ?? params.finalMultiplier
+    const visualMult  = params.finalMultiplier
+    const hasMultDrift = Math.abs(settledMult - visualMult) >= 0.01
 
     console.group(
       `%c[РАУНД #${round.roundSeq} END]  ${won ? '🏠 ПОБЕДА' : '🔥 ПОТЕРЯ'}` +
-      `  ×${params.finalMultiplier.toFixed(2)}  ${dur}с${missStr}`,
+      `  ×${settledMult.toFixed(2)}  ${dur}с${missStr}`,
       css,
     )
+    if (hasMultDrift) {
+      console.warn(
+        `[ROUND MULT] visual ×${visualMult.toFixed(2)} vs payout ×${settledMult.toFixed(2)}`
+      )
+    }
 
     if (round.collects.length > 0) {
-      console.table(round.collects.map(c => ({
-        '#':      c.seq,
-        'тип':    c.type,
-        'до':     `×${c.multBefore.toFixed(2)}`,
-        'после':  `×${c.multAfter.toFixed(2)}`,
-        'RGS':    c.rgsMatched ? '✅' : '❌ random',
-        'эффект': (c.type === 'HOME' || c.type === 'LAVA') ? '—' : c.rgsEffect ?? '(random)',
-      })))
+      for (const c of round.collects) {
+        const effect = (c.type === 'HOME' || c.type === 'LAVA') ? '—' : c.rgsEffect ?? '(random)'
+        console.log(
+          `#${c.seq} ${c.type}  ${`×${c.multBefore.toFixed(2)}`} → ${`×${c.multAfter.toFixed(2)}`}  ` +
+          `${c.rgsMatched ? '✅' : '❌ random'}  ${effect}`
+        )
+      }
     } else {
       console.log('(нет собранных предметов)')
     }
@@ -291,6 +302,7 @@ export const GameLogger = {
       'исход':       r.isLoss ? '🔥 ЛАВА' : '🏠 ДОМ',
       'ставка':      `$${r.bet.toFixed(2)}`,
       '×':           r.finalMultiplier != null ? `×${r.finalMultiplier.toFixed(2)}` : '?',
+      '× payout':    r.settledMultiplier != null ? `×${r.settledMultiplier.toFixed(2)}` : '?',
       'предметов':   r.collects.length,
       'RGS miss':    r.collects.filter(c => !c.rgsMatched).length,
       'rgs остаток': r.rgsRemainder.length,

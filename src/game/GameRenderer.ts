@@ -3,6 +3,8 @@ import { initDevtools } from '@pixi/devtools'
 import { gameEngine }   from './GameEngine'
 import { useGameStore } from '../store/gameStore'
 import type { RoundEvent, EventType } from '../rgs/client'
+import * as RGS from '../rgs/client'
+import * as Demo from '../rgs/demo'
 import { TileWorld, TILE } from './Tileworld'
 import { LavaSimulation } from './LavaSimulation'
 import { SpineAnimator, HERO_ANIM, ROCK_ANIM, GOLD_ANIM, GOLD_STAGE, STONE_STAGE, BREAK_ACTION_DURATION, getSpineItemSize } from './SpineAnimator'
@@ -2146,11 +2148,12 @@ export class GameRenderer {
 
   // ─── LAVA: камера без движения, призрак с die летит вверх за длительность finish_lose.ogg ─
 
-  private _cleanupLavaDeathCinematic(): void {
+  private _cleanupLavaDeathCinematic(opts?: { snapToSurfaceIdlePose?: boolean }): void {
     const didLava = this._lavaExitFlightActive
     if (didLava) this._lavaExitFlightActive = false
     this._lavaDeathCinematic = false
     if (!didLava) return
+    if (opts?.snapToSurfaceIdlePose === false) return
 
     this.miner.clearLavaDeathVisualOverride()
     this.miner.root.visible = true
@@ -2241,6 +2244,16 @@ export class GameRenderer {
     this._lavaLossIdleGlideFromCy = this._lavaFrozenCamY
     this._lavaLossIdleGlideToCx = this._lavaDeathX - this.W / 2
     this._lavaLossIdleGlideToCy = this.idleCamY
+
+    // Показываем "нового" idle-героя сразу во время подъёма камеры:
+    // он уже стоит в финальной позиции, куда прилетит камера.
+    const hi = GameConfig.hero.idle
+    this.miner.clearLavaDeathVisualOverride()
+    this.miner.resetFromDeath()
+    this.miner.setIdleMode(true)
+    this.miner.root.visible = true
+    this.miner.root.x = this._lavaDeathX
+    this.miner.root.y = this.surfY + hi.rootOffsetYPx
   }
 
   private _tickLavaLossIdleGlide(dt: number): void {
@@ -2261,6 +2274,7 @@ export class GameRenderer {
     this._updateSkyDecor(dt)
     this._updateWorldMask(this.W, this.H)
     if (this.tileWorld) this.tileWorld.update(this.camX, this.camY, this.W, this.H)
+    this.miner.update(dt, 0.9, false)
     this._pUpdate(dt, dt)
 
     if (uRaw >= 1) {
@@ -2794,7 +2808,10 @@ export class GameRenderer {
   }
 
   private _logTerminal(source: 'object' | 'simulation', type: 'HOME' | 'LAVA'): void {
-    console.log(`--- КОНЕЦ РАУНДА [${type}] источник=${source} mult=×${this.multiplier.toFixed(2)} ---`)
+    const payoutMultiplier = (type === 'HOME' && RGS.isDemo())
+      ? (Demo.peekPendingBaseCoeff() || this.multiplier)
+      : this.multiplier
+    console.log(`--- КОНЕЦ РАУНДА [${type}] источник=${source} mult=×${payoutMultiplier.toFixed(2)} ---`)
     if (this.rgsQueue.length > 0) {
       console.warn(
         `[WARN] В rgsQueue остались необработанные события (${this.rgsQueue.length}):`,
@@ -2816,6 +2833,7 @@ export class GameRenderer {
       result:          type === 'HOME' ? 'HOME' : 'LAVA',
       source,
       finalMultiplier: this.multiplier,
+      settledMultiplier: payoutMultiplier,
       rgsRemainder:    [...this.rgsQueue],
     })
   }
@@ -2856,13 +2874,10 @@ export class GameRenderer {
       this._stoneCrashPlayed       = false
       this._breakStage = 1
       if (obj.spine) {
-        console.log('[DEBUG STONE] spine exists, setting stage_02, goldStoneReady=', SpineAnimator.goldStoneReady)
         SpineAnimator.setAnimation(obj.spine, STONE_STAGE.drill, true)
-        console.log('[DEBUG STONE] current anim after set:', (obj.spine.state as any).tracks?.[0]?.animation?.name)
         this._breakSpine = obj.spine
         this._breakGfx   = obj.gfx
       } else {
-        console.log('[DEBUG STONE] NO spine (null), goldStoneReady=', SpineAnimator.goldStoneReady)
         this._breakSpine = null
         this._breakGfx   = obj.gfx
       }
@@ -2913,13 +2928,10 @@ export class GameRenderer {
       this._breakStage = 1
       this._burst(obj.worldX, obj.worldY, C.gold, 12)
       if (obj.spine) {
-        console.log('[DEBUG GOLD] spine exists, setting stage_02, goldStoneReady=', SpineAnimator.goldStoneReady)
         SpineAnimator.setAnimation(obj.spine, GOLD_STAGE.drill, true)
-        console.log('[DEBUG GOLD] current anim after set:', (obj.spine.state as any).tracks?.[0]?.animation?.name)
         this._breakSpine = obj.spine
         this._breakGfx   = obj.gfx
       } else {
-        console.log('[DEBUG GOLD] NO spine (null), goldStoneReady=', SpineAnimator.goldStoneReady)
         this._breakSpine = null
         this._breakGfx   = obj.gfx
       }
@@ -3085,9 +3097,14 @@ export class GameRenderer {
     return Math.min(BREAK_ACTION_DURATION, Math.max(0.1, totalDuration * 0.36))
   }
 
-  /** Каноническое округление множителя: все последующие эффекты считаются от отображаемого значения. */
+  /**
+   * Нормализация множителя без ступенчатого округления.
+   * Внутри раунда считаем в полной точности, иначе накопленная погрешность
+   * расходится с payout/base_coeff математики (например 0.25 -> 0.32).
+   */
   private _roundMultiplier(v: number): number {
-    return Math.round((v + Number.EPSILON) * 100) / 100
+    if (!Number.isFinite(v)) return 0
+    return Math.max(0, v)
   }
 
   private _applyEffect(type:EventType, m:number):number{
@@ -3125,8 +3142,17 @@ export class GameRenderer {
     gameAudio.resumeMusicAfterLose()
     gameAudio.setLoop('gold.ogg', false)
     gameAudio.setLoop('stone.ogg', false)
-    this._cleanupLavaDeathCinematic()
-    this.idleX = 0
+    const hadLavaContext =
+      this._lavaExitFlightActive || this._lavaDeathCinematic || this._lavaLossTimeoutPending
+    // Не делаем промежуточный snap-к кадру "idle над точкой смерти",
+    // иначе виден двойной idle (сначала локальный, затем финальный стартовый).
+    this._cleanupLavaDeathCinematic({ snapToSurfaceIdlePose: false })
+    // После LAVA-подъёма root мог быть скрыт при выходе за верх кадра.
+    // При skip snap обязательно возвращаем видимость вручную.
+    this.miner.root.visible = true
+    const hi = GameConfig.hero.idle
+    // После LAVA стартуем idle рядом с точкой подъёма, чтобы не было прыжка фона в центр.
+    this.idleX = hadLavaContext ? (this._lavaDeathX - hi.rootOffsetXPx) : 0
     this.idleDir = 1
     this._bounceT = 0
     this.miner.resetFromDeath()
@@ -3181,7 +3207,6 @@ export class GameRenderer {
     this.miner.resetFacing()
     this.skyLayer.visible = true    // показываем фон в idle
     {
-      const hi = GameConfig.hero.idle
       this.miner.root.x = this.idleX + hi.rootOffsetXPx
       this.miner.root.y = this.surfY + hi.rootOffsetYPx
     }

@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+import { createWithEqualityFn } from 'zustand/traditional'
 import type { RgsConfig, RoundEvent } from '../rgs/client'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -131,7 +131,7 @@ const DEFAULT_SETTINGS: SettingsState = {
   digBtnY:       0.75,
 }
 
-export const useGameStore = create<GameStore>((set) => ({
+export const useGameStore = createWithEqualityFn<GameStore>()((set) => ({
   phase:     'BOOT',
   sessionID: 'demo',
   currency:  'FUN',
@@ -179,7 +179,7 @@ export const useGameStore = create<GameStore>((set) => ({
     set((s) => ({ stats: { ...s.stats, ...partial } })),
 
   resetStats: () =>
-    set({ stats: { depth: 0, distance: 0, multiplier: 1 } }),
+    set({ stats: { depth: 0, distance: 0, multiplier: 0 } }),
 
   setAutoplay: (cfg) =>
     set((s) => ({ autoplay: { ...s.autoplay, ...cfg } })),
