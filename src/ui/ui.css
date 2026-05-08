@@ -3589,7 +3589,7 @@
     height: min(457px, calc(100vh - 270px));
     min-height: min(457px, calc(100vh - 270px));
     max-height: min(457px, calc(100vh - 270px));
-    margin-top: clamp(178px, 25.8vh, 194px);
+    margin-top: clamp(188px, 26.6vh, 204px);
   }
 
   .ui-menu-modal .ui-modal-header {
@@ -3599,7 +3599,7 @@
     display: block;
     padding: 0;
     position: fixed;
-    top: clamp(30px, 5.2vh, 40px);
+    top: clamp(24px, 4.5vh, 36px);
     left: 50%;
     right: auto;
     transform: translateX(-50%);
@@ -3609,7 +3609,7 @@
 
   .ui-menu-modal .ui-modal-title {
     position: absolute;
-    top: clamp(72px, 10.8vh, 82px);
+    top: clamp(64px, 10vh, 78px);
     left: 50%;
     transform: translateX(-50%);
   }
