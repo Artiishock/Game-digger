@@ -10,14 +10,20 @@
 
 import { useGameStore } from '../store/gameStore'
 import { gameAudio } from '../audio/GameAudio'
-import type { AutoplayConfig } from '../store/gameStore'
+import type { AutoplayConfig, GamePhase } from '../store/gameStore'
 import * as RGS from '../rgs/client'
 import * as Demo from '../rgs/demo'
 import { GameConfig } from './GameConfig'
+import { GameLogger } from '../dev/GameLogger'
 
 class GameEngine {
   private static _instance: GameEngine
   private _abortAutoplay = false
+
+  private _setPhase(store: ReturnType<typeof useGameStore.getState>, phase: GamePhase): void {
+    GameLogger.phaseChange(useGameStore.getState().phase, phase)
+    store.setPhase(phase)
+  }
 
   static get instance(): GameEngine {
     if (!this._instance) this._instance = new GameEngine()
@@ -28,7 +34,7 @@ class GameEngine {
 
   async boot(): Promise<void> {
     const store = useGameStore.getState()
-    store.setPhase('BOOT')
+    this._setPhase(store, 'BOOT')
 
     try {
       let auth: RGS.AuthResponse
@@ -65,7 +71,7 @@ class GameEngine {
         } catch { /* keep cached balance */ }
       }
 
-      store.setPhase('IDLE')
+      this._setPhase(store, 'IDLE')
 
     } catch (err) {
       console.error('[GameEngine] boot error:', err)
@@ -76,7 +82,7 @@ class GameEngine {
           store.setBalance(auth.balance.amount)
           store.setCurrency('FUN')
           store.setConfig(auth.config)
-          store.setPhase('IDLE')
+          this._setPhase(store, 'IDLE')
           gameAudio.init()
         } else {
           store.setError(RGS.rgsErrorMessage(err.code))
@@ -97,7 +103,7 @@ class GameEngine {
     store.setReplayMode(true)
     store.resetStats()
     store.setEvents(events, store.roundID)
-    store.setPhase('RUNNING')
+    this._setPhase(store, 'RUNNING')
   }
 
   async startRound(): Promise<void> {
@@ -105,7 +111,7 @@ class GameEngine {
     if (store.phase === 'BETTING' || store.phase === 'RUNNING') return
 
     performance.mark('dr-round-click')
-    store.setPhase('BETTING')
+    this._setPhase(store, 'BETTING')
     store.resetStats()
 
     const bet = store.bet
@@ -124,7 +130,7 @@ class GameEngine {
       }
       store.setEvents(evs, response.round?.roundID ?? '')
       performance.mark('dr-phase-running')
-      store.setPhase('RUNNING')
+      this._setPhase(store, 'RUNNING')
 
     } catch (err) {
       this._handleRgsError(err)
@@ -166,10 +172,10 @@ class GameEngine {
       if (won) {
         store.setLastWin(RGS.toDisplay(Math.round(bet * multiplier * RGS.MONEY_SCALE)))
         store.setLastWinMult(multiplier)
-        store.setPhase('WIN')
+        this._setPhase(store, 'WIN')
       } else {
         store.setLastWin(0)
-        store.setPhase('LOSE')
+        this._setPhase(store, 'LOSE')
       }
       return
     }
@@ -207,10 +213,10 @@ class GameEngine {
         const winDisplay = RGS.toDisplay(Math.round(bet * displayMult * RGS.MONEY_SCALE))
         store.setLastWin(winDisplay)
         store.setLastWinMult(displayMult)
-        store.setPhase('WIN')
+        this._setPhase(store, 'WIN')
       } else {
         store.setLastWin(0)
-        store.setPhase('LOSE')
+        this._setPhase(store, 'LOSE')
       }
 
       // ── Autoplay continuation ──────────────────────────────────────────────
@@ -285,11 +291,11 @@ class GameEngine {
       } else {
         // Transient errors: go back to IDLE, show message briefly
         store.setLastWin(0)
-        store.setPhase('IDLE')
+        this._setPhase(store, 'IDLE')
         console.warn('[GameEngine] RGS error:', err.code, msg)
       }
     } else {
-      store.setPhase('IDLE')
+      this._setPhase(store, 'IDLE')
       console.error('[GameEngine] Unknown error:', err)
     }
   }

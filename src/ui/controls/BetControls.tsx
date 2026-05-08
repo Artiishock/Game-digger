@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react'
 import { useGameStore } from '../../store/gameStore'
+import { T } from '../../i18n/t'
 import { toDisplay } from '../../rgs/client'
 
 export const BetControls: React.FC = () => {
@@ -48,7 +49,7 @@ export const BetControls: React.FC = () => {
         padding: '6px 14px', border: '1px solid rgba(255,184,48,0.2)',
         backdropFilter: 'blur(6px)', minWidth: 80, textAlign: 'center',
       }}>
-        <div style={{ fontSize: 9, color: 'rgba(240,230,211,0.4)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>СТАВКА</div>
+        <div style={{ fontSize: 9, color: 'rgba(240,230,211,0.4)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>{T('bet')}</div>
         <div style={{ fontSize: 15, fontWeight: 700, color: '#FFB830', fontVariantNumeric: 'tabular-nums' }}>
           {bet.toFixed(2)} <span style={{ fontSize: 10, color: 'rgba(240,230,211,0.5)' }}>{currency}</span>
         </div>

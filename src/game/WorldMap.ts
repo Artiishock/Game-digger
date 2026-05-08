@@ -574,15 +574,22 @@ function buildGhostWaypoints(
   }
 
   if (isLoss) {
-    const last = roughRoad[roughRoad.length - 1]!
+    const last  = roughRoad[roughRoad.length - 1]!
     const seedL = (worldSeed ^ 0x1055CAFE) >>> 0
-    const xJ = Math.round(((rng(7, seedL) - 0.5) * TILE * 1.2) / ghostGrid) * ghostGrid
-    const pullX = Math.max(X_MIN, Math.min(X_MAX, last.worldX + xJ))
-    const ySteps = [1.4, 2.1, 2.8, 3.5, 4.2, 4.9, 5.6, 6.2]
+    const r7    = rng(7, seedL)
+    const caveHw = TILE * 2.15
+    // Боковое смещение: ±caveHw → персонаж подходит к боковой грани пещеры, не к центру сверху
+    const lateralOff = (r7 - 0.5) * 2 * caveHw  // −258..+258 px
+    const targetX    = Math.max(X_MIN, Math.min(X_MAX, last.worldX + lateralOff))
+
+    // Сначала прямо вниз, потом плавно уходим в сторону targetX
+    const ySteps = [1.4, 2.1, 2.8, 3.5, 4.2, 5.0, 5.8, 6.6, 7.4, 8.2, 9.0, 9.8]
     for (let k = 0; k < ySteps.length; k++) {
+      const t = Math.max(0, (k - 2) / (ySteps.length - 3))   // кривая начинается со шага 2
+      const x = last.worldX + (targetX - last.worldX) * Math.min(1, t * 1.4)
       ghosts.push({
         type:     GHOST_WAYPOINT_TYPE,
-        worldX:   pullX,
+        worldX:   Math.round(Math.max(X_MIN, Math.min(X_MAX, x)) / ghostGrid) * ghostGrid,
         worldY:   last.worldY + TILE * ySteps[k]!,
         terminal: false,
       })
@@ -727,6 +734,9 @@ export function placeObstacles(
         if (Math.hypot(x - rp.x, worldY - rp.y) < r + rp.r + TILE * 0.08) return false
       }
       if (_lgHit(x, worldY, r)) return false
+      for (const c of preCaveRects) {
+        if (Math.abs(x - c.cx) < CAVE_RHW + r && Math.abs(worldY - c.cy) < CAVE_RHH + r) return false
+      }
       const minD = r + decorClearance
       if (_pgHit(x, worldY, minD)) return false
       _pgAdd(x, worldY, r)
@@ -837,9 +847,40 @@ export function placeObstacles(
     }
   }
 
+  // ── Предвычисление позиций пещер для исключения декора внутри/около них ──────
+  // Должно выполняться до main decor loop — иначе tryPlace не знает о пещерах
+  // и ставит декор прямо внутри cave rect, блокируя ring items через _pgHit.
+  const CAVE_RHW = TILE * 2.15
+  const CAVE_RHH = TILE * 1.15
+  const preCaveRects: Array<{ cx: number; cy: number }> = []
+  {
+    let _cs = worldSeed ^ 0xCAFE1234
+    let _cY = surfY + TILE * 3
+    while (_cY < terminalY + TILE * 8) {
+      const _df = Math.max(0.5, Math.min(2, (_cY - surfY) / 2000))
+      _cY += TILE * (15 + 5 * _df)
+      _cs = (Math.imul(1664525, _cs) + 1013904223) >>> 0
+      const _ls = _cs
+      const _cx1 = tunnelXAtWorldY(path, _cY) + ((_ls & 0xFF) / 0xFF - 0.5) * TILE * 12
+      const _cr1 = TILE * (3 + (_ls & 0x3))
+      if (!intersectsTunnel(_cx1, _cY, _cr1, path, surfY, CAVE_MARGIN)) {
+        preCaveRects.push({ cx: _cx1, cy: _cY })
+      }
+      const _ls2 = (Math.imul(69069, _ls) + 1) >>> 0
+      if ((_ls2 & 0xF) < 5) {
+        const _cx2 = _cx1 + ((_ls2 & 0xFF) / 0xFF - 0.5) * TILE * 8
+        const _cy2 = _cY + TILE * (4 + (_ls2 & 0x7))
+        const _cr2 = TILE * (2 + (_ls2 & 0x2))
+        if (!intersectsTunnel(_cx2, _cy2, _cr2, path, surfY, CAVE_MARGIN)) {
+          preCaveRects.push({ cx: _cx2, cy: _cy2 })
+        }
+      }
+    }
+  }
+
   let dy = surfY + SPAWN_INTERVAL * (0.42 + rng(surfY ^ 0x51EC, worldSeed) * 0.86)
   let decorStepIdx = 0
-  while (dy <= terminalY + TILE * 8) {
+  while (dy <= terminalY + TILE * 12) {
     const rv = rng(Math.floor(dy) ^ decorStepIdx * 0x9E37, worldSeed)
     if (rv < Math.max(0.22, GameConfig.spawn.spawnChance * 0.84)) {
       // Чуть плотнее ряды, min-дистанция по-прежнему decorClearance.
@@ -977,12 +1018,45 @@ export function placeObstacles(
     ensureDecorCoverageAtPathPoint(pt, i)
   }
 
+  // ── Предметы рядом с лавой ───────────────────────────────────────────────
+  // Стандартный tryPlace отклоняет позиции вблизи лавы (_lgHit), поэтому
+  // область вокруг лавы остаётся пустой. Здесь явно расставляем предметы
+  // по краю каждой лавовой точки (без проверки _lgHit).
+  for (let li = 0; li < lavaSpots.length; li++) {
+    const lv = lavaSpots[li]!
+    const countRoll = rng(li ^ 0x4A1A, worldSeed ^ 0xB33F)
+    const count = countRoll < 0.30 ? 2 : countRoll < 0.70 ? 3 : 4
+    let placed = 0
+    for (let a = 0; a < 12 && placed < count; a++) {
+      const angle = Math.PI * 0.5 + (a / 8) * Math.PI * 2 + rng(li ^ a ^ 0x7731, worldSeed) * 0.5
+      const type = pickPathSegmentDecorType(lv.y + li + a, rng(li ^ a ^ 0xD7C3, worldSeed))
+      const sz = ITEM_SZ[type] ?? 60
+      const r = sz / 2
+      const dist = lv.r + r + TILE * (0.01 + rng(li ^ a ^ 0x9A41, worldSeed) * 0.01)
+      const nx = lv.x + Math.cos(angle) * dist
+      const ny = lv.y + Math.sin(angle) * dist
+      const b = decorBoundsAtY(ny)
+      const cx = Math.max(b.minX, Math.min(b.maxX, nx))
+      if (intersectsTunnel(cx, ny, r, path, surfY, DECOR_TUNNEL_PLACE_MARGIN)) continue
+      let hitRoad = false
+      for (const rp of roadOccupancy) {
+        if (Math.hypot(cx - rp.x, ny - rp.y) < r + rp.r + TILE * 0.08) { hitRoad = true; break }
+      }
+      if (hitRoad) continue
+      if (_pgHit(cx, ny, r + decorClearance)) continue
+      _pgAdd(cx, ny, r)
+      objects.push({ x: cx, y: ny, w: sz, h: sz, kind: 'decor', decorVisual: type })
+      placed++
+    }
+  }
+
   // ── Лава (только вне туннеля) ─────────────────────────────────────────────
   for (const lv of lavaSpots) {
     objects.push({ x: lv.x, y: lv.y, w: lv.w, h: lv.h, kind: 'lava' })
   }
 
   // ── Пещеры (только вне туннеля) ───────────────────────────────────────────
+  // CAVE_RHW / CAVE_RHH определены выше (pre-compute block)
   let caveSeed  = worldSeed ^ 0xCAFE1234
   let lastCaveY = surfY + TILE * 3
   while (lastCaveY < terminalY + TILE * 8) {
@@ -993,15 +1067,17 @@ export function placeObstacles(
     const tunX1 = tunnelXAtWorldY(path, lastCaveY)
     const cx1 = tunX1 + ((ls & 0xFF) / 0xFF - 0.5) * TILE * 12
     const cr1 = TILE * (3 + (ls & 0x3))
-    if (!intersectsTunnel(cx1, lastCaveY, cr1, path, surfY, CAVE_MARGIN))
+    if (!intersectsTunnel(cx1, lastCaveY, cr1, path, surfY, CAVE_MARGIN)) {
       objects.push({ x: cx1, y: lastCaveY, w: cr1 * 2 + TILE * 3, h: cr1 * 2 + TILE * 3, kind: 'cave' })
+    }
     const ls2 = (Math.imul(69069, ls) + 1) >>> 0
     if ((ls2 & 0xF) < 5) {
       const cx2 = cx1 + ((ls2 & 0xFF) / 0xFF - 0.5) * TILE * 8
       const cy2 = lastCaveY + TILE * (4 + (ls2 & 0x7))
       const cr2 = TILE * (2 + (ls2 & 0x2))
-      if (!intersectsTunnel(cx2, cy2, cr2, path, surfY, CAVE_MARGIN))
+      if (!intersectsTunnel(cx2, cy2, cr2, path, surfY, CAVE_MARGIN)) {
         objects.push({ x: cx2, y: cy2, w: cr2 * 2 + TILE * 3, h: cr2 * 2 + TILE * 3, kind: 'cave' })
+      }
     }
   }
 
@@ -1079,9 +1155,16 @@ export function buildRoundPath(
 
   // Терминальная пещера для LOSS — центр у конца полилинии туннеля (а не у последнего предмета),
   // иначе пещера/лава оказываются в стороне от фактического выхода коридора.
+  // Смещение по X: от −hw до +hw, чтобы персонаж попадал в лаву не только по центру сверху,
+  // а иногда с края, угла или сбоку.
   const pathLast = path.length > 0 ? path[path.length - 1]! : null
+  // Cave center = pathLast.x ± caveHw (пещера строго сбоку от позиции персонажа).
+  // Знак совпадает с lateralOff из buildGhostWaypoints (тот же seed ^ 0x1055CAFE, rng(7)).
+  const _seedL    = (worldSeed ^ 0x1055CAFE) >>> 0
+  const _caveHw   = TILE * 2.15
+  const _caveSign = rng(7, _seedL) >= 0.5 ? 1 : -1
   const terminalCave = isLoss && pathLast
-    ? { x: pathLast.x, y: pathLast.y + TILE * 2, seed: (worldSeed ^ 0xDEAD1234) >>> 0 }
+    ? { x: pathLast.x + _caveSign * _caveHw, y: pathLast.y, seed: (worldSeed ^ 0xDEAD1234) >>> 0 }
     : null
 
   const dc = obstacles.filter(o => o.kind === 'decor').length

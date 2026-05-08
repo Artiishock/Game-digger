@@ -1,5 +1,6 @@
 import React from 'react'
 import { useGameStore } from '../../store/gameStore'
+import { t, T } from '../../i18n/t'
 import '../ui.css'
 
 export const ErrorScreen: React.FC = () => {
@@ -7,12 +8,12 @@ export const ErrorScreen: React.FC = () => {
   return (
     <div className="ui-error-screen">
       <div className="ui-error-icon">⚠️</div>
-      <div className="ui-error-title">ОШИБКА СОЕДИНЕНИЯ</div>
+      <div className="ui-error-title">{T('connection error')}</div>
       <div className="ui-error-msg">
-        {errorMsg || 'Произошла ошибка. Попробуйте обновить страницу.'}
+        {errorMsg || t('error message')}
       </div>
       <button className="ui-error-reload" onClick={() => window.location.reload()}>
-        Обновить
+        {t('refresh')}
       </button>
     </div>
   )

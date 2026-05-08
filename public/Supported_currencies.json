@@ -1,0 +1,218 @@
+[
+  {
+    "currency": "United States Dollar",
+    "abbreviation": "USD",
+    "display": "$",
+    "example": "$10.00"
+  },
+  {
+    "currency": "Canadian Dollar",
+    "abbreviation": "CAD",
+    "display": "CA$",
+    "example": "CA$10.00"
+  },
+  {
+    "currency": "Japanese Yen",
+    "abbreviation": "JPY",
+    "display": "¥",
+    "example": "¥10"
+  },
+  {
+    "currency": "Euro",
+    "abbreviation": "EUR",
+    "display": "€",
+    "example": "€10.00"
+  },
+  {
+    "currency": "Russian Ruble",
+    "abbreviation": "RUB",
+    "display": "₽",
+    "example": "₽10.00"
+  },
+  {
+    "currency": "Chinese Yuan",
+    "abbreviation": "CNY",
+    "display": "CN¥",
+    "example": "CN¥10.00"
+  },
+  {
+    "currency": "Philippine Peso",
+    "abbreviation": "PHP",
+    "display": "₱",
+    "example": "₱10.00"
+  },
+  {
+    "currency": "Indian Rupee",
+    "abbreviation": "INR",
+    "display": "₹",
+    "example": "₹10.00"
+  },
+  {
+    "currency": "Indonesian Rupiah",
+    "abbreviation": "IDR",
+    "display": "Rp",
+    "example": "Rp10"
+  },
+  {
+    "currency": "South Korean Won",
+    "abbreviation": "KRW",
+    "display": "₩",
+    "example": "₩10"
+  },
+  {
+    "currency": "Brazilian Real",
+    "abbreviation": "BRL",
+    "display": "R$",
+    "example": "R$10.00"
+  },
+  {
+    "currency": "Mexican Peso",
+    "abbreviation": "MXN",
+    "display": "MX$",
+    "example": "MX$10.00"
+  },
+  {
+    "currency": "Danish Krone",
+    "abbreviation": "DKK",
+    "display": "KR",
+    "example": "10.00 KR"
+  },
+  {
+    "currency": "Polish Złoty",
+    "abbreviation": "PLN",
+    "display": "zł",
+    "example": "10.00 zł"
+  },
+  {
+    "currency": "Vietnamese Đồng",
+    "abbreviation": "VND",
+    "display": "₫",
+    "example": "10 ₫"
+  },
+  {
+    "currency": "Turkish Lira",
+    "abbreviation": "TRY",
+    "display": "₺",
+    "example": "₺10.00"
+  },
+  {
+    "currency": "Chilean Peso",
+    "abbreviation": "CLP",
+    "display": "CLP",
+    "example": "10 CLP"
+  },
+  {
+    "currency": "Argentine Peso",
+    "abbreviation": "ARS",
+    "display": "ARS",
+    "example": "10.00 ARS"
+  },
+  {
+    "currency": "Peruvian Sol",
+    "abbreviation": "PEN",
+    "display": "S/",
+    "example": "S/10.00"
+  },
+  {
+    "currency": "Nigerian Naira",
+    "abbreviation": "NGN",
+    "display": "₦",
+    "example": "₦10.00"
+  },
+  {
+    "currency": "Saudi Arabia Riyal",
+    "abbreviation": "SAR",
+    "display": "SAR",
+    "example": "10.00 SAR"
+  },
+  {
+    "currency": "Israel Shekel",
+    "abbreviation": "ILS",
+    "display": "ILS",
+    "example": "10.00 ILS"
+  },
+  {
+    "currency": "United Arab Emirates Dirham",
+    "abbreviation": "AED",
+    "display": "AED",
+    "example": "10.00 AED"
+  },
+  {
+    "currency": "Taiwan New Dollar",
+    "abbreviation": "TWD",
+    "display": "NT$",
+    "example": "NT$10.00"
+  },
+  {
+    "currency": "Norway Krone",
+    "abbreviation": "NOK",
+    "display": "kr",
+    "example": "kr10.00"
+  },
+  {
+    "currency": "Kuwaiti Dinar",
+    "abbreviation": "KWD",
+    "display": "KD",
+    "example": "KD10.00"
+  },
+  {
+    "currency": "Jordanian Dinar",
+    "abbreviation": "JOD",
+    "display": "JD",
+    "example": "JD10.00"
+  },
+  {
+    "currency": "Costa Rica Colon",
+    "abbreviation": "CRC",
+    "display": "₡",
+    "example": "₡10.00"
+  },
+  {
+    "currency": "Tunisian Dinar",
+    "abbreviation": "TND",
+    "display": "TND",
+    "example": "10.00 TND"
+  },
+  {
+    "currency": "Singapore Dollar",
+    "abbreviation": "SGD",
+    "display": "SG$",
+    "example": "SG$10.00"
+  },
+  {
+    "currency": "Malaysia Ringgit",
+    "abbreviation": "MYR",
+    "display": "RM",
+    "example": "RM10.00"
+  },
+  {
+    "currency": "Oman Rial",
+    "abbreviation": "OMR",
+    "display": "OMR",
+    "example": "10.00 OMR"
+  },
+  {
+    "currency": "Qatar Riyal",
+    "abbreviation": "QAR",
+    "display": "QAR",
+    "example": "10.00 QAR"
+  },
+  {
+    "currency": "Bahraini Dinar",
+    "abbreviation": "BHD",
+    "display": "BD",
+    "example": "BD10.00"
+  },
+  {
+    "currency": "Stake Gold Coin",
+    "abbreviation": "XGC",
+    "display": "GC",
+    "example": "10.00 GC"
+  },
+  {
+    "currency": "Stake Cash",
+    "abbreviation": "XSC",
+    "display": "SC",
+    "example": "10.00 SC"
+  }
+]
