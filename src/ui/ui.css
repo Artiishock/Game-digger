@@ -3124,7 +3124,7 @@
   position: sticky;
   top: 0;
   z-index: 2;
-  background-color: transparent;
+  background-color: #0b0c07;
   transform: translateZ(0);
   will-change: transform;
 }

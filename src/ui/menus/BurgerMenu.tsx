@@ -148,7 +148,7 @@ export const BurgerMenu: React.FC = () => {
                   WebkitMaskImage: `url(${tabItem.icon})`,
                 }}
               />
-              <span className="ui-tab-label">{t.label}</span>
+              <span className="ui-tab-label">{t(tabItem.labelKey)}</span>
             </button>
           ))}
         </div>

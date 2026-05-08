@@ -13,6 +13,7 @@ import { GameAssets } from './gameAssets'
 import { buildRoundPathV2, buildRoundPathV3, cavePathHitsTunnel, decorSpawnAcceptByPath, distancePointToTunnelPolyline, pruneDecorObstaclesAfterPathChange } from './WorldMap'
 import type { FullPathResult, PathPoint, RoadPoint } from './WorldMap'
 import { GameLogger } from '../dev/GameLogger'
+import { perf, installPerfProfiler } from '../dev/PerfProfiler'
 
 // ── Переключение варианта пути ──────────────────────────────────────────────
 // 'V2' = Коридор + сетка (плавный путь с синусоидальным блужданием)
@@ -1378,6 +1379,7 @@ export class GameRenderer {
 
     // Dev-only: print per-stage-child stats so we can attribute Sprite counts to a layer.
     if (import.meta.env.DEV) {
+      installPerfProfiler()
       // IMPORTANT: this traversal is expensive and will tank FPS.
       // Enable only when explicitly requested in console:
       //   window.__DR_TOP_LAYER_STATS__ = true; location.reload()
@@ -1806,10 +1808,7 @@ export class GameRenderer {
     this._roundPath.obstacles = this._pruneDecorNearTunnelPath(this._roundPath.obstacles)
     this._waypoints   = this._roundPath.waypoints
     this._tunnelPath  = this._roundPath.pathPoints.map(p => ({ x: p.x, y: p.y }))
-    this._lossLavaCenterX =
-      this._lossRound && this._tunnelPath.length > 0
-        ? this._tunnelPath[this._tunnelPath.length - 1]!.x
-        : null
+    this._lossLavaCenterX = null  // будет обновлён после спавна терминальной пещеры
     this._promotedCount = 0
     this.charX = pathXAtWorldY(this.charY, this._tunnelPath, this.surfY)
     this._tunnelCumPathLen = 0  // invalidate cache — new round, new geometry
@@ -1848,6 +1847,8 @@ export class GameRenderer {
         if (pe) {
           this._caveZones.push({ x: pe.x, y: pe.y + TILE * 0.5, r: TILE * 3.6 })
         }
+        // Целевой X для притяжения персонажа = реальный центр лавовой пещеры, а не ось туннеля
+        this._lossLavaCenterX = tc.x
         if (!ok) {
           console.warn('[GameRenderer] terminal lava cave spawn returned false, using fallback zone only')
         } else {
@@ -1900,11 +1901,8 @@ export class GameRenderer {
       const path = this.tileWorld.getLastCavePath()
       if (path) this._caveZones.push(...path.points)
     }
-    this.spawner.shouldSkipDecorSpawn = (x, y, w, h) => {
-      const r = Math.max(10, Math.max(w, h) * 0.42)
-      if (this.lavaSimulation && this.lavaSimulation.touchesPoint(x, y)) return true
-      return this._caveZones.some(z => Math.hypot(x - z.x, y - z.y) <= z.r + r + TILE * 0.18)
-    }
+    this.spawner.shouldSkipDecorSpawn = (x, y) =>
+      !!(this.lavaSimulation?.touchesPoint(x, y))
 
     const _t4 = performance.now() // after spawner.setRgsEvents
 
@@ -1975,12 +1973,13 @@ export class GameRenderer {
   private _stepLossPitFall(gameDt: number, dt: number): void {
     // Только финальный спуск к лаве — не тянуть X к финишу в промежуточных пещерах
     const pathLy = this._tunnelPath.length ? this._tunnelPath[this._tunnelPath.length - 1]!.y : Infinity
-    const nearEnd = this.charY >= pathLy - STEP_PATH_Y * 2.0
-    // Не clamp к 1: при большом gameDt иначе X «телепортируется» к центру за один тик.
-    if (nearEnd && this._lossTerminalDescent && this._lossLavaCenterX != null) {
+    // Притяжение к центру лавовой пещеры — прогрессивно усиливается при приближении.
+    if (this._lossLavaCenterX != null) {
       const tx = this._lossLavaCenterX
       const dx = tx - this.charX
-      const k = Math.min(0.09, 1.15 * gameDt)
+      const distToEnd = Math.max(0, pathLy - this.charY)
+      const t = 1 - Math.min(1, distToEnd / (TILE * 4))
+      const k = Math.min(0.95, (0.12 + t * 0.7) * gameDt * 60)
       this.charX += dx * k
       this._velX = 0
     }
@@ -2673,11 +2672,21 @@ export class GameRenderer {
     this._updateSkyDecor(dt)
 
     this._updateWorldMask(this.W, this.H)
-    if(this.tileWorld)this.tileWorld.update(this.camX,this.camY,this.W,this.H)
-    this._spawnCavesAhead()
-    if(this.spawner)this.spawner.update(this.charY, this.camX, this.camY, this.W, this.H)
 
+    const _ptw = perf.begin('tileWorld', 3)
+    if(this.tileWorld)this.tileWorld.update(this.camX,this.camY,this.W,this.H)
+    perf.end('tileWorld', _ptw)
+
+    this._spawnCavesAhead()
+
+    const _psp = perf.begin('spawner', 1)
+    if(this.spawner)this.spawner.update(this.charY, this.camX, this.camY, this.W, this.H)
+    perf.end('spawner', _psp)
+
+    const _pmn = perf.begin('miner', 1)
     this.miner.update(gameDt, 1, true)
+    perf.end('miner', _pmn)
+
     this._updateLiveWinBadge()
 
     store.updateStats({
@@ -2690,9 +2699,11 @@ export class GameRenderer {
     })
 
     if(this.spawner && !this._ended && !this.stoneBreakActive && !this.goldBreakActive){
+      const _pco = perf.begin('collide', 0.5)
       this.spawner.checkCollisions(this.charX,this.charY,(obj)=>{
         this._onCollect(obj)
       })
+      perf.end('collide', _pco)
     }
 
     // Проверяем лаву только после минимального погружения (TILE*5 ≈ первые метры)
@@ -2727,7 +2738,9 @@ export class GameRenderer {
       }
     }
 
+    const _ppu = perf.begin('pUpdate', 3)
     this._pUpdate(gameDt)
+    perf.end('pUpdate', _ppu)
   }
 
   // ─── Сбор объекта ─────────────────────────────────────────────────────────
@@ -3226,7 +3239,9 @@ export class GameRenderer {
    * @param spineDt — если задан, передаётся в SpineAnimator.tick (нормальный dt кадра для скелетов).
    */
   private _pUpdate(dt: number, spineDt?: number) {
+    const _tsp = perf.begin('spine', 1)
     SpineAnimator.tick(spineDt ?? dt)
+    perf.end('spine', _tsp)
 
     this.particles=this.particles.filter(p=>{
       p.life-=dt*1.8
@@ -3246,7 +3261,9 @@ export class GameRenderer {
       this.lavaSimulation.setViewport(this.W, this.H)
       this.lavaSimulation.cullFarCells(this.camX, this.camY, this.W, this.H)
     }
+    const _tlv = perf.begin('lava', 2)
     if (this.tileWorld) this.tileWorld.updateLavas(dt, this.W, this.H)
+    perf.end('lava', _tlv)
   }
 
   /** Пещера с лавой только если капсула не пересекает коридор маршрута */

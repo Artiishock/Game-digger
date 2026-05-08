@@ -1,5 +1,6 @@
 import * as PIXI from 'pixi.js'
 import { GameAssets } from './gameAssets'
+import { perf } from '../dev/PerfProfiler'
 
 export const CELL_PX = 40
 
@@ -468,14 +469,18 @@ export class LavaSimulation {
         break
       }
     }
+    const _tf = perf.begin('lava.flow', 1)
     if (hasFlowing) {
       this._flow(false)
     }
+    perf.end('lava.flow', _tf)
     // Текстура лавы должна "жить" всегда, даже у статичных источников (пещер).
     this.time += dt
     this._texOffX += dt * 6
     this._texOffY += dt * 3.5
+    const _tr = perf.begin('lava.render', 1)
     this._render()
+    perf.end('lava.render', _tr)
     if (this._destroyed) return
     this._threshFilter.uniforms.uTime = this.time
     if (this._tilingSprite) {

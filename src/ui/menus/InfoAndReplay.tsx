@@ -162,23 +162,6 @@ interface ReplayRound {
 
 // In-memory round history (populated by App.tsx after each round)
 export const roundHistory: ReplayRound[] = [
-  { time: '05/05/2026\n17:47:44', currency: 'FUN', bet: 1.00, win: 0.00, profit: -1.00, balBefore: 100.00, balAfter:  99.00, roundID: 'demo-1', worldSeed: 0, events: [] },
-  { time: '05/05/2026\n17:47:37', currency: 'FUN', bet: 1.00, win: 0.00, profit: -1.00, balBefore:  99.00, balAfter:  98.00, roundID: 'demo-2', worldSeed: 0, events: [] },
-  { time: '05/05/2026\n17:47:30', currency: 'FUN', bet: 1.00, win: 0.50, profit: -0.50, balBefore:  98.00, balAfter:  97.50, roundID: 'demo-3', worldSeed: 0, events: [] },
-  { time: '05/05/2026\n17:47:25', currency: 'FUN', bet: 1.00, win: 0.50, profit: -0.50, balBefore:  97.50, balAfter:  97.00, roundID: 'demo-4', worldSeed: 0, events: [] },
-  { time: '05/05/2026\n17:47:21', currency: 'FUN', bet: 1.00, win: 0.00, profit: -1.00, balBefore:  97.00, balAfter:  96.00, roundID: 'demo-5', worldSeed: 0, events: [] },
-  { time: '05/05/2026\n17:47:14', currency: 'FUN', bet: 1.00, win: 0.00, profit: -1.00, balBefore:  96.00, balAfter:  95.00, roundID: 'demo-6', worldSeed: 0, events: [] },
-  { time: '05/05/2026\n17:47:07', currency: 'FUN', bet: 1.00, win: 0.00, profit: -1.00, balBefore:  95.00, balAfter:  94.00, roundID: 'demo-7', worldSeed: 0, events: [] },
-  { time: '05/05/2026\n17:47:00', currency: 'FUN', bet: 1.00, win: 3.00, profit:  2.00, balBefore:  94.00, balAfter:  96.00, roundID: 'demo-8', worldSeed: 0, events: [] },
-  { time: '05/05/2026\n16:22:39', currency: 'FUN', bet: 1.00, win: 0.00, profit: -1.00, balBefore:  93.00, balAfter:  92.00, roundID: 'demo-9', worldSeed: 0, events: [] },
-  { time: '05/05/2026\n16:22:39', currency: 'FUN', bet: 1.00, win: 0.00, profit: -1.00, balBefore:  93.00, balAfter:  92.00, roundID: 'demo-9', worldSeed: 0, events: [] },
-  { time: '05/05/2026\n16:22:39', currency: 'FUN', bet: 1.00, win: 0.00, profit: -1.00, balBefore:  93.00, balAfter:  92.00, roundID: 'demo-9', worldSeed: 0, events: [] },
-  { time: '05/05/2026\n16:22:39', currency: 'FUN', bet: 1.00, win: 0.00, profit: -1.00, balBefore:  93.00, balAfter:  92.00, roundID: 'demo-9', worldSeed: 0, events: [] },
-  { time: '05/05/2026\n16:22:39', currency: 'FUN', bet: 1.00, win: 0.00, profit: -1.00, balBefore:  93.00, balAfter:  92.00, roundID: 'demo-9', worldSeed: 0, events: [] },
-  { time: '05/05/2026\n16:22:39', currency: 'FUN', bet: 1.00, win: 0.00, profit: -1.00, balBefore:  93.00, balAfter:  92.00, roundID: 'demo-9', worldSeed: 0, events: [] },
-  { time: '05/05/2026\n16:22:39', currency: 'FUN', bet: 1.00, win: 0.00, profit: -1.00, balBefore:  93.00, balAfter:  92.00, roundID: 'demo-9', worldSeed: 0, events: [] },
-  { time: '05/05/2026\n16:22:39', currency: 'FUN', bet: 1.00, win: 0.00, profit: -1.00, balBefore:  93.00, balAfter:  92.00, roundID: 'demo-9', worldSeed: 0, events: [] },
-  { time: '05/05/2026\n16:22:39', currency: 'FUN', bet: 1.00, win: 0.00, profit: -1.00, balBefore:  93.00, balAfter:  92.00, roundID: 'demo-9', worldSeed: 0, events: [] },
 
 ];
 

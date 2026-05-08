@@ -617,32 +617,10 @@ export function placeObstacles(
   const SPAWN_INTERVAL = TILE * GameConfig.spawn.decorIntervalTiles
   const maxRow = Math.ceil((terminalY + TILE * 8) / TILE)
 
-  // ── Предпросчёт лавовых точек (используются и для анти-спавна декора, и для итогового спавна лавы) ──
-  const lavaSpots: Array<{ x: number; y: number; r: number; w: number; h: number }> = []
-  for (let tr = 10; tr <= maxRow; tr++) {
-    const wy = tr * TILE
-    const depth = tr % 200
-    const collectLava = (tc: number, scX: number, offX: number, scY: number, thresh: number, seed: number) => {
-      const wx = tc * TILE
-      if (caveNoise(tc * scX + offX, tr * scY, seed) <= thresh) return
-      const lavaR = TILE * 0.8
-      if (intersectsTunnel(wx, wy, lavaR, path, surfY, LAVA_MARGIN)) return
-      lavaSpots.push({ x: wx, y: wy, r: lavaR, w: TILE * 2, h: TILE * 2 })
-    }
-    if (depth >= 35  && depth <= 88)  for (let tc = -16; tc <= 16; tc++) collectLava(tc, 1.25, 50, 0.78, 0.56, worldSeed ^ 0xFF00)
-    if (depth >= 118 && depth <= 192) for (let tc = -16; tc <= 16; tc++) collectLava(tc, 1.08, 30, 0.88, 0.52, worldSeed ^ 0xFF11)
-  }
-
-  // ── Spatial grids для быстрых проверок коллизий ────────────────────────────
-  // Заменяют O(n) linear scan placed[] и lavaSpots[] в tryPlace (вызывается ~280k раз).
-  const PGRID = TILE * 3   // cell size для placed items
-  const LGRID = TILE * 2   // cell size для lava spots
+  // ── Единый spatial grid для лавы и декора ────────────────────────────────────
+  const PGRID = TILE * 3
   const _placedGrid = new Map<number, Array<{x:number; y:number; r:number}>>()
-  const _lavaGrid   = new Map<number, Array<{x:number; y:number; r:number}>>()
-
   const _pgKey = (gx: number, gy: number) => gx * 65536 + gy
-  const _lgKey = (gx: number, gy: number) => gx * 65536 + gy
-
   const _pgAdd = (x: number, y: number, r: number) => {
     const k = _pgKey(Math.floor(x / PGRID), Math.floor(y / PGRID))
     const c = _placedGrid.get(k)
@@ -657,21 +635,24 @@ export function placeObstacles(
     }
     return false
   }
-  const _lgHit = (x: number, y: number, r: number): boolean => {
-    const cx = Math.floor(x / LGRID), cy = Math.floor(y / LGRID)
-    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
-      const items = _lavaGrid.get(_lgKey(cx + dx, cy + dy))
-      if (!items) continue
-      for (const p of items) if (Math.hypot(x - p.x, y - p.y) < r + p.r) return true
-    }
-    return false
-  }
 
-  // Populate _lavaGrid (built once, queried ~280k times in tryPlace)
-  for (const lv of lavaSpots) {
-    const k = _lgKey(Math.floor(lv.x / LGRID), Math.floor(lv.y / LGRID))
-    const c = _lavaGrid.get(k)
-    if (c) c.push(lv); else _lavaGrid.set(k, [lv])
+  // ── Лава — размещается первой, регистрируется в общем grid ───────────────────
+  const lavaSpots: Array<{ x: number; y: number; r: number; w: number; h: number }> = []
+  for (let tr = 10; tr <= maxRow; tr++) {
+    const wy = tr * TILE
+    const depth = tr % 200
+    const collectLava = (tc: number, scX: number, offX: number, scY: number, thresh: number, seed: number) => {
+      const wx = tc * TILE
+      if (caveNoise(tc * scX + offX, tr * scY, seed) <= thresh) return
+      const lavaR = TILE * 0.8        // радиус для проверки с туннелем
+      const lavaCaveR = TILE * 2.15   // реальный размер пещеры — для grid
+      if (intersectsTunnel(wx, wy, lavaR, path, surfY, LAVA_MARGIN)) return
+      if (_pgHit(wx, wy, lavaCaveR)) return
+      _pgAdd(wx, wy, lavaCaveR)
+      lavaSpots.push({ x: wx, y: wy, r: lavaR, w: TILE * 2, h: TILE * 2 })
+    }
+    if (depth >= 35  && depth <= 88)  for (let tc = -16; tc <= 16; tc++) collectLava(tc, 1.25, 50, 0.78, 0.56, worldSeed ^ 0xFF00)
+    if (depth >= 118 && depth <= 192) for (let tc = -16; tc <= 16; tc++) collectLava(tc, 1.08, 30, 0.88, 0.52, worldSeed ^ 0xFF11)
   }
 
   // ── Декорации ──────────────────────────────────────────────────────────────
@@ -711,7 +692,6 @@ export function placeObstacles(
     for (const rp of roadOccupancy) {
       if (Math.hypot(x - rp.x, worldY - rp.y) < r + rp.r + TILE * 0.08) return false
     }
-    if (_lgHit(x, worldY, r)) return false
     const minD = r + decorClearance
     if (_pgHit(x, worldY, minD)) return false
     _pgAdd(x, worldY, r)
@@ -733,7 +713,6 @@ export function placeObstacles(
       for (const rp of roadOccupancy) {
         if (Math.hypot(x - rp.x, worldY - rp.y) < r + rp.r + TILE * 0.08) return false
       }
-      if (_lgHit(x, worldY, r)) return false
       for (const c of preCaveRects) {
         if (Math.abs(x - c.cx) < CAVE_RHW + r && Math.abs(worldY - c.cy) < CAVE_RHH + r) return false
       }
@@ -1016,38 +995,6 @@ export function placeObstacles(
     const pt = path[i]
     if (!pt) continue
     ensureDecorCoverageAtPathPoint(pt, i)
-  }
-
-  // ── Предметы рядом с лавой ───────────────────────────────────────────────
-  // Стандартный tryPlace отклоняет позиции вблизи лавы (_lgHit), поэтому
-  // область вокруг лавы остаётся пустой. Здесь явно расставляем предметы
-  // по краю каждой лавовой точки (без проверки _lgHit).
-  for (let li = 0; li < lavaSpots.length; li++) {
-    const lv = lavaSpots[li]!
-    const countRoll = rng(li ^ 0x4A1A, worldSeed ^ 0xB33F)
-    const count = countRoll < 0.30 ? 2 : countRoll < 0.70 ? 3 : 4
-    let placed = 0
-    for (let a = 0; a < 12 && placed < count; a++) {
-      const angle = Math.PI * 0.5 + (a / 8) * Math.PI * 2 + rng(li ^ a ^ 0x7731, worldSeed) * 0.5
-      const type = pickPathSegmentDecorType(lv.y + li + a, rng(li ^ a ^ 0xD7C3, worldSeed))
-      const sz = ITEM_SZ[type] ?? 60
-      const r = sz / 2
-      const dist = lv.r + r + TILE * (0.01 + rng(li ^ a ^ 0x9A41, worldSeed) * 0.01)
-      const nx = lv.x + Math.cos(angle) * dist
-      const ny = lv.y + Math.sin(angle) * dist
-      const b = decorBoundsAtY(ny)
-      const cx = Math.max(b.minX, Math.min(b.maxX, nx))
-      if (intersectsTunnel(cx, ny, r, path, surfY, DECOR_TUNNEL_PLACE_MARGIN)) continue
-      let hitRoad = false
-      for (const rp of roadOccupancy) {
-        if (Math.hypot(cx - rp.x, ny - rp.y) < r + rp.r + TILE * 0.08) { hitRoad = true; break }
-      }
-      if (hitRoad) continue
-      if (_pgHit(cx, ny, r + decorClearance)) continue
-      _pgAdd(cx, ny, r)
-      objects.push({ x: cx, y: ny, w: sz, h: sz, kind: 'decor', decorVisual: type })
-      placed++
-    }
   }
 
   // ── Лава (только вне туннеля) ─────────────────────────────────────────────
