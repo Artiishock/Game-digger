@@ -106,8 +106,8 @@ export const AutoplayModal: React.FC = () => {
     setters[inputId]((value) => sanitizeDecimal(updater(value)));
   };
 
-  const handleStart = () => {
-    const r = customRounds ? parseInt(customRounds) : rounds;
+  const handleStart = (selectedRounds?: number) => {
+    const r = selectedRounds ?? (customRounds ? parseInt(customRounds) : rounds);
     if (!r || r < 1) return;
 
     setOpen(false);
@@ -160,7 +160,9 @@ export const AutoplayModal: React.FC = () => {
                 onClick={() => {
                   setRounds(r);
                   setCustomRounds("");
+                  handleStart(r);
                 }}
+                disabled={!canStart}
                 className={`ui-pill ${
                   rounds === r && !customRounds ? "ui-pill--active" : ""
                 }`}
@@ -220,7 +222,7 @@ export const AutoplayModal: React.FC = () => {
                 className={`ui-ap-start-btn ${
                   !hasCustomRounds ? "ui-ap-start-btn--hidden" : ""
                 }`}
-                onClick={handleStart}
+                onClick={() => handleStart()}
                 disabled={!canStart || !hasCustomRounds}
                 aria-hidden={!hasCustomRounds}
                 tabIndex={hasCustomRounds ? 0 : -1}
