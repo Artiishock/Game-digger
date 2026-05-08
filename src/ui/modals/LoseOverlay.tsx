@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react'
 import { useGameStore } from '../../store/gameStore'
+import { t, T } from '../../i18n/t'
 import '../ui.css'
 
 export const LoseOverlay: React.FC = () => {
@@ -33,9 +34,9 @@ export const LoseOverlay: React.FC = () => {
       onClick={!autoplay.active ? dismiss : undefined}
     >
       <div className="ui-lose-inner">
-        <div className="ui-lose-title">ПРОИГРЫШ</div>
+        <div className="ui-lose-title">{T('loss')}</div>
         {!autoplay.active && (
-          <div className="ui-lose-hint">Нажмите в любое место, чтобы продолжить</div>
+          <div className="ui-lose-hint">{t('press anywhere to continue')}</div>
         )}
       </div>
     </div>

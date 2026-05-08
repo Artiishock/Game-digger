@@ -48,8 +48,8 @@ const GRASS_MASK_HEADROOM = 24
  */
 const LAVA_CAVE_HW = TILE * 2.15
 const LAVA_CAVE_HH = TILE * 1.15
-/** Радиус скругления углов пещеры (в мире, px). */
-const LAVA_CAVE_CORNER_R = TILE * 0.55
+/** Радиус скругления углов пещеры (в мире, px). Маленький — чтобы угловые ячейки не были мёртвой зоной. */
+const LAVA_CAVE_CORNER_R = TILE * 0.15
 const LAVA_CAVE_FILL = 0.94
 
 export const enum T {
@@ -875,7 +875,6 @@ export class TileWorld {
     const hw = LAVA_CAVE_HW
     const hh = LAVA_CAVE_HH
     const rect = { cx: centerX, cy: centerY, hw, hh, cr: LAVA_CAVE_CORNER_R }
-    // Одна «зона» для гравитации в пещере: круг по описанной окружности прямоугольника.
     const zoneR = Math.hypot(hw, hh)
     const points = [{ x: centerX, y: centerY, r: zoneR }]
     return { rect, points }

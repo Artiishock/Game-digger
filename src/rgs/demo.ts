@@ -12,11 +12,28 @@
 
 import type {
   AuthResponse, PlayResponse, EndRoundResponse,
-  RgsConfig, RgsRound, RoundEvent, EventEffect,
+  RgsConfig, RgsRound, RoundEvent, EventEffect, CurrencyEntry,
 } from './client'
 import { MONEY_SCALE } from './client'
+import _currencyList from '../../public/Supported_currencies.json'
 import { GameConfig } from '../game/GameConfig'
 import type { WinCelebrateKind } from '../ui/winCelebration'
+
+// ─── Demo currency ────────────────────────────────────────────────────────────
+
+const _supportedCodes = new Set(
+  (_currencyList as CurrencyEntry[]).map((e) => e.abbreviation)
+)
+
+function resolveDemoCurrency(): string {
+  try {
+    const code = new URLSearchParams(window.location.search).get('currency')?.toUpperCase()
+    if (code && _supportedCodes.has(code)) return code
+  } catch { /* ignore */ }
+  return 'FUN'
+}
+
+let _demoCurrency = resolveDemoCurrency()
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -347,7 +364,7 @@ const DEMO_CONFIG: RgsConfig = {
 
 export async function demoAuthenticate(): Promise<AuthResponse> {
   return {
-    balance: { amount: _balance, currency: 'FUN' },
+    balance: { amount: _balance, currency: _demoCurrency },
     config:  DEMO_CONFIG,
   }
 }
@@ -410,7 +427,7 @@ export async function demoPlay(betDisplay: number): Promise<PlayResponse> {
   }
 
   return {
-    balance: { amount: _balance, currency: 'FUN' },
+    balance: { amount: _balance, currency: _demoCurrency },
     round,
   }
 }
@@ -435,5 +452,22 @@ export async function demoEndRound(
     `  баланс: $${(_balance / MONEY_SCALE).toFixed(2)}`
   )
 
-  return { balance: { amount: _balance, currency: 'FUN' } }
+  return { balance: { amount: _balance, currency: _demoCurrency } }
+}
+
+// ── Dev helper ────────────────────────────────────────────────────────────────
+// __setCurrency('USD')  __setCurrency('EUR')  __setCurrency('FUN')
+if (typeof window !== 'undefined') {
+  const list = ['FUN', ..._supportedCodes].join(' | ')
+  ;(window as unknown as Record<string, unknown>).__setCurrency = (code: string) => {
+    const upper = code.toUpperCase()
+    if (upper !== 'FUN' && !_supportedCodes.has(upper)) {
+      console.warn(`[demo] unknown currency "${upper}". Supported: ${list}`)
+      return
+    }
+    const url = new URL(window.location.href)
+    url.searchParams.set('currency', upper)
+    window.location.href = url.toString()
+  }
+  console.info(`[demo] __setCurrency(code) available — e.g. __setCurrency('USD')`)
 }

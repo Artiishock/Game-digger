@@ -1,5 +1,6 @@
 import React from "react";
 import { useGameStore } from "../../store/gameStore";
+import { t, T } from "../../i18n/t";
 import "../ui.css";
 
 export const TopBar: React.FC = () => {
@@ -23,7 +24,7 @@ export const TopBar: React.FC = () => {
       <div className="ui-logo-zone">Logo zone</div>
       {/* WIN — в RUNNING показываем живой множитель (как растёт с монетами); после раунда — сумма выигрыша */}
       <div className="ui-win-zone">
-        <span className="ui-win-label">WIN </span>
+        <span className="ui-win-label">{T('win label')} </span>
         <span className="ui-win-amount">
           {phase === "RUNNING"
             ? `×${stats.multiplier.toFixed(2)}`
@@ -39,7 +40,7 @@ export const TopBar: React.FC = () => {
           <button
             className={`ui-icon-btn ${settings.soundEnabled ? "ui-icon-btn--active" : ""}`}
             onClick={() => upd({ soundEnabled: !settings.soundEnabled })}
-            title={settings.soundEnabled ? "Mute" : "Unmute"}
+            title={settings.soundEnabled ? t('mute') : t('unmute')}
           >
             {settings.soundEnabled ? (
               <span>
@@ -73,13 +74,13 @@ export const TopBar: React.FC = () => {
 
         <div className="ui-depth-block ui-depth-block--desktop">
           <div className="ui-depth-row">
-            <span className="ui-depth-label">DISTANCE</span>
+            <span className="ui-depth-label">{T('distance')}</span>
             <span className="ui-depth-value">
               {stats.distance.toFixed(1)} m
             </span>
           </div>
           <div className="ui-depth-row">
-            <span className="ui-depth-label">DEPTH</span>
+            <span className="ui-depth-label">{T('depth')}</span>
             <span className="ui-depth-value">{stats.depth.toFixed(1)} m</span>
           </div>
         </div>
