@@ -12,6 +12,7 @@ import { gameAudio } from '../audio/GameAudio'
 import { GameAssets } from './gameAssets'
 import { buildRoundPathV2, buildRoundPathV3, cavePathHitsTunnel, decorSpawnAcceptByPath, distancePointToTunnelPolyline, pruneDecorObstaclesAfterPathChange } from './WorldMap'
 import type { FullPathResult, PathPoint, RoadPoint } from './WorldMap'
+import { GameLogger } from '../dev/GameLogger'
 
 // ── Переключение варианта пути ──────────────────────────────────────────────
 // 'V2' = Коридор + сетка (плавный путь с синусоидальным блужданием)
@@ -1224,8 +1225,6 @@ export class GameRenderer {
   private _lavaLossIdleGlideToCy = 0
   private _lavaLossTimeoutPending = false
   private _lavaLossResultTimerId: ReturnType<typeof setTimeout> | null = null
-  /** После cleanup LAVA: idleX уже из колонки смерти, не сбрасывать в 0 в _returnToIdle. */
-  private _lavaHandoffUsedIdleAnchor = false
   private _caveZones:   Array<{x:number; y:number; r:number}> = []  // круги всех активных пещер
   /** Позиция вдоль туннеля: длина дуги от начала path; скорость = const вдоль этой дуги */
   private _pathArcS = 0
@@ -1663,8 +1662,8 @@ export class GameRenderer {
       p.x = clampedX
       if (i < rp.waypoints.length) rp.waypoints[i] = clampedX
     }
-    // После смягчения старта обязательно привязываем road points к финальному пути,
-    // иначе первый предмет может оказаться вне траектории движения персонажа.
+    // После смягчения старта пересчитываем X дорожных точек по финальному пути,
+    // сохраняя Y-глубину каждой точки неизменной.
     for (const rpPoint of rp.roadPoints) {
       rpPoint.worldX = pathXAtWorldY(rpPoint.worldY, rp.pathPoints, this.surfY)
     }
@@ -1706,6 +1705,10 @@ export class GameRenderer {
     this.rgsQueue=[...events]
     this.rgsEvents=events
     this._lossRound = events.some(e => e.type === 'LAVA')
+    {
+      const _st = useGameStore.getState()
+      GameLogger.roundStart({ roundID: _st.roundID, bet: _st.bet, events })
+    }
     this.stoneBreakActive = false;
     this.stoneBreakRemainingTime = 0;
     this.stoneBreakTotalDuration = 0;
@@ -1809,6 +1812,7 @@ export class GameRenderer {
         : null
     this._promotedCount = 0
     this.charX = pathXAtWorldY(this.charY, this._tunnelPath, this.surfY)
+    this._tunnelCumPathLen = 0  // invalidate cache — new round, new geometry
     this._rebuildTunnelCumLengths()
     this._pathArcS = projectWorldXYToTunnelArcLength(this._tunnelPath, this._tunnelCumLen, this.charX, this.charY)
     {
@@ -1863,6 +1867,23 @@ export class GameRenderer {
       this._roundPath.obstacles,
       this._roundPath.roadEventsOrdered,
     )
+    // Логируем плановый маршрут: позиции предметов на карте vs ожидания RGS
+    {
+      const _surfY = this.surfY
+      const _ppm   = this.ppm
+      const _items = this.spawner.getRoadItems()
+      GameLogger.pathPlan(_items.map((it, i) => ({
+        seq:          i + 1,
+        type:         it.type,
+        worldX:       it.worldX,
+        worldY:       it.worldY,
+        actualDepthM: (_ppm > 0) ? (it.worldY - _surfY) / _ppm : 0,
+        rgsDepthM:    it.rgsEventRef?.depth ?? 0,
+        rgsDistM:     it.rgsEventRef?.distance ?? 0,
+        terminal:     it.terminal,
+      })))
+    }
+
     // Стартовый экран должен быть чистым: первые предметы спавним ниже видимой зоны.
     // Мы знаем высоту видимой области до старта: [camY, camY + H].
     this.spawner.skipTo(this.camY + this.H + TILE * START_SPAWN_OFFSCREEN_TILES)
@@ -2135,8 +2156,6 @@ export class GameRenderer {
     this.miner.clearLavaDeathVisualOverride()
     this.miner.root.visible = true
     const hi = GameConfig.hero.idle
-    this.idleX = this._lavaDeathX - hi.rootOffsetXPx
-    this._lavaHandoffUsedIdleAnchor = true
     this.miner.root.x = this._lavaDeathX
     this.miner.root.y = this.surfY + hi.rootOffsetYPx
     this.camX = this._lavaDeathX - this.W / 2
@@ -2554,9 +2573,9 @@ export class GameRenderer {
           // иначе хвост уезжает в сторону, а лава и падение остаются у старой точки.
           if (!this._lossRound && yIdx >= this._waypoints.length - 10) {
             const more = this._buildWaypoints(200)
-            const base = this._tunnelPath.length
+            const lastY = this._tunnelPath[this._tunnelPath.length - 1]?.y ?? this.surfY
             for (let j = 0; j < more.length; j++) {
-              this._tunnelPath.push({ x: more[j]!, y: this.surfY + (base + j) * STEP_PATH_Y })
+              this._tunnelPath.push({ x: more[j]!, y: lastY + (j + 1) * STEP_PATH_Y })
             }
             this._waypoints.push(...more)
           }
@@ -2602,7 +2621,8 @@ export class GameRenderer {
       }
     } else {
       // STONE / GOLD — плавное торможение по Y; X остаётся на оси туннеля
-      this._velY += (0 - this._velY) * Math.min(dt * 10, 1)
+      // gameDt: при скорости ×5 торможение тоже ×5 быстрее — персонаж не уносит вперёд
+      this._velY += (0 - this._velY) * Math.min(gameDt * 10, 1)
       this._velX = 0
       this.charY += this._velY * gameDt
       const txb = pathXAtWorldY(this.charY, this._tunnelPath, this.surfY)
@@ -2669,7 +2689,7 @@ export class GameRenderer {
       }),
     })
 
-    if(this.spawner && !this._ended && !this.stoneBreakActive){
+    if(this.spawner && !this._ended && !this.stoneBreakActive && !this.goldBreakActive){
       this.spawner.checkCollisions(this.charX,this.charY,(obj)=>{
         this._onCollect(obj)
       })
@@ -2694,6 +2714,10 @@ export class GameRenderer {
       // просто физическая лава догнала раньше чем SpawnedObj терминал
       const lavaIdx = this.rgsQueue.findIndex(e => e.type === 'LAVA')
       if (lavaIdx >= 0) this.rgsQueue.splice(lavaIdx, 1)
+      console.log(
+        `%c[MOVE] 🔥 лава настигла персонажа @ (${this.charX.toFixed(0)}, ${this.charY.toFixed(0)})  глубина: ${this.depth.toFixed(1)}м  arc: ${this._pathArcS.toFixed(0)}px`,
+        'color:#ff6b6b',
+      )
       this._logTerminal('simulation', 'LAVA')
       if (!this._tryStartLavaDeathCinematic()) {
         setTimeout(() => {
@@ -2710,7 +2734,13 @@ export class GameRenderer {
 
   // ─── Лог сбора предмета ───────────────────────────────────────────────────
 
-  private _logCollect(type: EventType, before: number, after: number, durationSec?: number): void {
+  private _logCollect(
+    type: EventType,
+    before: number,
+    after: number,
+    durationSec?: number,
+    rgs?: { matched: boolean; effect?: { op: string; value: number } | null },
+  ): void {
     const tag    = type.padEnd(7)
     const bStr   = `×${before.toFixed(2)}`
     const aStr   = `×${after.toFixed(2)}`
@@ -2718,7 +2748,7 @@ export class GameRenderer {
     const dStr   = (delta >= 0 ? '+' : '') + delta.toFixed(2)
     let effect: string
     switch (type) {
-      case 'BOMB':    effect = `÷${(before / Math.max(after, 0.001)).toFixed(1)}`; break
+      case 'BOMB':    effect = rgs?.effect?.value != null ? `÷${rgs.effect.value}` : before > 0.001 ? `÷${(before / Math.max(after, 0.001)).toFixed(1)}` : `÷${GameConfig.items.BOMB.divisor}`; break
       case 'DIAMOND': effect = `×${(after / Math.max(before, 0.001)).toFixed(2)}`; break
       case 'GOLD': {
         const secs = durationSec ?? 0
@@ -2738,7 +2768,16 @@ export class GameRenderer {
       case 'LAVA':    effect = 'LOSE ✗'; break
       default:        effect = dStr
     }
-    console.log(`[${tag}]  до: ${bStr.padStart(6)}  →  после: ${aStr.padStart(6)}  (${dStr}) | ${effect}`)
+    const rgsTag = rgs == null ? '' : rgs.matched ? ' ✅RGS' : ' ❌random'
+    console.log(`[${tag}]  до: ${bStr.padStart(6)}  →  после: ${aStr.padStart(6)}  (${dStr}) | ${effect}${rgsTag}`)
+
+    GameLogger.itemCollect({
+      type,
+      multBefore: before,
+      multAfter:  after,
+      rgsMatched: rgs?.matched ?? true,
+      rgsEffect:  rgs?.effect ?? null,
+    })
   }
 
   private _logTerminal(source: 'object' | 'simulation', type: 'HOME' | 'LAVA'): void {
@@ -2760,6 +2799,12 @@ export class GameRenderer {
         console.warn(`[SKIP] Пропущены предметы: ${staleItems.map(e=>e.type).join(', ')}`)
       }
     }
+    GameLogger.roundEnd({
+      result:          type === 'HOME' ? 'HOME' : 'LAVA',
+      source,
+      finalMultiplier: this.multiplier,
+      rgsRemainder:    [...this.rgsQueue],
+    })
   }
 
   private _onCollect(obj:SpawnedObj){
@@ -2789,7 +2834,8 @@ export class GameRenderer {
       this.multiplier = this._roundMultiplier(
         Math.max(GameConfig.multiplier.floor, this.multiplier - stoneSub),
       )
-      this._logCollect('STONE', multBefore, this.multiplier, duration)
+      this._logCollect('STONE', multBefore, this.multiplier, duration,
+        { matched: rgsIdx >= 0, effect: rgsIdx >= 0 ? { op: 'sub', value: stoneSub! } : null })
       this.stoneBreakTotalDuration = duration
       this.stoneBreakRemainingTime = duration
       this.stoneBreakDisplayMult   = multBefore   // начинаем с текущего значения
@@ -2808,6 +2854,16 @@ export class GameRenderer {
         this._breakGfx   = obj.gfx
       }
       this._applyRepulse(obj, true)  // запоминаем направление, импульс — после разрушения
+      {
+        const next = this.spawner?.getNextRoadTarget() ?? null
+        const distPx = Math.hypot(this.charX - obj.worldX, this.charY - obj.worldY)
+        GameLogger.charToTarget({
+          charX: this.charX, charY: this.charY,
+          charDepthM: this.depth, charArcS: this._pathArcS,
+          collected: { type: obj.type, worldX: obj.worldX, worldY: obj.worldY, distPx },
+          nextTarget: next ? { type: next.type, worldX: next.worldX, worldY: next.worldY, depthM: this.ppm > 0 ? (next.worldY - this.surfY) / this.ppm : 0 } : null,
+        })
+      }
       return
     }
 
@@ -2834,7 +2890,8 @@ export class GameRenderer {
         ]
       }
       this.multiplier = this._roundMultiplier(this.multiplier + goldAdd)
-      this._logCollect('GOLD', multBefore, this.multiplier, duration)
+      this._logCollect('GOLD', multBefore, this.multiplier, duration,
+        { matched: rgsIdx >= 0, effect: rgsIdx >= 0 ? { op: 'add', value: goldAdd! } : null })
       this.goldBreakRemainingTime = duration
       this.goldBreakTotalDuration = duration
       this.goldBreakDisplayMult   = multBefore   // начинаем с текущего значения
@@ -2854,6 +2911,16 @@ export class GameRenderer {
         this._breakGfx   = obj.gfx
       }
       this._applyRepulse(obj, true)  // запоминаем направление, импульс — после разрушения
+      {
+        const next = this.spawner?.getNextRoadTarget() ?? null
+        const distPx = Math.hypot(this.charX - obj.worldX, this.charY - obj.worldY)
+        GameLogger.charToTarget({
+          charX: this.charX, charY: this.charY,
+          charDepthM: this.depth, charArcS: this._pathArcS,
+          collected: { type: obj.type, worldX: obj.worldX, worldY: obj.worldY, distPx },
+          nextTarget: next ? { type: next.type, worldX: next.worldX, worldY: next.worldY, depthM: this.ppm > 0 ? (next.worldY - this.surfY) / this.ppm : 0 } : null,
+        })
+      }
       return
     }
 
@@ -2879,7 +2946,8 @@ export class GameRenderer {
         this.multiplier = this._applyEffect(type, this.multiplier)
       }
     }
-    this._logCollect(type, multBefore, this.multiplier)
+    this._logCollect(type, multBefore, this.multiplier, undefined,
+      { matched: rgsMatch >= 0, effect: rgsEffect })
     useGameStore.getState().updateStats({multiplier:Math.round(this.multiplier*100)/100})
 
     if (!obj.terminal) {
@@ -2937,6 +3005,30 @@ export class GameRenderer {
       this._animCollect(obj.gfx, obj.spine)
       // Перестраиваем путь к следующему реальному предмету
       this._rebuildPathToNext()
+    }
+
+    // Логируем позицию персонажа и следующую цель
+    {
+      const next = this.spawner?.getNextRoadTarget() ?? null
+      const distPx = Math.hypot(this.charX - obj.worldX, this.charY - obj.worldY)
+      GameLogger.charToTarget({
+        charX:      this.charX,
+        charY:      this.charY,
+        charDepthM: this.depth,
+        charArcS:   this._pathArcS,
+        collected: {
+          type:   obj.type,
+          worldX: obj.worldX,
+          worldY: obj.worldY,
+          distPx,
+        },
+        nextTarget: next ? {
+          type:   next.type,
+          worldX: next.worldX,
+          worldY: next.worldY,
+          depthM: this.ppm > 0 ? (next.worldY - this.surfY) / this.ppm : 0,
+        } : null,
+      })
     }
   }
 
@@ -3021,10 +3113,7 @@ export class GameRenderer {
     gameAudio.setLoop('gold.ogg', false)
     gameAudio.setLoop('stone.ogg', false)
     this._cleanupLavaDeathCinematic()
-    if (!this._lavaHandoffUsedIdleAnchor) {
-      this.idleX = 0
-    }
-    this._lavaHandoffUsedIdleAnchor = false
+    this.idleX = 0
     this.idleDir = 1
     this._bounceT = 0
     this.miner.resetFromDeath()
