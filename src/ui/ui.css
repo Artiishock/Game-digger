@@ -317,14 +317,14 @@
   background: rgba(6, 6, 6, 0.5);
   border: 1px solid #9f9f9f;
   box-shadow: inset 0 0 10px 0 rgba(0, 0, 0, 0.15);
-  padding: 22px 25px;
+  padding: 11px 15px 11px 25px;
 }
 
 /* Speed buttons */
 .ui-speed-group {
   display: flex;
   gap: 10px;
-
+  padding: 10px 0;
   align-items: center;
 }
 
@@ -431,8 +431,8 @@
 }
 
 .ui-bet-adj {
-  width: 50px;
-  height: 50px;
+  width: 51.5px;
+  height: 53px;
 
   background-color: transparent;
   background-image: url("/ui/plus_minus_bg.png");
@@ -1525,6 +1525,142 @@
 .ui-modal--keyboard-active .ui-num-keyboard {
   z-index: 280;
 }
+
+
+/* ═══════════════════════════════════════════════════════
+   BALANCE BET MODAL
+   ═══════════════════════════════════════════════════════ */
+.ui-group-wrapper {
+  position: relative;
+}
+
+.ui-bet-block {
+  border-radius: 24px;
+  transition: background 0.15s ease;
+  padding: 10px 10px;
+}
+
+.ui-bet-block:hover {
+  background:
+    radial-gradient(circle at center, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.3) 100%),
+    rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+}
+
+.balance-bet-modal {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 5px);
+  z-index: 120;
+  width: min(555px, calc(100vw - 20px));
+  height: min(195px, calc(100vw - 20px));
+  box-sizing: border-box;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(6, 6, 6, 0.5);
+  border: 1px solid rgba(159, 159, 159, 1);
+  box-shadow: inset 0 0 10px 0 rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.balance-bet-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0 0 10px;
+}
+
+.balance-bet-modal__title {
+  font-family: "Inter", sans-serif;
+  font-size: 25px;
+  font-weight: 800;
+  line-height: 100%;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  color: rgba(250, 203, 50, 1);
+}
+
+.balance-bet-modal__close {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.balance-bet-modal__close img {
+  width: 32px;
+  height: 32px;
+  display: block;
+}
+
+.balance-bet-modal__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+}
+
+.balance-bet-modal__cell {
+  position: relative;
+  overflow: hidden;
+
+  min-width: 0;
+  min-height: 34px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(160, 160, 178, 1);
+  font-family: "Inter", sans-serif;
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 100%;
+  letter-spacing: 0;
+  text-align: center;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  cursor: pointer;
+}
+
+.balance-bet-modal__cell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+
+  background:
+    radial-gradient(
+      circle at center,
+      rgba(0, 0, 0, 0) 0%,
+      rgba(0, 0, 0, 0.3) 100%
+    ),
+    rgba(0, 0, 0, 0.45);
+
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.balance-bet-modal__cell:hover::before {
+  opacity: 1;
+}
+
+.balance-bet-modal__cell span {
+  position: relative;
+  z-index: 1;
+}
+
 
 /* ═══════════════════════════════════════════════════════ RULES START SCREEN ═══════════════════════════════════════════════════════ */
 
@@ -4270,12 +4406,14 @@
     overflow: visible;
     bottom: clamp(12px, 1.3vw, 15px);
     transform: translateX(-50%);
+    padding: 0;
   }
 
   .ui-bet-block {
     position: absolute;
     right: clamp(12px, 1.3vw, 15px);
     bottom: clamp(12px, 1.3vw, 15px);
+    padding: 0;
   }
 
   .ui-credit {
@@ -4327,8 +4465,8 @@
   }
 
   .ui-bet-adj {
-    width: 50px;
-    height: 50px;
+    width: 51.5px;
+    height: 53px;
   }
 
   .ui-bet-icon {
@@ -4534,6 +4672,7 @@
     left: 50%;
     bottom: clamp(12px, 2vw, 15px);
     transform: translateX(-50%);
+    padding: 0;
   }
 
   .ui-speed-btn {
@@ -4551,6 +4690,7 @@
     position: absolute;
     right: clamp(15px, 2.7vw, 20px);
     bottom: clamp(15px, 2.7vw, 20px);
+    padding: 0;
   }
 
   .ui-bet-label {
@@ -4565,8 +4705,8 @@
   }
 
   .ui-bet-adj {
-    width: 35px;
-    height: 35px;
+    width: 36.5px;
+    height: 38px;
   }
 
   .ui-spin-btn-icon,
@@ -4773,6 +4913,7 @@
     bottom: clamp(16px, 5vw, 20px);
     transform: translateX(-50%);
     gap: 5px;
+    padding: 0;
   }
 
   .ui-speed-btn {
@@ -4815,6 +4956,7 @@
     column-gap: 6px;
     row-gap: 5px;
     align-items: center;
+    padding: 0;
   }
 
   .ui-bet-label {
@@ -5065,6 +5207,7 @@
     bottom: clamp(12px, 3.75vh, 15px);
     transform: translateX(-50%);
     gap: 5px;
+    padding: 0;
   }
 
   .ui-speed-btn {
@@ -5106,6 +5249,7 @@
     right: clamp(15px, 2.2vw, 20px);
     bottom: clamp(12px, 3.75vh, 15px);
     gap: 5px;
+    padding: 0;
   }
 
   .ui-bet-label {
@@ -5173,5 +5317,70 @@
     max-width: 13px;
     max-height: 13px;
     display: block;
+  }
+}
+
+.balance-bet-modal-layer {
+  display: contents;
+}
+
+@media (max-width: 900px), (hover: none), (pointer: coarse) {
+  .balance-bet-modal-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 260;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: 16px;
+    box-sizing: border-box;
+
+    background:
+      radial-gradient(
+        circle at center,
+        rgba(0, 0, 0, 0) 0%,
+        rgba(0, 0, 0, 0.3) 100%
+      ),
+      rgba(0, 0, 0, 0.45);
+  }
+
+  .balance-bet-modal {
+    position: static;
+    right: auto;
+    bottom: auto;
+    transform: none;
+
+    width: min(535px, calc(100vw - 32px));
+    min-height: 310px;
+    height: auto;
+
+    max-height: calc(100dvh - 32px);
+    overflow-y: auto;
+  }
+
+
+  .balance-bet-modal__cell {
+    min-height: 50px;
+  }
+
+
+  .balance-bet-modal__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .ui-bet-block:hover {
+    background: transparent;
+  }
+}
+
+@media (max-width: 430px) {
+  .balance-bet-modal {
+    width: min(535px, calc(100vw - 24px));
+  }
+
+  .balance-bet-modal__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
