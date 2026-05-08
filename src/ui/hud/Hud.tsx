@@ -1,112 +1,224 @@
-import React from 'react'
-import { useGameStore, type SpeedMode } from '../../store/gameStore'
-import { formatMoney } from '../../rgs/client'
+import React, { useState, useEffect, useRef } from "react";
+import { useGameStore, type SpeedMode } from "../../store/gameStore";
+import { formatMoney, toDisplay } from "../../rgs/client";
+import "../ui.css";
+import { T } from "../../i18n/t";
+import { BalanceBetModal } from "../modals/BalanceBetModal";
 
-const SPEEDS: { mode: SpeedMode; emoji: string }[] = [
-  { mode: 0.75, emoji: '🐢' },
-  { mode: 1,    emoji: '🚶' },
-  { mode: 2,    emoji: '🐇' },
-  { mode: 5,    emoji: '⚡'  },
-]
+// ── Скорости ─────────────────────────────────────────────────────────────────
+const SPEEDS: { mode: SpeedMode; label: string }[] = [
+  { mode: 0.75, label: "x0.75" },
+  { mode: 1, label: "x1" },
+  { mode: 2, label: "x2" },
+  { mode: 5, label: "x5" },
+];
 
-export const Hud: React.FC = () => {
-  const stats    = useGameStore(s => s.stats)
-  const balance  = useGameStore(s => s.balance)
-  const lastWin  = useGameStore(s => s.lastWin)
-  const bet      = useGameStore(s => s.bet)
-  const currency = useGameStore(s => s.currency)
-  const speed    = useGameStore(s => s.speed)
-  const setSpeed = useGameStore(s => s.setSpeed)
-  const config   = useGameStore(s => s.config)
-
-  const turboDisabled = !!config?.jurisdiction.disabledTurbo
-
+// ── Иконка черепахи ───────────────────────────────────────────────────────────
+const TurtleSVG: React.FC<{ active: boolean }> = ({ active }) => {
+  const c = active ? "rgba(255,184,48,0.7)" : "rgba(200,200,200,0.45)";
+  const f = active ? "rgba(255,184,48,0.4)" : "rgba(160,160,160,0.35)";
+  const e = active ? "#FFB830" : "rgba(200,200,200,0.55)";
   return (
-    <div style={{
-      position: 'absolute', bottom: 0, left: 0, right: 0,
-      display: 'flex', alignItems: 'center', gap: 6,
-      padding: '0 10px 10px', zIndex: 50, pointerEvents: 'none',
-    }}>
+    <svg width="28" height="22" viewBox="0 0 36 28" fill="none">
+      <ellipse cx="19" cy="14" rx="10" ry="8" fill={c} />
+      <circle cx="19" cy="14" r="6" fill={f} />
+      <ellipse cx="8" cy="14" rx="4" ry="3" fill={c} />
+      <circle cx="6" cy="13" r="1.5" fill={e} />
+      <line
+        x1="13"
+        y1="20"
+        x2="11"
+        y2="26"
+        stroke={c}
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <line
+        x1="19"
+        y1="22"
+        x2="18"
+        y2="27"
+        stroke={c}
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <line
+        x1="25"
+        y1="20"
+        x2="27"
+        y2="26"
+        stroke={c}
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <line
+        x1="13"
+        y1="8"
+        x2="11"
+        y2="3"
+        stroke={c}
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <line
+        x1="25"
+        y1="8"
+        x2="27"
+        y2="3"
+        stroke={c}
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+};
 
-      {/* Stats block */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 14,
-        background: 'rgba(10,5,2,0.88)', borderRadius: 28,
-        padding: '8px 18px', border: '1px solid rgba(255,184,48,0.18)',
-        backdropFilter: 'blur(8px)', flexShrink: 0,
-      }}>
-        {[
-          { label: 'ГЛУБИНА',    value: `${stats.depth.toFixed(1)}м`      },
-          { label: 'РАССТОЯНИЕ', value: `${stats.distance.toFixed(1)}м`   },
-          { label: 'МНОЖИТЕЛЬ',  value: `×${stats.multiplier.toFixed(2)}`, gold: true },
-        ].map((item, i) => (
-          <React.Fragment key={item.label}>
-            {i > 0 && <div style={{ width: 1, height: 24, background: 'rgba(255,184,48,0.12)' }} />}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-              <span style={{ fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(240,230,211,0.45)', fontWeight: 600 }}>
-                {item.label}
-              </span>
-              <span style={{ fontSize: 14, fontWeight: 700, color: item.gold ? '#FFB830' : '#F0E6D3', fontVariantNumeric: 'tabular-nums' }}>
-                {item.value}
-              </span>
-            </div>
-          </React.Fragment>
-        ))}
+// ── Основной компонент ────────────────────────────────────────────────────────
+export const Hud: React.FC = () => {
+  const balance = useGameStore((s) => s.balance);
+  const bet = useGameStore((s) => s.bet);
+  const currency = useGameStore((s) => s.currency);
+  const speed = useGameStore((s) => s.speed);
+  const setSpeed = useGameStore((s) => s.setSpeed);
+  const config = useGameStore((s) => s.config);
+  const phase = useGameStore((s) => s.phase);
+  const setBet = useGameStore((s) => s.setBet);
+
+  const turboDisabled = !!config?.jurisdiction.disabledTurbo;
+  const betDisabled =
+    phase === "RUNNING" || phase === "BETTING" || phase === "BOOT";
+  const levels = config?.betLevels.map(toDisplay) ?? [
+    0.1, 0.5, 1, 2, 5, 10, 25, 50, 100,
+  ];
+  const minBet = levels[0] ?? 0.1;
+  const maxBet = levels[levels.length - 1] ?? 1000;
+
+  // ── Balance bet modal state ───────────────────────────────────────────────
+  const [showBetModal, setShowBetModal] = useState(false);
+  const groupRef = useRef<HTMLDivElement>(null);
+
+  // Закрытие по клику вне нижней группы управления
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (!showBetModal) return;
+      const target = e.target as Node;
+      if (!groupRef.current?.contains(target)) {
+        setShowBetModal(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showBetModal]);
+
+  // ── Кнопки + / − ─────────────────────────────────────────────────────────
+  const handlePlus = () => {
+    if (betDisabled) return;
+    const idx = levels.findIndex((level) => level > bet);
+    setBet(idx >= 0 ? levels[idx] : maxBet);
+  };
+
+  const handleMinus = () => {
+    if (betDisabled) return;
+    let idx = -1;
+    for (let i = levels.length - 1; i >= 0; i--) {
+      if (levels[i] < bet) {
+        idx = i;
+        break;
+      }
+    }
+    setBet(idx >= 0 ? levels[idx] : minBet);
+  };
+
+  const handleModalSelect = (value: number) => {
+    if (betDisabled) return;
+    setBet(value);
+    setShowBetModal(false);
+  };
+
+  const SPEED_ICONS: Record<number, string> = {
+    0.75: "/ui/speedmode_0.75.svg",
+    1: "/ui/speedmode_1.svg",
+    2: "/ui/speedmode_2.svg",
+    5: "/ui/speedmode_5.svg",
+  };
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  return (
+    <div className="ui-hud">
+      {/* CREDIT */}
+      <div className="ui-credit">
+        <span className="ui-credit-label">{T('balance')}</span>
+        <span className="ui-credit-value">
+          {formatMoney(balance, currency)}
+        </span>
       </div>
 
-      {/* Speed buttons */}
-      <div style={{ display: 'flex', gap: 4, pointerEvents: 'all', flexShrink: 0 }}>
-        {SPEEDS.map(({ mode, emoji }) => {
-          const disabled = mode > 1 && turboDisabled
-          const active   = speed === mode
-          return (
-            <button
-              key={mode}
-              onClick={() => !disabled && setSpeed(mode)}
-              disabled={disabled}
-              style={{
-                width: 42, height: 42, borderRadius: '50%',
-                border: `2px solid ${active ? '#FFB830' : 'rgba(255,255,255,0.15)'}`,
-                background: active ? 'rgba(255,184,48,0.18)' : 'rgba(15,8,3,0.82)',
-                color: '#fff', fontSize: 19, cursor: disabled ? 'not-allowed' : 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                transition: 'all 0.15s', pointerEvents: 'all',
-                opacity: disabled ? 0.35 : 1,
-                boxShadow: active ? '0 0 12px rgba(255,184,48,0.3)' : 'none',
-              }}
-            >{emoji}</button>
-          )
-        })}
-      </div>
+      <div className="ui-group-wrapper" ref={groupRef}>
+        {/* SPEED BUTTONS */}
+        <div className="ui-speed-group">
+          {SPEEDS.map(({ mode, label }) => {
+            const disabled = mode > 1 && turboDisabled;
+            const active = speed === mode;
 
-      {/* Finance block */}
-      <div style={{
-        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        background: 'rgba(8,4,2,0.9)', borderRadius: 28,
-        padding: '8px 20px', border: '1px solid rgba(255,255,255,0.06)',
-        backdropFilter: 'blur(8px)', minWidth: 0,
-      }}>
-        <FinItem label="БАЛАНС" value={formatMoney(balance, currency)} />
-        <div style={{ textAlign: 'center' }}>
-          {lastWin > 0
-            ? <><span style={{ fontSize: 11, color: 'rgba(240,230,211,0.5)' }}>Последний выигрыш: </span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#FFB830' }}>{lastWin.toFixed(2)} {currency}</span></>
-            : <span style={{ fontSize: 12, color: 'rgba(240,230,211,0.3)', letterSpacing: '0.08em' }}>DEEP RUSH</span>
-          }
+            return (
+              <button
+                key={mode}
+                onClick={() => !disabled && setSpeed(mode)}
+                disabled={disabled}
+                className={`ui-speed-btn ${active ? "ui-speed-btn--active" : ""}`}
+              >
+                <span
+                  className="ui-speed-icon"
+                  aria-hidden="true"
+                  style={{
+                    maskImage: `url("${SPEED_ICONS[mode]}")`,
+                    WebkitMaskImage: `url("${SPEED_ICONS[mode]}")`,
+                  }}
+                />
+
+                <span className="ui-speed-label">{label}</span>
+              </button>
+            );
+          })}
         </div>
-        <FinItem label="СТАВКА" value={`${bet.toFixed(2)} ${currency}`} align="right" />
+
+        {/* TOTAL BET + модальное окно */}
+        {showBetModal && (
+          <BalanceBetModal
+            onClose={() => setShowBetModal(false)}
+            onSelect={handleModalSelect}
+          />
+        )}
+
+        <div
+          className="ui-bet-block"
+          onClick={() => !betDisabled && setShowBetModal(true)}
+        >
+          <span className="ui-bet-label">{T('total play')}</span>
+          <div className="ui-bet-controls">
+            <button
+              className="ui-bet-adj"
+              onClick={(event) => { event.stopPropagation(); handleMinus(); }}
+              disabled={betDisabled || bet <= minBet}
+            >
+              <span className="ui-bet-icon">
+                <img src="/ui/minus_icon.svg" alt="" />
+              </span>
+            </button>
+            <span className="ui-bet-amount">{bet.toFixed(2)}</span>
+            <button
+              className="ui-bet-adj"
+              onClick={(event) => { event.stopPropagation(); handlePlus(); }}
+              disabled={betDisabled || bet >= maxBet}
+            >
+              <span className="ui-bet-icon">
+                <img src="/ui/plus_icon.svg" alt="" />
+              </span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
-  )
-}
-
-const FinItem: React.FC<{ label: string; value: string; align?: string }> = ({ label, value, align }) => (
-  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, textAlign: (align as any) ?? 'left' }}>
-    <span style={{ fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(240,230,211,0.4)', fontWeight: 600 }}>
-      {label}
-    </span>
-    <span style={{ fontSize: 13, fontWeight: 700, color: '#F0E6D3', fontVariantNumeric: 'tabular-nums' }}>
-      {value}
-    </span>
-  </div>
-)
+  );
+};

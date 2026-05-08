@@ -9,7 +9,7 @@ export type GamePhase =
   | 'BETTING'    // placing bet with RGS
   | 'RUNNING'    // character digging
   | 'WIN'        // HOME reached — show result
-  | 'LOSE'       // LAVA reached — show result
+  | 'LOSE'       // LAVA: краткий переход, оверлей нет (сразу → IDLE)
   | 'ERROR'      // RGS or session error
 
 export type SpeedMode = 0.75 | 1 | 2 | 5
@@ -33,9 +33,12 @@ export interface SessionStats {
 
 export interface SettingsState {
   soundEnabled:    boolean
+  musicEnabled:    boolean
   musicVolume:     number   // 0–1
   sfxVolume:       number   // 0–1
-  highQuality:     boolean
+  spaceEnabled:    boolean
+  batterySaver:    boolean
+  introScreen:     boolean
   digBtnSize:      number   // 0.5–1.5
   digBtnOpacity:   number   // 0–1
   digBtnX:         number   // 0–1 (normalised position)
@@ -53,13 +56,16 @@ interface GameStore {
   errorMsg:  string
 
   // Finance
-  balance:    number   // API units
-  bet:        number   // display $
-  lastWin:    number   // display $
+  balance:     number   // API units
+  bet:         number   // display $
+  lastWin:     number   // display $
+  lastWinMult: number   // multiplier from math engine
 
   // Round
-  events:    RoundEvent[]
-  roundID:   string
+  events:     RoundEvent[]
+  roundID:    string
+  worldSeed:  number
+  replayMode: boolean
 
   // Live stats (updated every frame by PixiJS renderer)
   stats:     SessionStats
@@ -83,8 +89,11 @@ interface GameStore {
   setBet:      (bet: number)            => void
   setCurrency: (c: string)              => void
   setSessionID:(id: string)             => void
-  setEvents:   (events: RoundEvent[], roundID: string) => void
-  setLastWin:  (win: number)            => void
+  setEvents:      (events: RoundEvent[], roundID: string) => void
+  setWorldSeed:   (seed: number) => void
+  setReplayMode:  (mode: boolean) => void
+  setLastWin:     (win: number)          => void
+  setLastWinMult: (mult: number)         => void
   setSpeed:    (speed: SpeedMode)       => void
   updateStats: (partial: Partial<SessionStats>) => void
   resetStats:  ()                       => void
@@ -110,9 +119,12 @@ const DEFAULT_AUTOPLAY: AutoplayConfig = {
 
 const DEFAULT_SETTINGS: SettingsState = {
   soundEnabled:  true,
+  musicEnabled:  true,
   musicVolume:   0.6,
   sfxVolume:     0.8,
-  highQuality:   true,
+  spaceEnabled:  true,
+  batterySaver:  false,
+  introScreen:   true,
   digBtnSize:    1.0,
   digBtnOpacity: 1.0,
   digBtnX:       0.88,
@@ -126,13 +138,16 @@ export const useGameStore = create<GameStore>((set) => ({
   config:    null,
   errorMsg:  '',
 
-  balance:   0,
-  bet:       1.0,
-  lastWin:   0,
+  balance:     0,
+  bet:         1.0,
+  lastWin:     0,
+  lastWinMult: 0,
 
-  events:  [],
-  roundID: '',
-  stats:   { depth: 0, distance: 0, multiplier: 1 },
+  events:     [],
+  roundID:    '',
+  worldSeed:  0,
+  replayMode: false,
+  stats:   { depth: 0, distance: 0, multiplier: 0 },
 
   speed: 1,
 
@@ -153,8 +168,11 @@ export const useGameStore = create<GameStore>((set) => ({
   setCurrency: (currency) => set({ currency }),
   setSessionID:(sessionID)=> set({ sessionID }),
 
-  setEvents: (events, roundID) => set({ events, roundID }),
-  setLastWin: (lastWin)  => set({ lastWin }),
+  setEvents:     (events, roundID) => set({ events, roundID }),
+  setWorldSeed:  (worldSeed)      => set({ worldSeed }),
+  setReplayMode: (replayMode)     => set({ replayMode }),
+  setLastWin:     (lastWin)     => set({ lastWin }),
+  setLastWinMult: (lastWinMult) => set({ lastWinMult }),
   setSpeed:   (speed)    => set({ speed }),
 
   updateStats: (partial) =>

@@ -1,246 +1,559 @@
 import * as PIXI from 'pixi.js'
-import { TILE } from './Tileworld'
+import { GameAssets } from './gameAssets'
+import { perf } from '../dev/PerfProfiler'
 
-/**
- * LavaSimulation — физическая симуляция течения лавы с эффектом metaballs
- *
- * Принцип metaballs:
- *   - Рисуем мягкие круглые блобы лавы в отдельный Container
- *   - BlurFilter размывает их, создавая градиентные хвосты
- *   - Кастомный threshold-шейдер обрезает по порогу → блобы сливаются
- *     в единую органическую массу, как настоящая жидкая лава
- */
+export const CELL_PX = 40
 
-export const CELL_PX  = TILE
-const MAX_AMOUNT       = 1.0
-const FLOW_SPEED       = 0.5
-const MIN_FLOW         = 0.05
-const GRAVITY_BIAS     = 0.8
+const SIM_CELL     = CELL_PX / 2   // 20px
+const MAX_AMOUNT   = 1.0
+const MIN_FLOW     = 0.04
+const FLOW_SPEED   = 0.45
+const GRAVITY_BIAS = 0.85
 
-// ── Metaball threshold fragment shader ────────────────────────────────────────
-// Принимает размытую текстуру, обрезает по alpha-порогу, перекрашивает в лаву
 const METABALL_FRAG = `
 precision mediump float;
-
 varying vec2 vTextureCoord;
 uniform sampler2D uSampler;
 uniform float uTime;
 
 void main(void) {
   vec4 col = texture2D(uSampler, vTextureCoord);
-
-  // Порог metaball: всё что выше 0.35 alpha — считаем "внутри" лавы
   float alpha = col.a;
   float threshold = 0.35;
+  if (alpha < threshold) { gl_FragColor = vec4(0.0); return; }
 
-  if (alpha < threshold) {
-    gl_FragColor = vec4(0.0);
-    return;
-  }
-
-  // Нормализуем: 0=граница, 1=центр блоба
   float t = clamp((alpha - threshold) / (1.0 - threshold), 0.0, 1.0);
-
-  // Анимированный шум для пульсации цвета
-  float wave = sin(vTextureCoord.x * 18.0 + uTime * 1.8) 
+  float wave = sin(vTextureCoord.x * 18.0 + uTime * 1.8)
              * cos(vTextureCoord.y * 14.0 + uTime * 1.3) * 0.15;
   t = clamp(t + wave, 0.0, 1.0);
 
-  // Цветовой градиент: тёмный центр → ярко-оранжевый → красный край
-  vec3 coreColor  = vec3(0.95, 0.35, 0.0);  // насыщенный оранжевый
-  vec3 edgeColor  = vec3(0.75, 0.10, 0.0);  // тёмно-красный
-  vec3 hotColor   = vec3(1.0,  0.75, 0.1);  // жёлтая горячая точка
-
-  // Смешиваем: край → основа → горячее ядро
+  vec3 coreColor = vec3(0.95, 0.35, 0.0);
+  vec3 edgeColor = vec3(0.75, 0.10, 0.0);
+  vec3 hotColor  = vec3(1.0,  0.75, 0.1);
   vec3 lavaColor = mix(edgeColor, coreColor, smoothstep(0.0, 0.6, t));
   lavaColor      = mix(lavaColor, hotColor,  smoothstep(0.7, 1.0, t));
-
-  // Блик на поверхности — тонкая светлая кромка
   float rim = smoothstep(0.35, 0.42, alpha) * (1.0 - smoothstep(0.42, 0.55, alpha));
   lavaColor += vec3(1.0, 0.9, 0.4) * rim * 0.6;
-
   gl_FragColor = vec4(lavaColor, 1.0);
 }
 `
 
 export class LavaSimulation {
-  private cells:    Map<string, { amount: number; open: boolean }> = new Map()
-  private dirty:    Set<string> = new Set()
+  private _texLayer:     PIXI.Container = new PIXI.Container()
+  private _texMaskGfx:   PIXI.Graphics  = new PIXI.Graphics()
+  private _tilingSprite: PIXI.TilingSprite | null = null
+  private cells: Map<string, { amount: number; static?: boolean }> = new Map()
+  private dirty: Set<string> = new Set()
 
-  // Публичный контейнер — добавляется в worldLayer вместо отдельных graphics
   readonly container: PIXI.Container
+  readonly glowGfx:   PIXI.Graphics
 
-  // Внутренние слои
-  private blobGfx:  PIXI.Graphics    // мягкие круглые блобы (до фильтра)
-  private glowGfx:  PIXI.Graphics    // внешнее свечение (за пределами контейнера)
-
-  // Для совместимости с GameRenderer — он добавляет эти два объекта
-  get graphics(): PIXI.DisplayObject { return this.container }
-
-  private _blurFilter:   PIXI.filters.BlurFilter
+  private _inner:        PIXI.Container
+  private blobGfx:       PIXI.Graphics
+  private _caveMaskGfx:  PIXI.Graphics   // маска = форма пещеры
+  private _texOffX = 0
+  private _texOffY = 0
+  private _camX = 0
+  private _camY = 0
+  /** Размер вьюпорта (экрана) для отсечения рендера — иначе перерисовываются все ячейки мира */
+  private _viewW = 1920
+  private _viewH = 1080
+  private _blurFilter:   PIXI.BlurFilter
   private _threshFilter: PIXI.Filter
-  private time: number = 0
+  private time = 0
+  private _destroyed = false
 
   constructor() {
-    // ── Metaball container (размытие + threshold) ──────────────────────────
     this.container = new PIXI.Container()
+    this._inner    = new PIXI.Container()
     this.blobGfx   = new PIXI.Graphics()
-    this.container.addChild(this.blobGfx)
+    this._inner.addChild(this.blobGfx)
 
-    // BlurFilter — размывает блобы, создавая перекрывающиеся градиенты
-    this._blurFilter = new PIXI.filters.BlurFilter(18, 4)
-    this._blurFilter.padding = 40
+    // Слабее blur — заметно дешевле на GPU при большом числе метаболлов
+    this._blurFilter         = new PIXI.BlurFilter(9, 3)
+    this._blurFilter.padding = 28
+    this._threshFilter       = new PIXI.Filter(undefined, METABALL_FRAG, { uTime: 0.0 })
+    this._inner.filters      = [this._blurFilter, this._threshFilter]
 
-    // Threshold shader — превращает размытое пятно в чёткую органическую форму
-    this._threshFilter = new PIXI.Filter(undefined, METABALL_FRAG, {
-      uTime: 0.0,
-    })
+    this._caveMaskGfx = new PIXI.Graphics()
+    this.container.addChild(this._inner)
 
-    this.container.filters = [this._blurFilter, this._threshFilter]
+    // Вариант A: TilingSprite поверх metaballs через MULTIPLY + маска из blobGfx
+    this._texLayer   = new PIXI.Container()
+    this._texMaskGfx = new PIXI.Graphics()
+    this._texLayer.addChild(this._texMaskGfx)
+    this._texLayer.mask = this._texMaskGfx
+    this.container.addChild(this._texLayer)
 
-    // ── Внешнее свечение (не проходит через threshold) ────────────────────
-    this.glowGfx = new PIXI.Graphics()
+    // Маска пещеры — лава не выходит за границы зарегистрированных форм
+    this.container.addChild(this._caveMaskGfx)
+    this.container.mask = this._caveMaskGfx
+
+    const proceduralTex = this._makeProceduralLavaTex()
+    // Размер покрывает экран с запасом — позиция обновляется каждый кадр
+    this._tilingSprite = new PIXI.TilingSprite(proceduralTex, 4096, 4096)
+    this._tilingSprite.blendMode = PIXI.BLEND_MODES.MULTIPLY
+    this._tilingSprite.alpha = 0.85
+    this._texLayer.addChild(this._tilingSprite)
+    PIXI.Texture.fromURL(GameAssets.lavaTex)
+      .then(tex => { if (this._tilingSprite) this._tilingSprite.texture = tex })
+      .catch(() => {})
+
+    this.glowGfx       = new PIXI.Graphics()
     this.glowGfx.alpha = 0.18
   }
 
-  // GameRenderer вызывает lavaSimulation.glowGfx — отдаём отдельный объект свечения
-  // (добавляется под container в worldLayer)
+  // ── openArea: для туннеля игрока (scratchAt) ──────────────────────────────
 
-  openArea(wx: number, wy: number, r: number = 50) {
-    const cr = Math.ceil(r / CELL_PX)
-    const cx = Math.round(wx / CELL_PX)
-    const cy = Math.round(wy / CELL_PX)
-    for (let dy = -cr; dy <= cr; dy++) {
-      for (let dx = -cr; dx <= cr; dx++) {
-        if (dx*dx + dy*dy > cr*cr) continue
-        const key = `${cx+dx},${cy+dy}`
-        const cell = this.cells.get(key)
-        if (cell) {
-          cell.open = true
-        } else {
-          this.cells.set(key, { amount: 0, open: true })
+  openArea(wx: number, wy: number, r: number) {
+    this._registerCircleCells(wx, wy, r, undefined)
+  }
+
+  // ── addLavaSource: регистрирует капсулы и заливает лаву снизу вверх ───────
+
+
+  // Генерирует процедурную текстуру лавы если файл не найден
+  private _makeProceduralLavaTex(): PIXI.Texture {
+    const size = 256
+    const canvas = document.createElement('canvas')
+    canvas.width = size; canvas.height = size
+    const ctx = canvas.getContext('2d')!
+
+    // Тёмные прожилки на светлом фоне — через MULTIPLY дадут трещины в лаве
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, size, size)
+
+    // Случайные тёмные вены
+    const seed = 12345
+    let s = seed
+    const rng = () => { s = (Math.imul(1664525, s) + 1013904223) >>> 0; return s / 0x100000000 }
+
+    for (let i = 0; i < 18; i++) {
+      const x0 = rng() * size, y0 = rng() * size
+      const x1 = x0 + (rng() - 0.5) * 120, y1 = y0 + (rng() - 0.5) * 120
+      const w  = 4 + rng() * 12
+      ctx.strokeStyle = `rgba(80, 20, 0, ${0.3 + rng() * 0.4})`
+      ctx.lineWidth   = w
+      ctx.lineCap     = 'round'
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke()
+    }
+
+    // Светлые горячие пятна
+    for (let i = 0; i < 8; i++) {
+      const x = rng() * size, y = rng() * size, r = 10 + rng() * 30
+      const grad = ctx.createRadialGradient(x, y, 0, x, y, r)
+      grad.addColorStop(0, 'rgba(255,255,200,0.9)')
+      grad.addColorStop(1, 'rgba(255,255,255,0)')
+      ctx.fillStyle = grad
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill()
+    }
+
+    return PIXI.Texture.from(canvas)
+  }
+
+  // Рисует форму пещеры в маску — лава не выходит за границы
+  private _addCaveMask(points: Array<{x: number; y: number; r: number}>) {
+    if (points.length === 0) return
+    const g = this._caveMaskGfx
+    if (points.length === 1) {
+      const p = points[0]
+      g.beginFill(0xffffff).drawCircle(p.x, p.y, p.r).endFill()
+      return
+    }
+    for (let i = 0; i < points.length - 1; i++) {
+      const a = points[i], b = points[i + 1]
+      const dx = b.x - a.x, dy = b.y - a.y
+      const len = Math.sqrt(dx*dx + dy*dy)
+      if (len < 0.001) continue
+      const STEPS = 10
+      const verts: number[] = []
+      for (let s = 0; s <= STEPS; s++) {
+        const angle = Math.atan2(dy, dx) + Math.PI / 2 + (Math.PI / STEPS) * s
+        verts.push(a.x + Math.cos(angle) * a.r, a.y + Math.sin(angle) * a.r)
+      }
+      for (let s = 0; s <= STEPS; s++) {
+        const angle = Math.atan2(dy, dx) - Math.PI / 2 + (Math.PI / STEPS) * s
+        verts.push(b.x + Math.cos(angle) * b.r, b.y + Math.sin(angle) * b.r)
+      }
+      g.beginFill(0xffffff).drawPolygon(verts).endFill()
+    }
+    // Круги на всех точках для ровных стыков
+    for (const p of points) {
+      g.beginFill(0xffffff).drawCircle(p.x, p.y, p.r).endFill()
+    }
+  }
+
+  private _addCaveMaskRect(rect: { cx: number; cy: number; hw: number; hh: number; cr?: number }) {
+    const g = this._caveMaskGfx
+    const x = rect.cx - rect.hw
+    const y = rect.cy - rect.hh
+    const cr = Math.max(0, rect.cr ?? 0)
+    if (cr > 0) (g as any).beginFill(0xffffff).drawRoundedRect(x, y, 2 * rect.hw, 2 * rect.hh, cr).endFill()
+    else g.beginFill(0xffffff).drawRect(x, y, 2 * rect.hw, 2 * rect.hh).endFill()
+  }
+
+  /** Ячейки симуляции, центр которых попадает в axis-aligned прямоугольник (мир). */
+  private _registerAabbCells(
+    cx: number,
+    cy: number,
+    hw: number,
+    hh: number,
+    cr: number,
+    outKeys: Set<string>,
+  ) {
+    const minX = cx - hw
+    const maxX = cx + hw
+    const minY = cy - hh
+    const maxY = cy + hh
+    const gx0 = Math.floor(minX / SIM_CELL)
+    const gx1 = Math.ceil(maxX / SIM_CELL)
+    const gy0 = Math.floor(minY / SIM_CELL)
+    const gy1 = Math.ceil(maxY / SIM_CELL)
+    for (let gy = gy0; gy <= gy1; gy++) {
+      for (let gx = gx0; gx <= gx1; gx++) {
+        const px = gx * SIM_CELL + SIM_CELL / 2
+        const py = gy * SIM_CELL + SIM_CELL / 2
+        if (px < minX || px > maxX || py < minY || py > maxY) continue
+        // Если есть скругление — выкидываем центры, попавшие в срезанные углы.
+        if (cr > 0) {
+          const dx = Math.abs(px - cx)
+          const dy = Math.abs(py - cy)
+          const ix = hw - cr
+          const iy = hh - cr
+          if (dx > ix && dy > iy) {
+            const cx2 = dx - ix
+            const cy2 = dy - iy
+            if (cx2 * cx2 + cy2 * cy2 > cr * cr) continue
+          }
         }
-        this.dirty.add(key)
+        const key = `${gx},${gy}`
+        if (!this.cells.has(key)) this.cells.set(key, { amount: 0 })
+        outKeys.add(key)
       }
     }
   }
 
-  fillCave(points: Array<{x: number; y: number; r: number}>, fillFraction = 0.5) {
-    if (points.length === 0) return
+  // Открывает ячейки туннеля только если туннель пересекает ячейку с лавой (amount > 0)
+  openAreaIfNearLava(wx: number, wy: number, rx: number, ry: number, _ux: number, _uy: number) {
+    const rm = Math.max(rx, ry) + 4
+    const cr = Math.ceil(rm / SIM_CELL) + 1
+    const cx = Math.floor(wx / SIM_CELL)
+    const cy = Math.floor(wy / SIM_CELL)
 
-    let minX = Infinity, maxX = -Infinity
-    let minY = Infinity, maxY = -Infinity
-    for (const p of points) {
-      minX = Math.min(minX, p.x - p.r); maxX = Math.max(maxX, p.x + p.r)
-      minY = Math.min(minY, p.y - p.r); maxY = Math.max(maxY, p.y + p.r)
+    // Проверяем есть ли рядом ячейки с реальной лавой (не просто зарегистрированные)
+    let hasLavaNear = false
+    for (let dy = -cr; dy <= cr && !hasLavaNear; dy++) {
+      for (let dx = -cr; dx <= cr && !hasLavaNear; dx++) {
+        const cell = this.cells.get(`${cx+dx},${cy+dy}`)
+        if (cell && cell.amount > 0.1) hasLavaNear = true
+      }
+    }
+    if (!hasLavaNear) return
+
+    // Регистрируем ячейки для физики течения (лава статичная, но коллизия нужна).
+    // Маску пещеры НЕ расширяем — статичная лава не вытекает за пределы rect-зоны.
+    this._registerCircleCells(wx, wy, rm, undefined)
+  }
+
+  addLavaSource(
+    points: Array<{x: number; y: number; r: number}>,
+    fillFraction = 0.75,
+    opts?: { static?: boolean; rect?: { cx: number; cy: number; hw: number; hh: number; cr?: number } },
+  ) {
+    const rect = opts?.rect
+    if (rect) {
+      this._addCaveMaskRect(rect)
+      const caveKeys = new Set<string>()
+      this._registerAabbCells(rect.cx, rect.cy, rect.hw, rect.hh, Math.max(0, rect.cr ?? 0), caveKeys)
+      if (caveKeys.size === 0) return
+      for (const key of caveKeys) {
+        const cell = this.cells.get(key)
+        if (!cell) continue
+        cell.amount = MAX_AMOUNT
+        cell.static = true
+        this.dirty.add(key)
+      }
+      return
     }
 
-    const fillTop = minY + (maxY - minY) * (1 - fillFraction)
+    if (points.length === 0) return
 
-    const gx0 = Math.floor(minX / CELL_PX)
-    const gx1 = Math.ceil(maxX  / CELL_PX)
-    const gy0 = Math.floor(minY / CELL_PX)
-    const gy1 = Math.ceil(maxY  / CELL_PX)
+    this._addCaveMask(points)
+
+    const caveKeys = new Set<string>()
+
+    if (points.length === 1) {
+      this._registerCircleCells(points[0]!.x, points[0]!.y, points[0]!.r, caveKeys)
+    } else {
+      for (let i = 0; i < points.length - 1; i++) {
+        const a = points[i]!, b = points[i + 1]!
+        const r = (a.r + b.r) / 2
+        this._registerCapsuleCells(a.x, a.y, b.x, b.y, r, caveKeys)
+      }
+      const last = points[points.length - 1]!
+      this._registerCircleCells(last.x, last.y, last.r, caveKeys)
+    }
+
+    if (caveKeys.size === 0) return
+
+    const byRow = new Map<number, number[]>()
+    for (const key of caveKeys) {
+      const [gx, gy] = key.split(',').map(Number)
+      if (!byRow.has(gy)) byRow.set(gy, [])
+      byRow.get(gy)!.push(gx)
+    }
+
+    const allCells: [number, number][] = []
+    for (const [gy, gxList] of byRow) {
+      for (const gx of gxList) allCells.push([gx, gy])
+    }
+    allCells.sort((a, b) => a[1] - b[1])
+
+    const n = allCells.length
+    const fillCount = Math.max(1, Math.ceil(n * Math.min(0.99, fillFraction)))
+    const topPart = Math.ceil(fillCount * 0.52)
+    const botPart = fillCount - topPart
+    const filledKeys = new Set<string>()
+    for (let i = 0; i < topPart && i < n; i++) {
+      const [gx, gy] = allCells[i]!
+      const key = `${gx},${gy}`
+      if (filledKeys.has(key)) continue
+      filledKeys.add(key)
+      const cell = this.cells.get(key)!
+      cell.amount = MAX_AMOUNT
+      this.dirty.add(key)
+    }
+    for (let j = 0; j < botPart && j < n; j++) {
+      const [gx, gy] = allCells[n - 1 - j]!
+      const key = `${gx},${gy}`
+      if (filledKeys.has(key)) continue
+      filledKeys.add(key)
+      const cell = this.cells.get(key)!
+      cell.amount = MAX_AMOUNT
+      this.dirty.add(key)
+    }
+
+    const isStatic = !!opts?.static
+    if (isStatic) {
+      for (const key of caveKeys) {
+        const c = this.cells.get(key)
+        if (c) c.static = true
+      }
+    } else {
+      this._warmUp(72)
+    }
+
+    if (!isStatic) {
+      for (const key of caveKeys) {
+        const cell = this.cells.get(key)
+        if (cell && cell.amount < 0.01) {
+          this.cells.delete(key)
+        }
+      }
+    }
+  }
+
+  // ── Регистрация ячеек по кругу ────────────────────────────────────────────
+
+  private _registerCircleCells(wx: number, wy: number, r: number, outKeys?: Set<string>) {
+    const cr  = Math.ceil(r / SIM_CELL) + 1
+    const cx  = Math.floor(wx / SIM_CELL)
+    const cy  = Math.floor(wy / SIM_CELL)
+    const r2  = r * r
+    for (let dy = -cr; dy <= cr; dy++) {
+      for (let dx = -cr; dx <= cr; dx++) {
+        const px = (cx + dx) * SIM_CELL + SIM_CELL / 2
+        const py = (cy + dy) * SIM_CELL + SIM_CELL / 2
+        const ddx = px - wx, ddy = py - wy
+        if (ddx*ddx + ddy*ddy > r2) continue
+        const key = `${cx+dx},${cy+dy}`
+        if (!this.cells.has(key)) this.cells.set(key, { amount: 0 })
+        outKeys?.add(key)
+      }
+    }
+  }
+
+  // ── Регистрация ячеек по капсуле (отрезок A→B с радиусом r) ──────────────
+
+  private _registerCapsuleCells(
+    ax: number, ay: number,
+    bx: number, by: number,
+    r:  number,
+    outKeys?: Set<string>
+  ) {
+    const minX = Math.min(ax, bx) - r
+    const maxX = Math.max(ax, bx) + r
+    const minY = Math.min(ay, by) - r
+    const maxY = Math.max(ay, by) + r
+
+    const gx0 = Math.floor(minX / SIM_CELL)
+    const gx1 = Math.ceil (maxX / SIM_CELL)
+    const gy0 = Math.floor(minY / SIM_CELL)
+    const gy1 = Math.ceil (maxY / SIM_CELL)
 
     for (let gy = gy0; gy <= gy1; gy++) {
       for (let gx = gx0; gx <= gx1; gx++) {
-        const px = gx * CELL_PX
-        const py = gy * CELL_PX
-
-        let inside = false
-        for (const p of points) {
-          const dx = px - p.x, dy = py - p.y
-          if (dx*dx + dy*dy <= p.r*p.r) { inside = true; break }
-        }
-        if (!inside) continue
-
+        const px = gx * SIM_CELL + SIM_CELL / 2
+        const py = gy * SIM_CELL + SIM_CELL / 2
+        if (this._distToSegment(px, py, ax, ay, bx, by) > r) continue
         const key = `${gx},${gy}`
-        const amount = py >= fillTop ? MAX_AMOUNT : 0
-        const existing = this.cells.get(key)
-        if (existing) {
-          existing.open = true
-          if (amount > existing.amount) existing.amount = amount
-        } else {
-          this.cells.set(key, { amount, open: true })
-        }
-        this.dirty.add(key)
+        if (!this.cells.has(key)) this.cells.set(key, { amount: 0 })
+        outKeys?.add(key)
       }
     }
   }
 
-  update(dt: number) {
-    this.time += dt
-    this._simulateFlow()
-    this._render()
-    // Обновляем uniform времени для анимации шейдера
-    if (this._threshFilter.uniforms) {
-      this._threshFilter.uniforms.uTime = this.time
+  // ── Расстояние от точки до отрезка ───────────────────────────────────────
+
+
+  // Заполняет пробелы между ячейками — гарантирует связность сетки
+  private _fillGaps(keys: Set<string>) {
+    let changed = true
+    while (changed) {
+      changed = false
+      for (const key of keys) {
+        const [gx, gy] = key.split(',').map(Number)
+        for (const [dx, dy] of [[0,1],[0,-1],[1,0],[-1,0]]) {
+          const nk = `${gx+dx},${gy+dy}`
+          if (keys.has(nk)) continue
+          // Если у соседа есть ещё один сосед из keys — заполняем пробел
+          let neighborCount = 0
+          for (const [dx2, dy2] of [[0,1],[0,-1],[1,0],[-1,0]]) {
+            if (keys.has(`${gx+dx+dx2},${gy+dy+dy2}`)) neighborCount++
+          }
+          if (neighborCount >= 2) {
+            keys.add(nk)
+            if (!this.cells.has(nk)) this.cells.set(nk, { amount: 0 })
+            changed = true
+          }
+        }
+      }
     }
   }
 
-  private _simulateFlow() {
-    const lavaCells: Array<[string, number, number, number]> = []
-    for (const [key, cell] of this.cells) {
-      if (cell.amount < MIN_FLOW || !cell.open) continue
-      const [gx, gy] = key.split(',').map(Number)
-      lavaCells.push([key, gx, gy, cell.amount])
+  private _distToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+    const dx = bx - ax, dy = by - ay
+    const len2 = dx*dx + dy*dy
+    if (len2 === 0) return Math.sqrt((px-ax)**2 + (py-ay)**2)
+    const t  = Math.max(0, Math.min(1, ((px-ax)*dx + (py-ay)*dy) / len2))
+    const nx = ax + t*dx, ny = ay + t*dy
+    return Math.sqrt((px-nx)**2 + (py-ny)**2)
+  }
+
+  // ── Прогрев ───────────────────────────────────────────────────────────────
+
+  private _warmUp(steps: number) {
+    for (let i = 0; i < steps; i++) this._flow(true)
+    for (let i = 0; i < 20; i++)   this._flow(false)
+    this.dirty.clear()
+  }
+
+  // ── Update ────────────────────────────────────────────────────────────────
+
+  setCameraPos(camX: number, camY: number) {
+    this._camX = camX
+    this._camY = camY
+  }
+
+  setViewport(viewW: number, viewH: number) {
+    this._viewW = Math.max(320, viewW)
+    this._viewH = Math.max(240, viewH)
+  }
+
+  update(dt: number) {
+    if (this._destroyed) return
+    let hasFlowing = false
+    for (const c of this.cells.values()) {
+      if (!c.static && c.amount >= MIN_FLOW) {
+        hasFlowing = true
+        break
+      }
+    }
+    const _tf = perf.begin('lava.flow', 1)
+    if (hasFlowing) {
+      this._flow(false)
+    }
+    perf.end('lava.flow', _tf)
+    // Текстура лавы должна "жить" всегда, даже у статичных источников (пещер).
+    this.time += dt
+    this._texOffX += dt * 6
+    this._texOffY += dt * 3.5
+    const _tr = perf.begin('lava.render', 1)
+    this._render()
+    perf.end('lava.render', _tr)
+    if (this._destroyed) return
+    this._threshFilter.uniforms.uTime = this.time
+    if (this._tilingSprite) {
+      // Спрайт следует за камерой — всегда покрывает видимую область
+      this._tilingSprite.x = this._camX - 1024
+      this._tilingSprite.y = this._camY - 1024
+      this._tilingSprite.tilePosition.set(
+        this._texOffX - this._camX,
+        this._texOffY - this._camY
+      )
     }
 
-    lavaCells.sort((a, b) => b[2] - a[2])
+  }
 
-    for (const [key, gx, gy, amount] of lavaCells) {
+  // ── Физика течения ────────────────────────────────────────────────────────
+
+  private _flow(topDown: boolean) {
+    const lavaCells: Array<[string, number, number]> = []
+    for (const [key, cell] of this.cells) {
+      if (cell.amount < MIN_FLOW) continue
+      const [gx, gy] = key.split(',').map(Number)
+      lavaCells.push([key, gx, gy])
+    }
+    lavaCells.sort((a, b) => topDown ? a[2] - b[2] : b[2] - a[2])
+
+    for (const [key, gx, gy] of lavaCells) {
       const cell = this.cells.get(key)
-      if (!cell || cell.amount < MIN_FLOW) continue
+      if (!cell || cell.amount < MIN_FLOW || cell.static) continue
 
+      // Вниз
       const downKey = `${gx},${gy+1}`
       const down = this.cells.get(downKey)
-      if (down?.open && down.amount < MAX_AMOUNT) {
+      if (down && !down.static && down.amount < MAX_AMOUNT) {
         const flow = Math.min(cell.amount * GRAVITY_BIAS, (MAX_AMOUNT - down.amount) * GRAVITY_BIAS * 1.2)
         if (flow > MIN_FLOW) {
-          cell.amount  -= flow
-          down.amount  += flow
+          cell.amount -= flow; down.amount += flow
           this.dirty.add(key); this.dirty.add(downKey)
           if (cell.amount < MIN_FLOW) continue
         }
       }
 
-      if (down && (!down.open || down.amount >= MAX_AMOUNT - MIN_FLOW)) {
-        const dlKey = `${gx-1},${gy+1}`
-        const drKey = `${gx+1},${gy+1}`
-        const dl = this.cells.get(dlKey)
-        const dr = this.cells.get(drKey)
-        const canL = dl?.open && (dl.amount ?? MAX_AMOUNT) < MAX_AMOUNT - MIN_FLOW
-        const canR = dr?.open && (dr.amount ?? MAX_AMOUNT) < MAX_AMOUNT - MIN_FLOW
+      // Диагональ вниз
+      if (!down || down.static || down.amount >= MAX_AMOUNT - MIN_FLOW) {
+        const dlKey = `${gx-1},${gy+1}`, drKey = `${gx+1},${gy+1}`
+        const dl = this.cells.get(dlKey), dr = this.cells.get(drKey)
+        const canL = dl && !dl.static && dl.amount < MAX_AMOUNT - MIN_FLOW
+        const canR = dr && !dr.static && dr.amount < MAX_AMOUNT - MIN_FLOW
         if (canL && canR) {
           const flow = Math.min(cell.amount * 0.6, FLOW_SPEED * 1.3)
           if (flow > MIN_FLOW) {
             cell.amount -= flow
-            dl!.amount  += flow * 0.5
-            dr!.amount  += flow * 0.5
+            dl!.amount += flow * 0.5; dr!.amount += flow * 0.5
             this.dirty.add(key); this.dirty.add(dlKey); this.dirty.add(drKey)
-            if (cell.amount < MIN_FLOW) continue
           }
         } else if (canL) {
           const flow = Math.min(cell.amount * 0.6, FLOW_SPEED * 1.2)
           if (flow > MIN_FLOW) { cell.amount -= flow; dl!.amount += flow; this.dirty.add(key); this.dirty.add(dlKey) }
-          if (cell.amount < MIN_FLOW) continue
         } else if (canR) {
           const flow = Math.min(cell.amount * 0.6, FLOW_SPEED * 1.2)
           if (flow > MIN_FLOW) { cell.amount -= flow; dr!.amount += flow; this.dirty.add(key); this.dirty.add(drKey) }
-          if (cell.amount < MIN_FLOW) continue
         }
       }
 
+      // Горизонталь
       for (const dx of [-1, 1]) {
         if (cell.amount < MIN_FLOW) break
         const sideKey = `${gx+dx},${gy}`
         const side = this.cells.get(sideKey)
-        if (!side?.open) continue
+        if (!side || side.static) continue
         const diff = cell.amount - side.amount
         if (diff > MIN_FLOW * 2) {
           const flow = diff * 0.35
-          cell.amount -= flow
-          side.amount += flow
+          cell.amount -= flow; side.amount += flow
           this.dirty.add(key); this.dirty.add(sideKey)
         }
       }
@@ -253,71 +566,139 @@ export class LavaSimulation {
     this.dirty.clear()
   }
 
+  // ── Рендер ────────────────────────────────────────────────────────────────
+
   private _render() {
+    if (this._destroyed) return
     this.blobGfx.clear()
     this.glowGfx.clear()
+    this._texMaskGfx.clear()
 
-    const cs = CELL_PX
+    const padPx = CELL_PX * 10 + this._blurFilter.padding * 2
+    const minGX = Math.floor((this._camX - padPx) / SIM_CELL)
+    const maxGX = Math.ceil ((this._camX + this._viewW + padPx) / SIM_CELL)
+    const minGY = Math.floor((this._camY - padPx) / SIM_CELL)
+    const maxGY = Math.ceil ((this._camY + this._viewH + padPx) / SIM_CELL)
 
     for (const [key, cell] of this.cells) {
       if (cell.amount < MIN_FLOW) continue
-
       const [gx, gy] = key.split(',').map(Number)
-      const cx = gx * cs + cs / 2
-      const cy = gy * cs + cs / 2
+      if (gx < minGX || gx > maxGX || gy < minGY || gy > maxGY) continue
+      const cx = gx * SIM_CELL + SIM_CELL / 2
+      const cy = gy * SIM_CELL + SIM_CELL / 2
+      const r  = SIM_CELL * (0.6 + cell.amount * 0.25)
 
-      // Радиус блоба зависит от amount — больше лавы → больший блоб
-      // Чуть больше клетки чтобы соседи перекрывались и сливались
-      const r = cs * (0.55 + cell.amount * 0.25)
-
-      // Рисуем белый/непрозрачный круг — threshold shader покрасит сам
-      // alpha = amount чтобы центр был плотнее краёв
       this.blobGfx.beginFill(0xFFFFFF, cell.amount)
       this.blobGfx.drawCircle(cx, cy, r)
       this.blobGfx.endFill()
 
-      // Внешнее свечение — за пределами metaball контейнера
       this.glowGfx.beginFill(0xFF6600, 0.06 * cell.amount)
       this.glowGfx.drawCircle(cx, cy, r * 1.8)
       this.glowGfx.endFill()
+
+      this._texMaskGfx.beginFill(0xFFFFFF, 1.0)
+      this._texMaskGfx.drawCircle(cx, cy, r)
+      this._texMaskGfx.endFill()
     }
   }
 
-  /**
-   * Проверяет, касается ли точка (мировые координаты) лавы.
-   * Возвращает true если в любой из ячеек в радиусе charRadius есть лава.
-   */
-  touchesPoint(wx: number, wy: number, charRadius: number = CELL_PX): boolean {
-    const cr = Math.ceil(charRadius / CELL_PX)
-    const cx = Math.round(wx / CELL_PX)
-    const cy = Math.round(wy / CELL_PX)
+  // ── Коллизия ──────────────────────────────────────────────────────────────
+
+  touchesPoint(wx: number, wy: number, charRadius: number = CELL_PX * 0.45): boolean {
+    const gx = Math.round(wx / SIM_CELL)
+    const gy = Math.round(wy / SIM_CELL)
+    const cr = Math.ceil(charRadius / SIM_CELL) + 1
     for (let dy = -cr; dy <= cr; dy++) {
       for (let dx = -cr; dx <= cr; dx++) {
-        const cell = this.cells.get(`${cx + dx},${cy + dy}`)
-        if (cell && cell.amount >= 0.3) return true
+        const cell = this.cells.get(`${gx+dx},${gy+dy}`)
+        if (!cell || cell.amount < 0.5) continue
+        const cx  = (gx+dx) * SIM_CELL + SIM_CELL / 2
+        const cy2 = (gy+dy) * SIM_CELL + SIM_CELL / 2
+        const r   = SIM_CELL * (0.6 + cell.amount * 0.25)
+        const ddx = wx - cx, ddy = wy - cy2
+        if (ddx*ddx + ddy*ddy < (r + charRadius) * (r + charRadius)) return true
       }
     }
     return false
   }
 
+  /** Проверка траектории за кадр — при большом gameDt не «проскакиваем» лаву между точками. */
+  touchesSegment(ax: number, ay: number, bx: number, by: number, charRadius: number = CELL_PX * 0.45): boolean {
+    if (this.touchesPoint(ax, ay, charRadius) || this.touchesPoint(bx, by, charRadius)) return true
+    const dx = bx - ax, dy = by - ay
+    const len = Math.hypot(dx, dy)
+    if (len < 1e-4) return false
+    const step = SIM_CELL * 0.35
+    const n = Math.min(40, Math.max(2, Math.ceil(len / step)))
+    for (let i = 1; i < n; i++) {
+      const t = i / n
+      if (this.touchesPoint(ax + dx * t, ay + dy * t, charRadius)) return true
+    }
+    return false
+  }
+
+  // ── Culling ───────────────────────────────────────────────────────────────
+
+  cullFarCells(camX: number, camY: number, viewW: number, viewH: number) {
+    // Высокие пещеры: узкий margin по Y обрезал лаву ровной линией и «съедал» симуляцию вне кадра.
+    const marginX = Math.max(CELL_PX * 40, viewW * 6)
+    const marginY = Math.max(CELL_PX * 120, viewH * 22)
+    const gx0 = Math.floor((camX - marginX) / SIM_CELL)
+    const gx1 = Math.ceil ((camX + viewW + marginX) / SIM_CELL)
+    const gy0 = Math.floor((camY - marginY) / SIM_CELL)
+    const gy1 = Math.ceil ((camY + viewH + marginY) / SIM_CELL)
+    // Статическая декоративная лава далеко от камеры — удаляем, иначе карта ячеек растёт без лимита
+    const statPadX = Math.max(CELL_PX * 55, viewW * 8)
+    const statPadY = Math.max(CELL_PX * 160, viewH * 20)
+    const sx0 = Math.floor((camX - statPadX) / SIM_CELL)
+    const sx1 = Math.ceil ((camX + viewW + statPadX) / SIM_CELL)
+    const sy0 = Math.floor((camY - statPadY) / SIM_CELL)
+    const sy1 = Math.ceil ((camY + viewH + statPadY) / SIM_CELL)
+    for (const key of this.cells.keys()) {
+      const [gx, gy] = key.split(',').map(Number)
+      const cell = this.cells.get(key)
+      if (cell?.static) {
+        if (gx >= sx0 && gx <= sx1 && gy >= sy0 && gy <= sy1) continue
+        this.cells.delete(key)
+        continue
+      }
+      if (gx >= gx0 && gx <= gx1 && gy >= gy0 && gy <= gy1) continue
+      const loose =
+        gx >= gx0 - 80 && gx <= gx1 + 80 &&
+        gy >= gy0 - 120 && gy <= gy1 + 120
+      if (loose && cell && cell.amount >= MIN_FLOW) continue
+      this.cells.delete(key)
+    }
+  }
+
+  /**
+   * Сбрасывает состояние симуляции для повторного использования между раундами.
+   * Фильтры, контейнеры и шейдеры не пересоздаются — только чистим данные.
+   */
+  reset() {
+    if (this._destroyed) return
+    this.cells.clear()
+    this.dirty.clear()
+    this.blobGfx.clear()
+    this.glowGfx.clear()
+    this._caveMaskGfx.clear()
+    this._texMaskGfx.clear()
+    this.time = 0
+    this._texOffX = 0
+    this._texOffY = 0
+  }
+
   destroy() {
+    if (this._destroyed) return
+    this._destroyed = true
+    this._blurFilter.destroy()
+    this._threshFilter.destroy()
+    this._texMaskGfx.destroy()
+    this._caveMaskGfx.destroy()
+    this.blobGfx.destroy()
+    if (this._tilingSprite) { this._tilingSprite.destroy(); this._tilingSprite = null }
     this.container.destroy({ children: true })
     this.glowGfx.destroy()
     this.cells.clear()
-  }
-
-  cullFarCells(camX: number, camY: number, viewW: number, viewH: number) {
-    const margin = CELL_PX * 30
-    const gx0 = Math.floor((camX - margin) / CELL_PX)
-    const gx1 = Math.ceil((camX + viewW + margin) / CELL_PX)
-    const gy0 = Math.floor((camY - margin) / CELL_PX)
-    const gy1 = Math.ceil((camY + viewH + margin) / CELL_PX)
-
-    for (const key of this.cells.keys()) {
-      const [gx, gy] = key.split(',').map(Number)
-      if (gx < gx0 || gx > gx1 || gy < gy0 || gy > gy1) {
-        this.cells.delete(key)
-      }
-    }
   }
 }

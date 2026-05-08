@@ -1,77 +1,175 @@
-import React, { useEffect, useRef } from 'react'
-import { GameCanvas }      from './game/GameCanvas'
-import { Hud }             from './ui/hud/Hud'
-import { BetControls }     from './ui/controls/BetControls'
-import { DigButton }       from './ui/controls/DigButton'
-import { TopBar }          from './ui/controls/TopBar'
-import { ResultOverlay }   from './ui/modals/ResultOverlay'
-import { AutoplayModal }   from './ui/modals/AutoplayModal'
-import { BurgerMenu }      from './ui/menus/BurgerMenu'
-import { ErrorScreen }     from './ui/modals/ErrorScreen'
-import { useGameStore }    from './store/gameStore'
-import { useWindowSize }   from './hooks/useWindowSize'
-import { gameEngine }      from './game/GameEngine'
-import { addReplayRound }  from './ui/menus/InfoAndReplay'
-import { toDisplay }       from './rgs/client'
+import React, { useEffect, useRef, useState } from "react";
+import { GameCanvas } from "./game/GameCanvas";
+import { Hud } from "./ui/hud/Hud";
+import { DigButton } from "./ui/controls/DigButton";
+import { TopBar } from "./ui/controls/TopBar";
+import { ResultOverlay } from "./ui/modals/ResultOverlay";
+import { AutoplayModal } from "./ui/modals/AutoplayModal";
+import { BurgerMenu } from "./ui/menus/BurgerMenu";
+import { ErrorScreen } from "./ui/modals/ErrorScreen";
+import { StartScreen } from "./ui/StartScreen";
+import { useGameStore } from "./store/gameStore";
+import { shallow } from "zustand/shallow";
+import { gameAudio } from "./audio/GameAudio";
+import { useWindowSize } from "./hooks/useWindowSize";
+import { gameEngine } from "./game/GameEngine";
+import { addReplayRound } from "./ui/menus/InfoAndReplay";
+import { toDisplay } from "./rgs/client";
+import { preloadStartupAssets } from "./game/gameAssets";
+import "./ui/ui.css";
 
 // Import Bebas Neue from Google Fonts
-const fontLink = document.createElement('link')
-fontLink.rel  = 'stylesheet'
-fontLink.href = 'https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@300;400;600;700&display=swap'
-document.head.appendChild(fontLink)
+const fontLink = document.createElement("link");
+fontLink.rel = "stylesheet";
+fontLink.href =
+  "https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@300;400;600;700&display=swap";
+document.head.appendChild(fontLink);
 
 export const App: React.FC = () => {
   const { width, height } = useWindowSize()
   const phase    = useGameStore(s => s.phase)
+  const multiplier = useGameStore(s => s.stats.multiplier)
+  const settings = useGameStore(s => s.settings, shallow)
   const prevPhase = useRef<string>('')
+  const [assetsReady, setAssetsReady] = useState(false)
+  const [gameStarted, setGameStarted] = useState(false)
 
   // ── Boot ─────────────────────────────────────────────────────────────────────
   useEffect(() => {
-    gameEngine.boot()
-  }, [])
+    let cancelled = false;
+    (async () => {
+      await preloadStartupAssets();
+      if (cancelled) return;
+      setAssetsReady(true);
+      gameEngine.boot();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    gameAudio.syncPhase(phase, multiplier)
+  }, [phase, multiplier])
+
+  useEffect(() => {
+    if (phase === "LOSE") useGameStore.getState().setPhase("IDLE")
+  }, [phase])
+
+  useEffect(() => {
+    gameAudio.refreshFromStore();
+  }, [settings]);
+
+  // Блокируем браузерный zoom, чтобы масштаб игры не менялся от Ctrl-комбинаций.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!e.ctrlKey) return;
+      const k = e.key;
+      if (k === "+" || k === "-" || k === "=" || k === "_" || k === "0") {
+        e.preventDefault();
+      }
+    };
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("wheel", onWheel);
+    };
+  }, []);
 
   // ── Record round history for Bet Replay ─────────────────────────────────────
   useEffect(() => {
-    const prev = prevPhase.current
-    prevPhase.current = phase
+    const prev = prevPhase.current;
+    prevPhase.current = phase;
 
-    if ((phase === 'WIN' || phase === 'LOSE') && prev === 'RUNNING') {
-      const store     = useGameStore.getState()
-      const balAfterDisplay  = toDisplay(store.balance)
-      const bet       = store.bet
-      const win       = store.lastWin
-      const profit    = win - bet
+    if ((phase === "WIN" || phase === "LOSE") && prev === "RUNNING") {
+      const store = useGameStore.getState();
+
+      if (store.replayMode) {
+        store.setReplayMode(false);
+        return;
+      }
+
+      const balAfterDisplay = toDisplay(store.balance);
+      const bet = store.bet;
+      const win = store.lastWin;
+      const profit = win - bet;
+
+      const d = new Date();
+      const time = `${d.toLocaleDateString("en-GB")}
+${d.toLocaleTimeString("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+})}`;
 
       addReplayRound({
-        time:      new Date().toLocaleTimeString(),
+        time,
+        currency: store.currency,
         bet,
         win,
         profit,
         balBefore: balAfterDisplay - profit,
-        balAfter:  balAfterDisplay,
-        currency:  store.currency,
-      })
+        balAfter: balAfterDisplay,
+        roundID: store.roundID,
+        worldSeed: store.worldSeed,
+        events: store.events,
+      });
     }
-  }, [phase])
+  }, [phase]);
 
-  if (phase === 'ERROR') return <ErrorScreen />
+  if (phase === "ERROR") return <ErrorScreen />;
+  if (!assetsReady || phase === "BOOT") {
+    return (
+      <div
+        style={{
+          position: "relative",
+          width,
+          height,
+          overflow: "hidden",
+          background: "#1A0E08",
+          fontFamily: "'Barlow', sans-serif",
+        }}
+      >
+        <div className="ui-boot">
+          <div className="ui-boot-spinner" />
+          <div className="ui-boot-title">DEEP RUSH</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!gameStarted) {
+    return (
+      <StartScreen
+        width={width}
+        height={height}
+        onStart={() => setGameStarted(true)}
+      />
+    );
+  }
 
   return (
-    <div style={{
-      position: 'relative',
-      width, height,
-      overflow: 'hidden',
-      background: '#1A0E08',
-      fontFamily: "'Barlow', sans-serif",
-    }}>
+    <div
+      style={{
+        position: "relative",
+        width,
+        height,
+        overflow: "hidden",
+        background: "#1A0E08",
+        fontFamily: "'Barlow', sans-serif",
+      }}
+    >
       {/* ── PixiJS canvas ── */}
       <GameCanvas width={width} height={height} />
 
       {/* ── HUD (bottom bar) ── */}
       <Hud />
-
-      {/* ── Bet controls ── */}
-      <BetControls />
 
       {/* ── DIG button + Autoplay button ── */}
       <DigButton />
@@ -83,33 +181,6 @@ export const App: React.FC = () => {
       <ResultOverlay />
       <AutoplayModal />
       <BurgerMenu />
-
-      {/* ── Boot loading spinner ── */}
-      {phase === 'BOOT' && (
-        <div style={{
-          position: 'absolute', inset: 0, zIndex: 300,
-          background: '#1A0E08',
-          display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center',
-          gap: 20,
-        }}>
-          <div style={{
-            width: 56, height: 56,
-            border: '4px solid rgba(255,184,48,0.2)',
-            borderTopColor: '#FFB830',
-            borderRadius: '50%',
-            animation: 'spin 0.9s linear infinite',
-          }} />
-          <div style={{
-            fontFamily: 'Bebas Neue, sans-serif',
-            fontSize: 32, color: '#FFB830',
-            letterSpacing: '.1em',
-          }}>
-            DEEP RUSH
-          </div>
-          <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-        </div>
-      )}
     </div>
-  )
-}
+  );
+};

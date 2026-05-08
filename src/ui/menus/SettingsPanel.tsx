@@ -1,95 +1,191 @@
-import React from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { t, T } from '../../i18n/t'
 import { useGameStore } from '../../store/gameStore'
+import { gameAudio } from '../../audio/GameAudio'
+import '../ui.css'
 
 export const SettingsPanel: React.FC = () => {
   const settings = useGameStore(s => s.settings)
   const upd      = useGameStore(s => s.updateSettings)
 
-  const reset = () => upd({ digBtnSize: 1, digBtnOpacity: 1, digBtnX: 0.88, digBtnY: 0.75 })
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div className="sys-settings">
+      <div className="sys-settings-section">
+        <div className="sys-settings-toggle-item">
+          <div>
+            <div className="sys-settings-toggle-title">{T('music')}</div>
+            <div className="sys-settings-toggle-desc">{t('music desc')}</div>
+          </div>
+          <SysToggle
+            checked={settings.musicEnabled}
+            onChange={v => upd({ musicEnabled: v })}
+          />
+        </div>
 
-      {/* High quality */}
-      <Row label="ВЫСОКОЕ КАЧЕСТВО">
-        <Toggle checked={settings.highQuality} onChange={v => upd({ highQuality: v })} />
-      </Row>
+        <div className="sys-settings-slider-row">
+          <span className="sys-settings-slider-icon"><img src="/ui/sound_icon.svg" alt="" className="sys-settings-slider-icon" /></span>
+          <SysSlider
+            value={settings.sfxVolume}
+            onChange={v => upd({ sfxVolume: v })}
+          />
+          <span className="sys-settings-slider-val">
+            {Math.round(settings.sfxVolume * 100)}
+          </span>
+        </div>
 
-      {/* SFX volume */}
-      <Row label="ЗВУКОВЫЕ ЭФФЕКТЫ">
-        <Slider value={settings.sfxVolume} onChange={v => upd({ sfxVolume: v })} />
-      </Row>
+        <div className="sys-settings-slider-row">
+          <span className="sys-settings-slider-icon"><img src="/ui/music-icon.svg" alt="" className="sys-settings-slider-icon" /></span>
+          <SysSlider
+            value={settings.musicVolume}
+            onChange={v => upd({ musicVolume: v })}
+          />
+          <span className="sys-settings-slider-val">
+            {Math.round(settings.musicVolume * 100)}
+          </span>
+        </div>
+      </div>
 
-      {/* Music volume */}
-      <Row label="МУЗЫКА">
-        <Slider value={settings.musicVolume} onChange={v => upd({ musicVolume: v })} />
-      </Row>
+      <div className="sys-settings-section">
+        <div className="sys-settings-toggle-item">
+          <div>
+            <div className="sys-settings-toggle-title">{T('battery saver')}</div>
+            <div className="sys-settings-toggle-desc">
+              {t('battery saver desc')}
+            </div>
+          </div>
+          <SysToggle
+            checked={!!settings.batterySaver}
+            onChange={v => upd({ batterySaver: v } as any)}
+          />
+        </div>
 
-      <div style={{ height: 1, background: 'rgba(255,255,255,0.07)' }} />
+        <div className="sys-settings-toggle-item">
+          <div>
+            <div className="sys-settings-toggle-title">{T('intro screen')}</div>
+            <div className="sys-settings-toggle-desc">
+              {t('intro screen desc')}
+            </div>
+          </div>
+          <SysToggle
+            checked={!!settings.introScreen}
+            onChange={v => upd({ introScreen: v } as any)}
+          />
+        </div>
 
-      {/* DIG button settings */}
-      <Row label='РАЗМЕР КНОПКИ "DIG"'>
-        <Slider value={(settings.digBtnSize - 0.5) / 1.0} onChange={v => upd({ digBtnSize: 0.5 + v })} />
-      </Row>
-
-      <Row label='ПРОЗРАЧНОСТЬ КНОПКИ "DIG"'>
-        <Slider value={settings.digBtnOpacity} onChange={v => upd({ digBtnOpacity: v })} />
-      </Row>
-
-      <button onClick={reset} style={{
-        padding: '10px 0', borderRadius: 10,
-        border: '1.5px solid rgba(255,184,48,0.3)',
-        background: 'transparent', color: '#FFB830',
-        fontSize: 12, fontWeight: 700, letterSpacing: '.12em',
-        textTransform: 'uppercase', cursor: 'pointer',
-      }}>
-        СБРОСИТЬ КНОПКУ DIG
-      </button>
-
-      <div style={{ fontSize: 11, color: 'rgba(240,230,211,0.35)', lineHeight: 1.5 }}>
-        Кнопку DIG можно перетаскивать прямо на игровом экране.
+        <div className="sys-settings-toggle-item">
+          <div>
+            <div className="sys-settings-toggle-title">{T('enable space')}</div>
+            <div className="sys-settings-toggle-desc">{t('enable space desc')}</div>
+          </div>
+          <SysToggle
+            checked={settings.spaceEnabled}
+            onChange={v => upd({ spaceEnabled: v })}
+          />
+        </div>
       </div>
     </div>
   )
 }
 
-const Row: React.FC<React.PropsWithChildren<{ label: string }>> = ({ label, children }) => (
-  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-    <span style={{ fontSize: 10, letterSpacing: '.15em', textTransform: 'uppercase', color: 'rgba(240,230,211,0.45)', fontWeight: 600 }}>
-      {label}
-    </span>
-    {children}
-  </div>
-)
+/* ── Sub-components ──────────────────────────────────────────────────────── */
 
-const Toggle: React.FC<{ checked: boolean; onChange: (v: boolean) => void }> = ({ checked, onChange }) => (
+const Checkbox: React.FC<{ checked: boolean; onChange: (v: boolean) => void }> = ({ checked, onChange }) => (
   <div
-    onClick={() => onChange(!checked)}
-    style={{
-      width: 44, height: 24, borderRadius: 12, cursor: 'pointer', position: 'relative',
-      background: checked ? 'rgba(255,184,48,0.4)' : 'rgba(255,255,255,0.1)',
-      border: `1.5px solid ${checked ? '#FFB830' : 'rgba(255,255,255,0.2)'}`,
-      transition: 'all 0.2s',
-    }}
-  >
-    <div style={{
-      position: 'absolute', top: 2,
-      left: checked ? 22 : 2,
-      width: 16, height: 16, borderRadius: '50%',
-      background: checked ? '#FFB830' : 'rgba(255,255,255,0.4)',
-      transition: 'left 0.2s',
-    }} />
-  </div>
-)
-
-const Slider: React.FC<{ value: number; onChange: (v: number) => void }> = ({ value, onChange }) => (
-  <input
-    type="range" min={0} max={1} step={0.01}
-    value={value}
-    onChange={e => onChange(parseFloat(e.target.value))}
-    style={{
-      width: '100%', accentColor: '#FFB830',
-      height: 4, cursor: 'pointer', appearance: 'auto',
-    }}
+    className={`sys-checkbox ${checked ? 'sys-checkbox--on' : ''}`}
+    onClick={() => { gameAudio.playUiClick(); onChange(!checked) }}
   />
 )
+
+const SysToggle: React.FC<{ checked: boolean; onChange: (v: boolean) => void }> = ({ checked, onChange }) => (
+  <div
+    className={`sys-toggle ${checked ? 'sys-toggle--on' : ''}`}
+    onClick={() => { gameAudio.playUiClick(); onChange(!checked) }}
+  >
+    <div className="sys-toggle-knob" />
+  </div>
+)
+
+const SysSlider: React.FC<{ value: number; onChange: (v: number) => void }> = ({ value, onChange }) => {
+  const trackRef = useRef<HTMLDivElement>(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const [localValue, setLocalValue] = useState(value)
+  const isDraggingRef = useRef(false)
+  const rafRef = useRef<number | null>(null)
+  const latestValueRef = useRef(value)
+
+  useEffect(() => {
+    if (!isDraggingRef.current) {
+      setLocalValue(value)
+      latestValueRef.current = value
+    }
+  }, [value])
+
+  const getValueFromClientX = (clientX: number) => {
+    if (!trackRef.current) return latestValueRef.current
+
+    const rect = trackRef.current.getBoundingClientRect()
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+  }
+
+  const commitValue = (nextValue: number) => {
+    latestValueRef.current = nextValue
+    setLocalValue(nextValue)
+
+    if (rafRef.current !== null) return
+
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null
+      onChange(latestValueRef.current)
+    })
+  }
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+
+    trackRef.current?.setPointerCapture(e.pointerId)
+    isDraggingRef.current = true
+    setIsDragging(true)
+
+    gameAudio.playUiSlide()
+    commitValue(getValueFromClientX(e.clientX))
+  }
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingRef.current) return
+    commitValue(getValueFromClientX(e.clientX))
+  }
+
+  const stopDragging = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (trackRef.current?.hasPointerCapture(e.pointerId)) {
+      trackRef.current.releasePointerCapture(e.pointerId)
+    }
+
+    isDraggingRef.current = false
+    setIsDragging(false)
+    onChange(latestValueRef.current)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current)
+      }
+    }
+  }, [])
+
+  const displayValue = isDragging ? localValue : value
+
+  return (
+    <div
+      className={`sys-slider-track ${isDragging ? 'sys-slider-track--dragging' : ''}`}
+      ref={trackRef}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={stopDragging}
+      onPointerCancel={stopDragging}
+    >
+      <div className="sys-slider-fill" style={{ width: `${displayValue * 100}%` }} />
+      <div className="sys-slider-thumb" style={{ left: `${displayValue * 100}%` }} />
+    </div>
+  )
+}

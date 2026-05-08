@@ -1,95 +1,138 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useGameStore } from '../../store/gameStore'
-import { gameEngine } from '../../game/GameEngine'
+import { gameAudio } from '../../audio/GameAudio'
+import { resolveWinCelebration, type WinCelebrateKind } from '../winCelebration'
+import { t } from '../../i18n/t'
+import { WinCelebrationSpine } from '../WinCelebrationSpine'
+import '../ui.css'
+
+function useCountUp(target: number, duration = 1500, skip = false, onComplete?: () => void): number {
+  const [value, setValue] = useState(0)
+  const rafRef = useRef<number | null>(null)
+  const onCompleteRef = useRef(onComplete)
+  onCompleteRef.current = onComplete
+
+  useEffect(() => {
+    if (skip || target <= 0) { setValue(target <= 0 ? 0 : target); return }
+    const start = performance.now()
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / duration)
+      // ease-out cubic
+      const ease = 1 - Math.pow(1 - t, 3)
+      setValue(target * ease)
+      if (t < 1) rafRef.current = requestAnimationFrame(tick)
+      else { setValue(target); onCompleteRef.current?.() }
+    }
+    rafRef.current = requestAnimationFrame(tick)
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }
+  }, [target, duration, skip])
+
+  return value
+}
 
 export const ResultOverlay: React.FC = () => {
-  const phase   = useGameStore(s => s.phase)
-  const lastWin = useGameStore(s => s.lastWin)
-  const bet     = useGameStore(s => s.bet)
-  const currency = useGameStore(s => s.currency)
-  const autoplay = useGameStore(s => s.autoplay)
+  const phase       = useGameStore(s => s.phase)
+  const lastWin     = useGameStore(s => s.lastWin)
+  const lastWinMult = useGameStore(s => s.lastWinMult)
+  const roundID     = useGameStore(s => s.roundID)
+  const currency    = useGameStore(s => s.currency)
+  const autoplay    = useGameStore(s => s.autoplay)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [counterSkipped, setCounterSkipped] = useState(false)
 
-  const isWin  = phase === 'WIN'
-  const isLose = phase === 'LOSE'
-  const show   = isWin || isLose
+  const show = phase === 'WIN'
+  const isBigWin = lastWinMult > 0 && resolveWinCelebration(lastWinMult) != null
 
-  // Auto-dismiss after 2.5s if autoplay active
+  const animatedWin  = useCountUp(show && isBigWin ? lastWin     : 0, 2100, counterSkipped, () => setCounterSkipped(true))
+  const animatedMult = useCountUp(show && isBigWin ? lastWinMult : 0, 2100, counterSkipped)
+
+  const celebrateKind: WinCelebrateKind | null =
+    show && isBigWin ? resolveWinCelebration(lastWinMult) : null
+
   useEffect(() => {
-    if (show && autoplay.active) {
+    if (!show) setCounterSkipped(false)
+  }, [show])
+
+  // Маленький выигрыш (< bigwin) — пропускаем окно, сразу возвращаемся в IDLE
+  useEffect(() => {
+    if (show && !isBigWin) {
+      useGameStore.getState().setPhase('IDLE')
+    }
+  }, [show, isBigWin])
+
+  useEffect(() => {
+    if (show && isBigWin && autoplay.active) {
       timerRef.current = setTimeout(() => {
         useGameStore.getState().setPhase('IDLE')
       }, 1200)
     }
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
-  }, [show, autoplay.active])
+  }, [show, isBigWin, autoplay.active])
 
-  if (!show) return null
+  useEffect(() => {
+    if (!show || !isBigWin) return
+    const audioKind = resolveWinCelebration(lastWinMult)
+    gameAudio.syncWinScreen(true, audioKind)
+    const payTimer = setTimeout(() => gameAudio.stopWinPayLoop(), 2200)
+    return () => {
+      clearTimeout(payTimer)
+      gameAudio.syncWinScreen(false, null)
+    }
+  }, [show, isBigWin, lastWinMult])
 
-  const multiplier = lastWin > 0 ? (lastWin / bet) : 0
+  const handleInteraction = () => {
+    if (autoplay.active) return
+    if (!counterSkipped) {
+      setCounterSkipped(true)
+      gameAudio.stopWinPayLoop()
+    } else {
+      gameAudio.stopWinPayLoop()
+      gameAudio.unlock()
+      useGameStore.getState().setPhase('IDLE')
+    }
+  }
+
+  useEffect(() => {
+    if (!show || autoplay.active) return
+    const onKey = () => handleInteraction()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [show, autoplay.active, counterSkipped])
+
+  if (!show || !isBigWin) return null
+
+  const dismissOverlayOnly = () => handleInteraction()
+
+  const bgStyle = {
+    background:
+      'radial-gradient(ellipse at center, rgba(0, 0, 0, 0.15) 0%, rgba(0,0,0,0.7) 70%)',
+  }
 
   return (
-    <div style={{
-      position: 'absolute', inset: 0, zIndex: 100,
-      display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center',
-      background: isWin
-        ? 'radial-gradient(ellipse at center, rgba(76,175,80,0.25) 0%, rgba(0,0,0,0.7) 70%)'
-        : 'radial-gradient(ellipse at center, rgba(255,69,0,0.25) 0%, rgba(0,0,0,0.75) 70%)',
-      animation: 'fadeIn 0.4s ease',
-      pointerEvents: 'none',
-    }}>
-      <style>{`@keyframes fadeIn{from{opacity:0;transform:scale(0.92)}to{opacity:1;transform:scale(1)}} @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}`}</style>
-
-      {/* Big emoji */}
-      <div style={{ fontSize: 72, lineHeight: 1, marginBottom: 12, animation: 'pulse 1.2s ease infinite' }}>
-        {isWin ? '🛏️' : '🌋'}
-      </div>
-
-      {/* Result text */}
-      <div style={{
-        fontFamily: 'Bebas Neue, sans-serif',
-        fontSize: 'clamp(40px, 10vw, 80px)',
-        color: isWin ? '#7CFC00' : '#FF4500',
-        letterSpacing: '.06em',
-        textShadow: isWin ? '0 0 40px rgba(124,252,0,0.5)' : '0 0 40px rgba(255,69,0,0.5)',
-        lineHeight: 1,
-      }}>
-        {isWin ? 'ПОБЕДА!' : 'ПРОВАЛ!'}
-      </div>
-
-      {isWin && lastWin > 0 && (
-        <div style={{ marginTop: 16, textAlign: 'center' }}>
-          <div style={{ fontSize: 13, color: 'rgba(240,230,211,0.5)', letterSpacing: '.1em', textTransform: 'uppercase' }}>Выигрыш</div>
-          <div style={{
-            fontSize: 'clamp(28px, 6vw, 52px)',
-            fontFamily: 'Bebas Neue, sans-serif',
-            color: '#FFB830', letterSpacing: '.04em',
-            textShadow: '0 0 30px rgba(255,184,48,0.4)',
-          }}>
-            {lastWin.toFixed(2)} {currency}
-          </div>
-          <div style={{ fontSize: 15, color: 'rgba(240,230,211,0.6)', marginTop: 4 }}>
-            ×{multiplier.toFixed(2)} от ставки
+    <div
+      className="ui-result"
+      style={bgStyle}
+      onClick={dismissOverlayOnly}
+    >
+      {celebrateKind && (
+        <div className="ui-result-celebrate" aria-hidden>
+          <div className="ui-result-celebrate-inner">
+            <WinCelebrationSpine key={`${roundID}-${celebrateKind}`} kind={celebrateKind} />
           </div>
         </div>
       )}
 
-      {isLose && (
-        <div style={{ marginTop: 12, fontSize: 14, color: 'rgba(240,230,211,0.5)' }}>
-          Ставка {bet.toFixed(2)} {currency} сгорела
+      {lastWin > 0 && (
+        <div className="ui-result-win-info">
+          <div className="ui-result-win-sub">{t('win')}</div>
+          <div className="ui-result-win-amt">{animatedWin.toFixed(2)} {currency}</div>
+          <div className="ui-result-win-mult">×{animatedMult.toFixed(2)} {t('play amount')}</div>
         </div>
       )}
 
-      {/* Play again hint */}
       {!autoplay.active && (
-        <div style={{
-          marginTop: 28, fontSize: 12, color: 'rgba(240,230,211,0.35)',
-          letterSpacing: '.1em', textTransform: 'uppercase', pointerEvents: 'none',
-          animation: 'pulse 2s ease infinite',
-        }}>
-          Нажмите ⛏ DIG чтобы продолжить
-        </div>
+        <div className="ui-result-hint">{t('press anywhere to close')}</div>
       )}
     </div>
   )

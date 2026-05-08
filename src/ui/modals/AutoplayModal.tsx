@@ -1,153 +1,378 @@
-import React, { useState } from 'react'
-import { useGameStore } from '../../store/gameStore'
-import { gameEngine } from '../../game/GameEngine'
+import React, { useState } from "react";
+import { t, T } from "../../i18n/t";
+import { useGameStore } from "../../store/gameStore";
+import { gameEngine } from "../../game/GameEngine";
+import "../ui.css";
+import { NumericKeyboard } from "./NumericKeyboard";
 
-const PRESET_ROUNDS = [10, 25, 50, 100, 250, 500, 750, 1000]
+const PRESET_ROUNDS = [10, 25, 50, 100, 250, 500, 750, 1000];
+
+type KeyboardInputId = "customRounds" | "stopWinOver" | "stopBalUp" | "stopBalDown";
 
 export const AutoplayModal: React.FC = () => {
-  const isOpen    = useGameStore(s => s.autoplayOpen)
-  const setOpen   = useGameStore(s => s.setAutoplayOpen)
-  const autoplay  = useGameStore(s => s.autoplay)
-  const phase     = useGameStore(s => s.phase)
+  const isOpen = useGameStore((s) => s.autoplayOpen);
+  const setOpen = useGameStore((s) => s.setAutoplayOpen);
+  const autoplay = useGameStore((s) => s.autoplay);
+  const phase = useGameStore((s) => s.phase);
 
-  const [rounds,       setRounds]       = useState(autoplay.totalRounds)
-  const [customRounds, setCustomRounds] = useState('')
-  const [stopAnyWin,   setStopAnyWin]   = useState(false)
-  const [stopWinOver,  setStopWinOver]  = useState('')
-  const [stopBalUp,    setStopBalUp]    = useState('')
-  const [stopBalDown,  setStopBalDown]  = useState('')
+  const [rounds, setRounds] = useState(autoplay.totalRounds);
+  const [customRounds, setCustomRounds] = useState("");
 
-  if (!isOpen) return null
+  const [stopAnyWin, setStopAnyWin] = useState(false);
+  const [stopWinOverActive, setStopWinOverActive] = useState(false);
+  const [stopBalUpActive, setStopBalUpActive] = useState(false);
+  const [stopBalDownActive, setStopBalDownActive] = useState(false);
 
-  const canStart = phase === 'IDLE' || phase === 'WIN' || phase === 'LOSE'
+  const [stopWinOver, setStopWinOver] = useState("");
+  const [stopBalUp, setStopBalUp] = useState("");
+  const [stopBalDown, setStopBalDown] = useState("");
+  const [activeInput, setActiveInput] = useState<KeyboardInputId | null>(null);
 
-  const handleStart = () => {
-    const r = customRounds ? parseInt(customRounds) : rounds
-    if (!r || r < 1) return
-    setOpen(false)
+  if (!isOpen) return null;
+
+  const canStart = phase === "IDLE" || phase === "WIN" || phase === "LOSE";
+  const hasCustomRounds = customRounds.trim().length > 0;
+
+  const stopEvent = (
+    event: React.PointerEvent<HTMLElement> | React.MouseEvent<HTMLElement>
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const nativeEvent = event.nativeEvent as Event & {
+      stopImmediatePropagation?: () => void;
+    };
+
+    nativeEvent.stopImmediatePropagation?.();
+  };
+
+  const closeKeyboard = (event: React.MouseEvent<HTMLDivElement>) => {
+    stopEvent(event);
+
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+
+    setActiveInput(null);
+  };
+
+  const handleKeyboardDigit = (digit: string) => {
+    if (!activeInput) return;
+
+    updateKeyboardValue(activeInput, (value) => `${value}${digit}`);
+  };
+
+  const handleKeyboardBackspace = () => {
+    if (!activeInput) return;
+
+    updateKeyboardValue(activeInput, (value) => value.slice(0, -1));
+  };
+
+  const handleKeyboardDecimal = () => {
+    if (!activeInput || activeInput === "customRounds") return;
+
+    updateKeyboardValue(activeInput, (value) =>
+      value.includes(".") ? value : `${value}.`
+    );
+  };
+
+  const updateKeyboardValue = (
+    inputId: KeyboardInputId,
+    updater: (value: string) => string
+  ) => {
+    if (inputId === "customRounds") {
+      setRounds(0);
+      setCustomRounds((value) => updater(value).replace(/\D/g, ""));
+      return;
+    }
+
+    const sanitizeDecimal = (value: string) => {
+      const normalized = value.replace(/[^\d.]/g, "");
+      const [integerPart, ...decimalParts] = normalized.split(".");
+      return decimalParts.length
+        ? `${integerPart}.${decimalParts.join("")}`
+        : integerPart;
+    };
+
+    const setters: Record<
+      Exclude<KeyboardInputId, "customRounds">,
+      React.Dispatch<React.SetStateAction<string>>
+    > = {
+      stopWinOver: setStopWinOver,
+      stopBalUp: setStopBalUp,
+      stopBalDown: setStopBalDown,
+    };
+
+    setters[inputId]((value) => sanitizeDecimal(updater(value)));
+  };
+
+  const handleStart = (selectedRounds?: number) => {
+    const r = selectedRounds ?? (customRounds ? parseInt(customRounds) : rounds);
+    if (!r || r < 1) return;
+
+    setOpen(false);
+
     gameEngine.startAutoplay({
-      totalRounds:              r,
-      stopOnAnyWin:             stopAnyWin,
-      stopIfSingleWinExceeds:   stopWinOver   ? parseFloat(stopWinOver)  : null,
-      stopIfBalanceIncreasesBy: stopBalUp     ? parseFloat(stopBalUp)    : null,
-      stopIfBalanceDecreasesBy: stopBalDown   ? parseFloat(stopBalDown)  : null,
-    })
-  }
+      totalRounds: r,
+      stopOnAnyWin: stopAnyWin,
+      stopIfSingleWinExceeds:
+        stopWinOverActive && stopWinOver ? parseFloat(stopWinOver) : null,
+      stopIfBalanceIncreasesBy:
+        stopBalUpActive && stopBalUp ? parseFloat(stopBalUp) : null,
+      stopIfBalanceDecreasesBy:
+        stopBalDownActive && stopBalDown ? parseFloat(stopBalDown) : null,
+    });
+  };
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 200,
-      background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }} onClick={() => setOpen(false)}>
-      <div onClick={e => e.stopPropagation()} style={{
-        background: 'linear-gradient(160deg, #1e0f08, #140a04)',
-        border: '1px solid rgba(255,184,48,0.2)',
-        borderRadius: 20, padding: 28, width: 360, maxWidth: '92vw',
-        color: '#F0E6D3',
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <span style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 26, letterSpacing: '.06em', color: '#FFB830' }}>АВТОСПИН</span>
-          <button onClick={() => setOpen(false)} style={closeBtnStyle}>✕</button>
-        </div>
+    <div className="ui-overlay" onClick={() => setOpen(false)}>
+      <button
+        className="ui-ap-close"
+        onClick={() => setOpen(false)}
+        aria-label="Close autoplay modal"
+      />
 
-        {/* Round presets */}
-        <div style={{ marginBottom: 18 }}>
-          <Label>КОЛИЧЕСТВО РАУНДОВ</Label>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-            {PRESET_ROUNDS.map(r => (
-              <button key={r} onClick={() => { setRounds(r); setCustomRounds('') }}
-                style={pillStyle(rounds === r && !customRounds)}>
-                {r}
+      {activeInput && (
+        <div
+          className="ui-keyboard-focus-dim"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          onClick={closeKeyboard}
+        />
+      )}
+
+      <div
+        className={`ui-modal ui-modal--sm ${
+          activeInput ? "ui-modal--keyboard-active" : ""
+        }`}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="ui-ap-section ui-ap-section--autoplay">
+          <div className="ui-ap-section-label">{T('play feature')}</div>
+
+          <div className="ui-pills">
+            {PRESET_ROUNDS.map((r) => (
+              <button
+                key={r}
+                onClick={() => {
+                  setRounds(r);
+                  setCustomRounds("");
+                  handleStart(r);
+                }}
+                disabled={!canStart}
+                className={`ui-pill ${
+                  rounds === r && !customRounds ? "ui-pill--active" : ""
+                }`}
+              >
+                <span className="ui-pill-label">{r}</span>
               </button>
             ))}
-            <button onClick={() => { setRounds(0); setCustomRounds('') }}
-              style={pillStyle(rounds === 0 && !customRounds)}>∞</button>
+
+            <button
+              onClick={() => {
+                setRounds(0);
+                setCustomRounds("");
+              }}
+              className={`ui-pill ${
+                rounds === 0 && !customRounds ? "ui-pill--active" : ""
+              }`}
+            >
+              <span className="ui-pill-label">∞</span>
+            </button>
           </div>
-          <input
-            placeholder="Своё число…"
-            value={customRounds}
-            onChange={e => setCustomRounds(e.target.value.replace(/\D/g, ''))}
-            style={inputStyle}
-          />
+
+          <div className="ui-ap-custom">
+            <div className="ui-ap-custom-label">{t('custom number of plays')}</div>
+
+            <div className="ui-ap-custom-row">
+              <div
+                className={`ui-keyboard-anchor ${
+                  activeInput === "customRounds"
+                    ? "ui-keyboard-anchor--active"
+                    : ""
+                }`}
+              >
+                <input
+                  className="ui-ap-input"
+                  placeholder=""
+                  value={customRounds}
+                  onFocus={() => setActiveInput("customRounds")}
+                  onClick={() => setActiveInput("customRounds")}
+                  onChange={(e) => {
+                    setRounds(0);
+                    setCustomRounds(e.target.value.replace(/\D/g, ""));
+                  }}
+                />
+
+                {activeInput === "customRounds" && (
+                  <NumericKeyboard
+                    allowDecimal={false}
+                    onDigit={handleKeyboardDigit}
+                    onBackspace={handleKeyboardBackspace}
+                    onDecimal={handleKeyboardDecimal}
+                    onSubmit={() => setActiveInput(null)}
+                  />
+                )}
+              </div>
+
+              <button
+                className={`ui-ap-start-btn ${
+                  !hasCustomRounds ? "ui-ap-start-btn--hidden" : ""
+                }`}
+                onClick={() => handleStart()}
+                disabled={!canStart || !hasCustomRounds}
+                aria-hidden={!hasCustomRounds}
+                tabIndex={hasCustomRounds ? 0 : -1}
+              ></button>
+            </div>
+          </div>
         </div>
 
-        {/* Stop conditions */}
-        <div style={{ marginBottom: 20 }}>
-          <Label>УСЛОВИЯ ОСТАНОВКИ</Label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
-            <CheckRow label="При любом выигрыше" checked={stopAnyWin} onChange={setStopAnyWin} />
-            <InputRow label="Если выигрыш превышает" value={stopWinOver}  onChange={setStopWinOver}  placeholder="сумма $" />
-            <InputRow label="Если баланс вырос на"   value={stopBalUp}    onChange={setStopBalUp}    placeholder="сумма $" />
-            <InputRow label="Если баланс упал на"     value={stopBalDown}  onChange={setStopBalDown}  placeholder="сумма $" />
+        <div className="ui-ap-section ui-ap-section--stop">
+          <div className="ui-ap-section-label">{T('stop conditions')}</div>
+
+          <div className="ui-stop-conditions">
+            <CheckRow
+              label={t('on any win')}
+              checked={stopAnyWin}
+              onChange={setStopAnyWin}
+            />
+
+            <InputRow
+              label={t('if single win exceeds')}
+              checked={stopWinOverActive}
+              onCheckChange={setStopWinOverActive}
+              value={stopWinOver}
+              onChange={setStopWinOver}
+              placeholder=""
+              inputId="stopWinOver"
+              activeInput={activeInput}
+              onFocusInput={setActiveInput}
+              onKeyboardDigit={handleKeyboardDigit}
+              onKeyboardBackspace={handleKeyboardBackspace}
+              onKeyboardDecimal={handleKeyboardDecimal}
+              onKeyboardSubmit={() => setActiveInput(null)}
+            />
+
+            <InputRow
+              label={t('if balance increases by')}
+              checked={stopBalUpActive}
+              onCheckChange={setStopBalUpActive}
+              value={stopBalUp}
+              onChange={setStopBalUp}
+              placeholder=""
+              inputId="stopBalUp"
+              activeInput={activeInput}
+              onFocusInput={setActiveInput}
+              onKeyboardDigit={handleKeyboardDigit}
+              onKeyboardBackspace={handleKeyboardBackspace}
+              onKeyboardDecimal={handleKeyboardDecimal}
+              onKeyboardSubmit={() => setActiveInput(null)}
+            />
+
+            <InputRow
+              label={t('if balance decreases by')}
+              checked={stopBalDownActive}
+              onCheckChange={setStopBalDownActive}
+              value={stopBalDown}
+              onChange={setStopBalDown}
+              placeholder=""
+              inputId="stopBalDown"
+              activeInput={activeInput}
+              onFocusInput={setActiveInput}
+              onKeyboardDigit={handleKeyboardDigit}
+              onKeyboardBackspace={handleKeyboardBackspace}
+              onKeyboardDecimal={handleKeyboardDecimal}
+              onKeyboardSubmit={() => setActiveInput(null)}
+            />
           </div>
         </div>
-
-        <button
-          onClick={handleStart}
-          disabled={!canStart}
-          style={{
-            width: '100%', padding: '13px 0',
-            background: canStart ? 'linear-gradient(135deg, #FFD060, #cc7700)' : '#333',
-            border: 'none', borderRadius: 12,
-            color: canStart ? '#1a0800' : '#666',
-            fontSize: 15, fontWeight: 900, letterSpacing: '.06em', cursor: canStart ? 'pointer' : 'not-allowed',
-          }}
-        >
-          ЗАПУСТИТЬ АВТОСПИН
-        </button>
       </div>
     </div>
-  )
-}
+  );
+};
 
-const Label: React.FC<React.PropsWithChildren> = ({ children }) => (
-  <div style={{ fontSize: 10, letterSpacing: '.16em', textTransform: 'uppercase', color: 'rgba(240,230,211,0.45)', fontWeight: 600 }}>
-    {children}
-  </div>
-)
-
-const CheckRow: React.FC<{ label: string; checked: boolean; onChange: (v: boolean) => void }> = ({ label, checked, onChange }) => (
-  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, color: 'rgba(240,230,211,0.7)' }}>
-    <div onClick={() => onChange(!checked)} style={{
-      width: 20, height: 20, borderRadius: 6,
-      border: `2px solid ${checked ? '#FFB830' : 'rgba(255,255,255,0.2)'}`,
-      background: checked ? 'rgba(255,184,48,0.2)' : 'transparent',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-    }}>
-      {checked && <span style={{ color: '#FFB830', fontSize: 12, lineHeight: 1 }}>✓</span>}
+const CheckRow: React.FC<{
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}> = ({ label, checked, onChange }) => (
+  <label className="ui-check-row">
+    <div
+      className={`ui-checkbox ${checked ? "ui-checkbox--checked" : ""}`}
+      onClick={() => onChange(!checked)}
+    >
+      {checked && <span className="ui-checkbox-tick" />}
     </div>
+
     {label}
   </label>
-)
+);
 
-const InputRow: React.FC<{ label: string; value: string; onChange: (v: string) => void; placeholder: string }> = ({ label, value, onChange, placeholder }) => (
-  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-    <span style={{ fontSize: 12, color: 'rgba(240,230,211,0.6)', flex: 1 }}>{label}</span>
-    <input
-      value={value}
-      onChange={e => onChange(e.target.value.replace(/[^\d.]/g, ''))}
-      placeholder={placeholder}
-      style={{ ...inputStyle, width: 100, marginTop: 0, padding: '5px 10px' }}
-    />
+const InputRow: React.FC<{
+  label: string;
+  checked: boolean;
+  onCheckChange: (v: boolean) => void;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  inputId: Exclude<KeyboardInputId, "customRounds">;
+  activeInput: KeyboardInputId | null;
+  onFocusInput: (inputId: KeyboardInputId) => void;
+  onKeyboardDigit: (digit: string) => void;
+  onKeyboardBackspace: () => void;
+  onKeyboardDecimal: () => void;
+  onKeyboardSubmit: () => void;
+}> = ({
+  label,
+  checked,
+  onCheckChange,
+  value,
+  onChange,
+  placeholder,
+  inputId,
+  activeInput,
+  onFocusInput,
+  onKeyboardDigit,
+  onKeyboardBackspace,
+  onKeyboardDecimal,
+  onKeyboardSubmit,
+}) => (
+  <div className="ui-input-row">
+    <div
+      className={`ui-checkbox ${checked ? "ui-checkbox--checked" : ""}`}
+      onClick={() => onCheckChange(!checked)}
+    >
+      {checked && <span className="ui-checkbox-tick"></span>}
+    </div>
+
+    <span className="ui-input-row-label">{label}</span>
+
+    <div
+      className={`ui-input-row-field-wrap ui-keyboard-anchor ${
+        activeInput === inputId ? "ui-keyboard-anchor--active" : ""
+      }`}
+    >
+      <input
+        className="ui-input-row-field"
+        value={value}
+        onFocus={() => onFocusInput(inputId)}
+        onClick={() => onFocusInput(inputId)}
+        onChange={(e) => onChange(e.target.value.replace(/[^\d.]/g, ""))}
+        placeholder={placeholder}
+      />
+
+      {activeInput === inputId && (
+        <NumericKeyboard
+          onDigit={onKeyboardDigit}
+          onBackspace={onKeyboardBackspace}
+          onDecimal={onKeyboardDecimal}
+          onSubmit={onKeyboardSubmit}
+        />
+      )}
+    </div>
   </div>
-)
-
-const pillStyle = (active: boolean): React.CSSProperties => ({
-  padding: '6px 12px', borderRadius: 16, fontSize: 13, fontWeight: 700,
-  border: `1.5px solid ${active ? '#FFB830' : 'rgba(255,255,255,0.15)'}`,
-  background: active ? 'rgba(255,184,48,0.18)' : 'transparent',
-  color: active ? '#FFB830' : 'rgba(240,230,211,0.6)',
-  cursor: 'pointer',
-})
-
-const inputStyle: React.CSSProperties = {
-  marginTop: 8, width: '100%', background: 'rgba(255,255,255,0.06)',
-  border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8,
-  padding: '7px 12px', color: '#F0E6D3', fontSize: 13, outline: 'none',
-}
-
-const closeBtnStyle: React.CSSProperties = {
-  background: 'none', border: 'none', color: 'rgba(240,230,211,0.5)',
-  fontSize: 18, cursor: 'pointer', padding: 4,
-}
+);
