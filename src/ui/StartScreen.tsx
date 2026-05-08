@@ -54,11 +54,17 @@ export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart
               </button>
 
               <div className="rules-image-slot">
-                <img
-                  className="rules-multipliers"
-                  src={slides[activeSlideIndex].image}
-                  alt={slides[activeSlideIndex].alt}
-                />
+                {slides.map((slide, index) => (
+                  <img
+                    key={slide.image}
+                    className={`rules-multipliers ${
+                      index === activeSlideIndex ? "rules-multipliers--active" : ""
+                    } ${index === 2 ? "rules-multipliers--places" : ""}`}
+                    src={slide.image}
+                    alt={index === activeSlideIndex ? slide.alt : ""}
+                    aria-hidden={index === activeSlideIndex ? undefined : true}
+                  />
+                ))}
               </div>
 
               <div
