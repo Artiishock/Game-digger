@@ -2547,7 +2547,7 @@ transform: scale(1.2, 1.2)
 .replay-table thead {
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: 3;
   background-color: transparent;
   transform: translateZ(0);
   will-change: transform;
@@ -2563,7 +2563,7 @@ transform: scale(1.2, 1.2)
   text-transform: uppercase;
   white-space: normal;
   overflow-wrap: anywhere;
-  background-color: inherit;
+  background-color: transparent;
 }
 
 .replay-table td {
@@ -2611,15 +2611,30 @@ transform: scale(1.2, 1.2)
 
 
 .replay-table-shell {
+  --replay-header-height: 65px;
   width: 100%;
   height: 100%;
   padding: 0 10px;
   box-sizing: border-box;
   border-radius: 12px;
-  background-color: rgba(6, 6, 6, 0.65);
+  clip-path: inset(0 10px 0 10px round 12px);
+  background-color: transparent;
+  position: relative;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: none;
+}
+
+.replay-table-shell::before {
+  content: "";
+  display: block;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: var(--replay-header-height);
+  margin-bottom: calc(var(--replay-header-height) * -1);
+  background-color: rgba(6, 6, 6, 1);
+  pointer-events: none;
 }
 
 .replay-table-shell::-webkit-scrollbar {
@@ -2631,7 +2646,8 @@ transform: scale(1.2, 1.2)
   margin: 0;
   border-collapse: separate;
   border-spacing: 0;
-  background-color: transparent;
+  background-color: rgba(6, 6, 6, 0.65);
+  border-radius: 12px;
 }
 
 
@@ -2912,6 +2928,10 @@ transform: scale(1.2, 1.2)
     overflow: visible;
   }
 
+  .ui-menu-modal .replay-table-shell {
+    clip-path: inset(0 10px 0 10px round 8px);
+  }
+
   .ui-menu-modal .replay-table th {
     height: clamp(36px, 7.39vw, 55px);
     padding: 0 8px;
@@ -3121,6 +3141,10 @@ transform: scale(1.2, 1.2)
     border-spacing: 0;
     border-radius: 8px;
     overflow: visible;
+  }
+
+  .ui-menu-modal .replay-table-shell {
+    clip-path: inset(0 10px 0 10px round 8px);
   }
 
   .ui-menu-modal .replay-table th {
@@ -3440,6 +3464,10 @@ transform: scale(1.2, 1.2)
     border-spacing: 0;
     border-radius: 8px;
     overflow: visible;
+  }
+
+  .ui-menu-modal .replay-table-shell {
+    clip-path: inset(0 10px 0 10px round 8px);
   }
 
   .ui-menu-modal .replay-table th {
@@ -3794,6 +3822,10 @@ transform: scale(1.2, 1.2)
     border-spacing: 0;
     border-radius: 8px;
     overflow: visible;
+  }
+
+  .ui-menu-modal .replay-table-shell {
+    clip-path: inset(0 10px 0 10px round 8px);
   }
 
   .ui-menu-modal .replay-table th {
