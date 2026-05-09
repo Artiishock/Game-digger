@@ -149,7 +149,10 @@ ${d.toLocaleTimeString("en-GB", {
       <StartScreen
         width={width}
         height={height}
-        onStart={() => setGameStarted(true)}
+        onStart={() => {
+          gameAudio.unlock();
+          setGameStarted(true);
+        }}
       />
     );
   }

@@ -80,10 +80,10 @@
 .ui-logo-zone {
   position: absolute;
   top: 40px;
-  left: 40px;
+  left: 10px;
   width: 270px;
   height: 110px;
-  border: 2px dashed rgba(255, 255, 255, 1);
+
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
@@ -93,6 +93,12 @@
   background: rgba(255, 255, 255, 0.03);
   z-index: 60;
   pointer-events: none;
+}
+.ui-logo-zone img {
+  width: 70%;
+  height: auto;
+  display: block;
+  opacity: 45%;
 }
 
 .ui-win-zone {

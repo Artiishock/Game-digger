@@ -1,0 +1,35 @@
+<svg id="playHoverOneTurnStable" width="159" height="159" viewBox="0 0 159 159" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <title>Play icon stable one-turn hover animation</title>
+
+  <g id="playIcon" pointer-events="none" transform="rotate(0 79.5 79.5)">
+    <animateTransform
+      id="rotateIn"
+      attributeName="transform"
+      type="rotate"
+      begin="hitArea.mouseover"
+      dur="0.55s"
+      calcMode="spline"
+      keySplines="0.5 0 0.8 0.2;0.2 0.85 0.2 1;0.25 0 0.2 1"
+      values="0 79.5 79.5; -8 79.5 79.5; 365 79.5 79.5; 360 79.5 79.5"
+      fill="freeze"
+      restart="whenNotActive"  keyTimes="0;0.12;0.9;1" />
+
+    <animateTransform
+      id="rotateOut"
+      attributeName="transform"
+      type="rotate"
+      begin="hitArea.mouseout"
+      dur="0.45s"
+      calcMode="spline"
+      keySplines="0.5 0 0.8 0.2;0.2 0.85 0.2 1;0.25 0 0.2 1"
+      values="360 79.5 79.5; 368 79.5 79.5; -5 79.5 79.5; 0 79.5 79.5"
+      fill="freeze"
+      restart="whenNotActive"  keyTimes="0;0.12;0.88;1" />
+
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M97.9272 107.369C102.263 108.127 106.967 108.747 112.032 109.222L101.861 129.544C96.791 129.388 91.9191 129.213 87.162 128.867L97.9272 107.369ZM29.5694 56.6737C36.2341 44.2489 44.0725 36.2385 58.421 32.2108C69.8327 29.0074 83.6686 30.7113 94.323 36.4907C97.3913 38.1551 100.232 39.9372 102.899 41.827L90.591 66.0945C78.2568 60.2491 68.8426 62.7133 63.3869 73.6076C56.5475 87.2666 64.0439 97.9722 84.4641 104.222L72.9924 127.131C66.0856 125.859 59.2468 123.86 52.1982 120.615C41.1884 115.546 31.5367 105.488 27.2655 94.4314C21.8949 80.5291 23.6129 69.4536 29.5694 56.6737Z" fill="#F2FDFF"/>
+    <path d="M141.065 75.4797L96.8318 78.9099L118.148 37.4908L141.065 75.4797Z" fill="#F2FDFF"/>
+  </g>
+
+  <!-- This rectangle is the only element that receives mouse events. It prevents repeated restarts while the cursor moves over the icon paths. -->
+  <rect id="hitArea" width="159" height="159" fill="#FFFFFF" opacity="0" pointer-events="all"/>
+</svg>

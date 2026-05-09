@@ -21,7 +21,7 @@ export const TopBar: React.FC = () => {
   return (
     <>
       {/* Logo */}
-      <div className="ui-logo-zone">Logo zone</div>
+      <div className="ui-logo-zone"><img src="../../../public/rules/banner.png" alt="" /></div>
       {/* WIN — в RUNNING показываем живой множитель (как растёт с монетами); после раунда — сумма выигрыша */}
       <div className="ui-win-zone">
         <span className="ui-win-label">{T('win label')} </span>
