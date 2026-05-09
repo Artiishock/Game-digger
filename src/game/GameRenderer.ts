@@ -1154,6 +1154,8 @@ export class GameRenderer {
   private _liveWinBadgeFadeT = 1
   private _cloudT = 0
   private _cloudPrevCamX: number | null = null
+  private _cloudSpawnTimer = 0
+  private _cloudCount = 6
   private _treeRunDx: [number, number, number] = [...TREE_X_RUN_DX]
   private spawner:ObjectSpawner|null=null
   private tunnelActive = false
@@ -1512,6 +1514,7 @@ export class GameRenderer {
   }
 
   private _buildSky(){
+    this._cloudCount = 18
     const bgTex = this._textures.get('bg')
     if (bgTex) {
       const bgH = this.H * 0.70
@@ -1536,33 +1539,56 @@ export class GameRenderer {
     if (rockTex) {
       const rock = new PIXI.Sprite(rockTex)
       rock.name = 'rockSprite'
-      rock.anchor.set(0.5, 0.7)
+      rock.anchor.set(0.5, 1)
       const rw = this.W * 0.36
       rock.scale.set(rw / rockTex.width)
       rock.x = this.W * 0.58
-      rock.y = Math.max(0, Math.min(this.H, -this.camY)) - 4
+      rock.y = Math.max(0, Math.min(this.H, -this.camY)) - 400
       this.skyLayer.addChild(rock)
     }
 
-    for (let i = 0; i < 3; i++) {
-      const ct = this._textures.get(`cloud${i + 1}`)
+    const cloudKeys = ['cloud1','cloud2','cloud3','cloud4','cloud5','cloud6'] as const
+    const topAtBuild = Math.max(0, Math.min(this.H, -this.camY))
+    for (let i = 0; i < 18; i++) {
+      const ct = this._textures.get(cloudKeys[i % 6]!)
       if (!ct) continue
       const c = new PIXI.Sprite(ct)
       c.name = `cloud${i + 1}`
       c.anchor.set(0.5, 0.5)
-      const scl = Math.min(0.42, this.W / 900) * (0.85 + i * 0.08)
+      const scl = Math.min(0.42, this.W / 900) * (0.75 + Math.random() * 0.45)
       c.scale.set(scl)
-      c.x = this.W * (0.12 + i * 0.31)
-      c.y = this.H * (0.10 + i * 0.06)
-      const topAtBuild = Math.max(0, Math.min(this.H, -this.camY))
-      ;(c as PIXI.Sprite & { _topDy: number })._topDy = c.y - topAtBuild
-      ;(c as PIXI.Sprite & { _drift: number })._drift = 28 - i * 9
+      const drift = 8 + Math.random() * 20
+      c.x = -this.W * 0.3 + (i / 50) * this.W * 4.6
+      const dy = -(this.H * (0.25 + Math.random() * 0.30))
+      c.y = topAtBuild + dy
+      ;(c as PIXI.Sprite & { _topDy: number })._topDy = dy
+      ;(c as PIXI.Sprite & { _drift: number })._drift = drift
       this.skyLayer.addChild(c)
     }
   }
 
   private _syncSurfaceScenery() {
     this._sceneryLayer.removeChildren()
+
+    const forestTex = this._textures.get('forest')
+    if (forestTex) {
+      const sc = this.H * 0.2 / forestTex.height
+      const forestH = forestTex.height * sc
+      const pad = 4
+      const forest = new PIXI.TilingSprite(forestTex, this.W, forestH + pad)
+      forest.name = 'forest'
+      forest.tileScale.set(sc)
+      forest.x = this.camX
+      forest.y = TREE_ANCHOR_WORLD_Y - forestH - 140 
+      const forestMask = new PIXI.Graphics()
+      forestMask.beginFill(0xffffff)
+      forestMask.drawRect(0, pad, this.W, forestH)
+      forestMask.endFill()
+      forest.addChild(forestMask)
+      forest.mask = forestMask
+      this._sceneryLayer.addChild(forest)
+    }
+
     const keys = ['tree1', 'tree2', 'tree3'] as const
     const xs = this.running
       ? this._treeRunDx.map(dx => this.charX + dx) as [number, number, number]
@@ -1610,8 +1636,53 @@ export class GameRenderer {
       c.x += drift * dt - camDx
       c.y = top + (c._topDy ?? c.y - top)
       const half = (c.texture?.width ?? 100) * 0.5 * Math.abs(c.scale.x)
-      if (c.x > this.W + half + 20) c.x = -half - 20
+      if (c.x > this.W + half + 20) {
+        const cloudKeys = ['cloud1','cloud2','cloud3','cloud4','cloud5','cloud6'] as const
+        const tex = this._textures.get(cloudKeys[Math.floor(Math.random() * 6)]!)
+        if (tex) c.texture = tex
+        const scl = Math.min(0.42, this.W / 900) * (0.75 + Math.random() * 0.45)
+        c.scale.set(scl)
+        const newHalf = (tex?.width ?? 100) * 0.5 * scl
+        const newDrift = 8 + Math.random() * 20
+        c._drift = newDrift
+        c.x = -newHalf - 20 - newDrift * (2 + Math.random() * 3)
+        const dy = -(this.H * (0.25 + Math.random() * 0.30))
+        c._topDy = dy
+        c.y = top + dy
+      }
     }
+    const forest = this._sceneryLayer.getChildByName('forest') as PIXI.TilingSprite | null
+    if (forest) {
+      forest.x = this.camX
+      forest.tilePosition.x = -this.camX * 0.4
+    }
+
+    if (this._cloudCount < 18) {
+      this._cloudSpawnTimer -= dt
+      if (this._cloudSpawnTimer <= 0) {
+        this._spawnCloud(top)
+        this._cloudCount++
+        this._cloudSpawnTimer = 1.5 + Math.random() * 2
+      }
+    }
+  }
+
+  private _spawnCloud(top: number) {
+    const cloudKeys = ['cloud1','cloud2','cloud3','cloud4','cloud5','cloud6'] as const
+    const tex = this._textures.get(cloudKeys[Math.floor(Math.random() * 6)]!)
+    if (!tex) return
+    const c = new PIXI.Sprite(tex) as PIXI.Sprite & { _drift: number; _topDy: number }
+    c.name = `cloud_dyn_${this._cloudCount}`
+    c.anchor.set(0.5, 0.5)
+    const scl = Math.min(0.42, this.W / 900) * (0.75 + Math.random() * 0.45)
+    c.scale.set(scl)
+    const half = tex.width * 0.5 * scl
+    c.x = -half - 20
+    const dy = Math.random() * this.H * 0.25
+    c._topDy = dy
+    c.y = top + dy
+    c._drift = 4 + Math.random() * 24
+    this.skyLayer.addChild(c)
   }
 
   /** Фиксирует смещения деревьев от героя в момент старта, чтобы сцена не прыгала. */
@@ -2032,6 +2103,10 @@ export class GameRenderer {
         ['cloud1', GameAssets.cloud1],
         ['cloud2', GameAssets.cloud2],
         ['cloud3', GameAssets.cloud3],
+        ['cloud4', GameAssets.cloud4],
+        ['cloud5', GameAssets.cloud5],
+        ['cloud6', GameAssets.cloud6],
+        ['forest', GameAssets.forest],
         ['tree1', GameAssets.tree1],
         ['tree2', GameAssets.tree2],
         ['tree3', GameAssets.tree3],
@@ -2042,6 +2117,7 @@ export class GameRenderer {
           if (key === 'bg') {
             tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.OFF
           }
+
           this._textures.set(key, tex)
         } catch {
           console.warn(`[GameRenderer] Failed to load texture: ${url}`)
