@@ -1,4 +1,5 @@
 import React from "react";
+import { resolvePublicUrl } from "../../utils/publicUrl";
 
 type NumericKeyboardProps = {
   allowDecimal?: boolean;
@@ -96,7 +97,7 @@ export const NumericKeyboard: React.FC<NumericKeyboardProps> = ({
           onClick={(event) => handleButtonClick(event, onBackspace)}
           aria-label="Backspace"
         >
-          <img src="/ui/backspace_icon.svg" alt="" />
+          <img src={resolvePublicUrl("ui/backspace_icon.svg")} alt="" />
         </button>
 
         <button
@@ -124,7 +125,7 @@ export const NumericKeyboard: React.FC<NumericKeyboardProps> = ({
           onClick={(event) => handleButtonClick(event, onSubmit)}
           aria-label="Confirm input"
         >
-          <img src="/ui/сheck_icon.svg" alt="" />
+          <img src={resolvePublicUrl("ui/сheck_icon.svg")} alt="" />
         </button>
       </div>
     </div>

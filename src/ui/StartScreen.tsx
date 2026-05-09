@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { t } from "../i18n/t";
+import { resolvePublicUrl } from "../utils/publicUrl";
 
 interface StartScreenProps {
   width: number;
@@ -8,13 +9,14 @@ interface StartScreenProps {
 }
 
 const slides = [
-  { image: "/rules/multipliers.png", alt: "Multipliers", titleKey: "collect multipliers" },
-  { image: "/rules/treats.png",      alt: "Treats",      titleKey: "avoid threats" },
-  { image: "/rules/places.png",      alt: "Places",      titleKey: "get to safe place" },
+  { image: resolvePublicUrl("rules/multipliers.png"), alt: "Multipliers", titleKey: "collect multipliers" },
+  { image: resolvePublicUrl("rules/treats.png"),      alt: "Treats",      titleKey: "avoid threats" },
+  { image: resolvePublicUrl("rules/places.png"),      alt: "Places",      titleKey: "get to safe place" },
 ];
 
 export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart }) => {
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
+  const [bannerSrc, setBannerSrc] = useState(resolvePublicUrl("rules/banner.svg"));
 
   const goToPreviousSlide = () => {
     setActiveSlideIndex((currentIndex) =>
@@ -32,10 +34,15 @@ export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart
 
   return (
     <div className="rules-start-screen" style={{ width, height }}>
-      <img className="rules-logo" src="/rules/logo_magnetic.svg" alt="Magnetic" />
+      <img className="rules-logo" src={resolvePublicUrl("rules/logo_magnetic.svg")} alt="Magnetic" />
 
       <div className="rules-content">
-        <img className="rules-banner" src="/rules/banner.png" alt="Deep Rush" />
+        <img
+          className="rules-banner"
+          src={bannerSrc}
+          alt="Deep Rush"
+          onError={() => setBannerSrc(resolvePublicUrl("rules/logo_magnetic.svg"))}
+        />
 
         <div className="rules-center">
           <div className="rules-multipliers-block">
@@ -50,7 +57,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart
                 aria-label="Previous slide"
                 onClick={goToPreviousSlide}
               >
-                <img src="/rules/button_left.svg" alt="" />
+                <img src={resolvePublicUrl("rules/button_left.svg")} alt="" />
               </button>
 
               <div className="rules-image-slot">
@@ -78,7 +85,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart
                 aria-label="Next slide"
                 onClick={goToNextSlide}
               >
-                <img src="/rules/button_right.svg" alt="" />
+                <img src={resolvePublicUrl("rules/button_right.svg")} alt="" />
               </button>
             </div>
 
@@ -95,8 +102,8 @@ export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart
                   <img
                     src={
                       activeSlideIndex === index
-                        ? "/rules/point_active.svg"
-                        : "/rules/point.svg"
+                        ? resolvePublicUrl("rules/point_active.svg")
+                        : resolvePublicUrl("rules/point.svg")
                     }
                     alt=""
                   />
@@ -110,7 +117,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart
               aria-label="Start game"
               onClick={onStart}
             >
-              <img src="/rules/start_button.svg" alt="" />
+              <img src={resolvePublicUrl("rules/start_button.svg")} alt="" />
             </button>
           </div>
         </div>

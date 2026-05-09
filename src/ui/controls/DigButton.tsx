@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useGameStore } from "../../store/gameStore";
 import { gameEngine } from "../../game/GameEngine";
 import { gameAudio } from "../../audio/GameAudio";
+import { resolvePublicUrl } from "../../utils/publicUrl";
 import "../ui.css";
 
 const svgCache = new Map<string, string>();
@@ -31,13 +32,15 @@ export const DigButton: React.FC = () => {
 
   const iconRef = useRef<HTMLSpanElement>(null);
   const [iconMarkup, setIconMarkup] = useState<string>("");
-  const iconUrl = spinPushed ? "/ui/spin_icon_push.svg" : "/ui/spin_icon.svg";
+  const iconUrl = spinPushed
+    ? resolvePublicUrl("ui/spin_icon_push.svg")
+    : resolvePublicUrl("ui/spin_icon.svg");
 
   const autoIconRef = useRef<HTMLSpanElement>(null);
   const [autoIconMarkup, setAutoIconMarkup] = useState<string>("");
   const autoIconUrl = autoPushed
-    ? "/ui/autoplay_icon_push.svg"
-    : "/ui/autoplay_icon.svg";
+    ? resolvePublicUrl("ui/autoplay_icon_push.svg")
+    : resolvePublicUrl("ui/autoplay_icon.svg");
 
   useEffect(() => {
     let cancelled = false;

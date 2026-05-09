@@ -18,6 +18,7 @@ import { MONEY_SCALE } from './client'
 import _currencyList from '../../public/Supported_currencies.json'
 import { GameConfig } from '../game/GameConfig'
 import type { WinCelebrateKind } from '../ui/winCelebration'
+import { resolvePublicUrl } from '../utils/publicUrl'
 
 // ─── Demo currency ────────────────────────────────────────────────────────────
 
@@ -171,8 +172,8 @@ async function ensureProbTables(): Promise<void> {
 
   _tablesLoading = (async () => {
     const [win, loss] = await Promise.all([
-      fetch('/math/coeff_probabilities.json').then(r => r.json() as Promise<Record<string, number>>),
-      fetch('/math/coeff_probabilities_loss.json').then(r => r.json() as Promise<Record<string, number>>),
+      fetch(resolvePublicUrl('math/coeff_probabilities.json')).then(r => r.json() as Promise<Record<string, number>>),
+      fetch(resolvePublicUrl('math/coeff_probabilities_loss.json')).then(r => r.json() as Promise<Record<string, number>>),
     ])
     _winTable  = buildCumTable(win)
     _lossTable = buildCumTable(loss)
@@ -223,7 +224,7 @@ async function loadRoad(coeff: number, isLoss: boolean): Promise<string[]> {
     ? 'road_by_coeff_from_losses_merged'
     : 'road_by_coeff_merged_nonzero'
   const file = coeffToFilename(coeff)
-  const url  = `/math/${dir}/${file}`
+  const url  = resolvePublicUrl(`math/${dir}/${file}`)
 
   try {
     const text = await fetch(url).then(r => {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useGameStore, type SpeedMode } from "../../store/gameStore";
 import { formatMoney, toDisplay } from "../../rgs/client";
+import { resolvePublicUrl } from "../../utils/publicUrl";
 import "../ui.css";
 import { T } from "../../i18n/t";
 import { BalanceBetModal } from "../modals/BalanceBetModal";
@@ -137,10 +138,10 @@ export const Hud: React.FC = () => {
   };
 
   const SPEED_ICONS: Record<number, string> = {
-    0.75: "/ui/speedmode_0.75.svg",
-    1: "/ui/speedmode_1.svg",
-    2: "/ui/speedmode_2.svg",
-    5: "/ui/speedmode_5.svg",
+    0.75: resolvePublicUrl("ui/speedmode_0.75.svg"),
+    1: resolvePublicUrl("ui/speedmode_1.svg"),
+    2: resolvePublicUrl("ui/speedmode_2.svg"),
+    5: resolvePublicUrl("ui/speedmode_5.svg"),
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -203,7 +204,7 @@ export const Hud: React.FC = () => {
               disabled={betDisabled || bet <= minBet}
             >
               <span className="ui-bet-icon">
-                <img src="/ui/minus_icon.svg" alt="" />
+                <img src={resolvePublicUrl("ui/minus_icon.svg")} alt="" />
               </span>
             </button>
             <span className="ui-bet-amount">{bet.toFixed(2)}</span>
@@ -213,7 +214,7 @@ export const Hud: React.FC = () => {
               disabled={betDisabled || bet >= maxBet}
             >
               <span className="ui-bet-icon">
-                <img src="/ui/plus_icon.svg" alt="" />
+                <img src={resolvePublicUrl("ui/plus_icon.svg")} alt="" />
               </span>
             </button>
           </div>

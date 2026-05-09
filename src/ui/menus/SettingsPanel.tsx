@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { t, T } from '../../i18n/t'
 import { useGameStore } from '../../store/gameStore'
 import { gameAudio } from '../../audio/GameAudio'
+import { resolvePublicUrl } from '../../utils/publicUrl'
 import '../ui.css'
 
 export const SettingsPanel: React.FC = () => {
@@ -23,7 +24,7 @@ export const SettingsPanel: React.FC = () => {
         </div>
 
         <div className="sys-settings-slider-row">
-          <span className="sys-settings-slider-icon"><img src="/ui/sound_icon.svg" alt="" className="sys-settings-slider-icon" /></span>
+          <span className="sys-settings-slider-icon"><img src={resolvePublicUrl("ui/sound_icon.svg")} alt="" className="sys-settings-slider-icon" /></span>
           <SysSlider
             value={settings.sfxVolume}
             onChange={v => upd({ sfxVolume: v })}
@@ -34,7 +35,7 @@ export const SettingsPanel: React.FC = () => {
         </div>
 
         <div className="sys-settings-slider-row">
-          <span className="sys-settings-slider-icon"><img src="/ui/music-icon.svg" alt="" className="sys-settings-slider-icon" /></span>
+          <span className="sys-settings-slider-icon"><img src={resolvePublicUrl("ui/music-icon.svg")} alt="" className="sys-settings-slider-icon" /></span>
           <SysSlider
             value={settings.musicVolume}
             onChange={v => upd({ musicVolume: v })}

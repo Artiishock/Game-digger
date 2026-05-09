@@ -189,15 +189,15 @@
 }
 
 .ui-icon-btns .ui-icon-btn:nth-child(1) {
-  background-image: url("/ui/sound_bg.png");
+  background-image: url("../ui/sound_bg.png");
 }
 
 .ui-icon-btns .ui-icon-btn:nth-child(2) {
-  background-image: url("/ui/info_bg.png");
+  background-image: url("../ui/info_bg.png");
 }
 
 .ui-icon-btns .ui-icon-btn:nth-child(3) {
-  background-image: url("/ui/settings_bg.png");
+  background-image: url("../ui/settings_bg.png");
 }
 
 .ui-icon {
@@ -339,7 +339,7 @@
   height: 67px;
 
   background-color: transparent;
-  background-image: url("/ui/speedmode_bg.png");
+  background-image: url("../ui/speedmode_bg.png");
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
@@ -441,7 +441,7 @@
   height: 53px;
 
   background-color: transparent;
-  background-image: url("/ui/plus_minus_bg.png");
+  background-image: url("../ui/plus_minus_bg.png");
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
@@ -510,7 +510,7 @@
   height: 190px;
 
   background-color: transparent;
-  background-image: url("/ui/spin_bg.png");
+  background-image: url("../ui/spin_bg.png");
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
@@ -534,7 +534,7 @@
 }
 
 .ui-spin-btn--active {
-  background-image: url("/ui/spin_bg2.png");
+  background-image: url("../ui/spin_bg2.png");
 }
 
 .ui-spin-btn-icon {
@@ -576,7 +576,7 @@
   width: 90px;
   height: 90px;
   background-color: transparent;
-  background-image: url("/ui/autoplay_bg.png");
+  background-image: url("../ui/autoplay_bg.png");
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
@@ -596,7 +596,7 @@
 }
 
 .ui-autospin-btn--active {
-  background-image: url("/ui/autoplay_bg2.png");
+  background-image: url("../ui/autoplay_bg2.png");
   opacity: 0.45;
 }
 
@@ -986,7 +986,7 @@
   outline: none;
   background: transparent;
 
-  background-image: url("/ui/cross.svg");
+  background-image: url("../ui/cross.svg");
   background-size: 38px 38px;
   background-position: center;
   background-repeat: no-repeat;
@@ -1075,8 +1075,8 @@
   position: absolute;
   inset: 0;
   background-color: #5c5e6a;
-  mask: url("/ui/switch_bg.png") center / 100% 100% no-repeat;
-  -webkit-mask: url("/ui/switch_bg.png") center / 100% 100% no-repeat;
+  mask: url("../ui/switch_bg.png") center / 100% 100% no-repeat;
+  -webkit-mask: url("../ui/switch_bg.png") center / 100% 100% no-repeat;
 }
 
 .ui-checkbox--checked::before {
@@ -1118,7 +1118,7 @@
   width: 106px;
   height: 30px;
 
-  background-image: url("/ui/input_left_bg.png");
+  background-image: url("../ui/input_left_bg.png");
   background-size: 100% 100%;
   background-position: center;
   background-repeat: no-repeat;
@@ -1200,18 +1200,18 @@
 }
 
 .ui-pill:nth-child(3n + 1)::before {
-  mask-image: url("/ui/play_left.png");
-  -webkit-mask-image: url("/ui/play_left.png");
+  mask-image: url("../ui/play_left.png");
+  -webkit-mask-image: url("../ui/play_left.png");
 }
 
 .ui-pill:nth-child(3n + 2)::before {
-  mask-image: url("/ui/play_center.png");
-  -webkit-mask-image: url("/ui/play_center.png");
+  mask-image: url("../ui/play_center.png");
+  -webkit-mask-image: url("../ui/play_center.png");
 }
 
 .ui-pill:nth-child(3n)::before {
-  mask-image: url("/ui/play_right.png");
-  -webkit-mask-image: url("/ui/play_right.png");
+  mask-image: url("../ui/play_right.png");
+  -webkit-mask-image: url("../ui/play_right.png");
 }
 
 .ui-pill:hover::before {
@@ -1239,8 +1239,8 @@
 
   background-color: #f2f6ff;
 
-  mask: url("/ui/arrow.svg") center / contain no-repeat;
-  -webkit-mask: url("/ui/arrow.svg") center / contain no-repeat;
+  mask: url("../ui/arrow.svg") center / contain no-repeat;
+  -webkit-mask: url("../ui/arrow.svg") center / contain no-repeat;
 }
 
 .ui-pill > * {
@@ -1291,7 +1291,7 @@
   border-radius: 0;
   outline: none;
 
-  background-image: url("/ui/input_right_bg.png");
+  background-image: url("../ui/input_right_bg.png");
   background-size: 100% 100%;
   background-position: center;
   background-repeat: no-repeat;
@@ -1336,12 +1336,12 @@
 
   background-color: #5c5e6a;
 
-  mask-image: url("/ui/play_right_bg.png");
+  mask-image: url("../ui/play_right_bg.png");
   mask-size: 100% 100%;
   mask-position: center;
   mask-repeat: no-repeat;
 
-  -webkit-mask-image: url("/ui/play_right_bg.png");
+  -webkit-mask-image: url("../ui/play_right_bg.png");
   -webkit-mask-size: 100% 100%;
   -webkit-mask-position: center;
   -webkit-mask-repeat: no-repeat;
@@ -1364,12 +1364,12 @@
 
   background-color: #f2f6ff;
 
-  mask-image: url("/ui/arrow.svg");
+  mask-image: url("../ui/arrow.svg");
   mask-size: contain;
   mask-position: center;
   mask-repeat: no-repeat;
 
-  -webkit-mask-image: url("/ui/arrow.svg");
+  -webkit-mask-image: url("../ui/arrow.svg");
   -webkit-mask-size: contain;
   -webkit-mask-position: center;
   -webkit-mask-repeat: no-repeat;
@@ -1684,7 +1684,7 @@
 .rules-start-screen {
   position: relative;
   overflow: hidden;
-  background: #1a0e08 url("/rules/background.png") center / cover no-repeat;
+  background: #1a0e08 url("../rules/background.png") center / cover no-repeat;
   font-family: Inter, sans-serif;
 }
 

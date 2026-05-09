@@ -1,4 +1,5 @@
 import React from "react";
+import { resolvePublicUrl } from "../../utils/publicUrl";
 
 const BALANCE_BET_OPTIONS = [
   "0.10",
@@ -41,7 +42,7 @@ export const BalanceBetModal: React.FC<BalanceBetModalProps> = ({
             aria-label="Close balance bet modal"
             onClick={onClose}
           >
-            <img src="/ui/cross.svg" alt="" />
+            <img src={resolvePublicUrl("ui/cross.svg")} alt="" />
           </button>
         </div>
 

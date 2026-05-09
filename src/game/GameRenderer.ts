@@ -34,6 +34,7 @@ const START_TUNNEL_CARVE_DELAY_SEC = 0
 /** Скорость «призрака» в die-сцене: базово ×2; после любого нажатия клавиши/клика — ещё ×3 (итого ×6 к исходной). */
 const LAVA_GHOST_BASE_SPEED_MUL = 2
 const LAVA_GHOST_INPUT_SPEED_MUL = 3
+const CLOUD_DRIFT_PX_S = 14
 
 function getDisplayName(obj: any): string {
   return obj.label || obj.name || obj.constructor?.name || 'Unknown';
@@ -1116,6 +1117,8 @@ const TREE_HEIGHTS_PX: readonly [number, number, number] = [540, 450, 460]
 const TREE_X_IDLE: readonly [number, number, number] = [-1000, 420, 820]
 /** В раунде: смещения от charX для тех же трёх деревьев */
 const TREE_X_RUN_DX: readonly [number, number, number] = [-480, 180, 520]
+/** Шаг тайлинга деревьев в раунде: деревья зацикливаются каждые N мировых пикселей */
+const TREE_TILE_W = 1400
 
 // ─── GameRenderer ─────────────────────────────────────────────────────────────
 
@@ -1518,13 +1521,12 @@ export class GameRenderer {
     const bgTex = this._textures.get('bg')
     if (bgTex) {
       const bgH = this.H * 0.70
-      const tileH = bgTex.height * (this.W / bgTex.width)
-      const spr = new PIXI.TilingSprite(bgTex, this.W, Math.max(bgH, tileH))
-      const sc = this.W / bgTex.width
+      const sc = bgH / bgTex.height
+      const spr = new PIXI.TilingSprite(bgTex, this.W, bgH)
       spr.tileScale.set(sc, sc)
       spr.tilePosition.set(0, 0)
       spr.roundPixels = true
-      spr.y = bgH - spr.height
+      spr.y = 0
       spr.name = 'bgSprite'
       this.skyLayer.addChild(spr)
     } else {
@@ -1540,8 +1542,8 @@ export class GameRenderer {
       const rock = new PIXI.Sprite(rockTex)
       rock.name = 'rockSprite'
       rock.anchor.set(0.5, 1)
-      const rw = this.W * 0.36
-      rock.scale.set(rw / rockTex.width)
+      const rh = this.H * 0.5
+      rock.scale.set(rh / rockTex.height)
       rock.x = this.W * 0.58
       rock.y = Math.max(0, Math.min(this.H, -this.camY)) - 400
       this.skyLayer.addChild(rock)
@@ -1555,10 +1557,11 @@ export class GameRenderer {
       const c = new PIXI.Sprite(ct)
       c.name = `cloud${i + 1}`
       c.anchor.set(0.5, 0.5)
-      const scl = Math.min(0.42, this.W / 900) * (0.75 + Math.random() * 0.45)
+      const scl = 0.42 * (0.75 + Math.random() * 0.45)
       c.scale.set(scl)
-      const drift = 8 + Math.random() * 20
-      c.x = -this.W * 0.3 + (i / 50) * this.W * 4.6
+      const drift = CLOUD_DRIFT_PX_S
+      const spreadW = Math.max(this.W, 900)
+      c.x = -spreadW * 0.3 + (i / 50) * spreadW * 4.6
       const dy = -(this.H * (0.25 + Math.random() * 0.30))
       c.y = topAtBuild + dy
       ;(c as PIXI.Sprite & { _topDy: number })._topDy = dy
@@ -1568,6 +1571,14 @@ export class GameRenderer {
   }
 
   private _syncSurfaceScenery() {
+    const savedTreeX: [number | null, number | null, number | null] = [null, null, null]
+    if (this.running) {
+      for (let i = 0; i < 3; i++) {
+        const s = this._sceneryLayer.getChildByName(`tree${i + 1}`) as PIXI.Sprite | null
+        if (s) savedTreeX[i] = s.x
+      }
+    }
+
     this._sceneryLayer.removeChildren()
 
     const forestTex = this._textures.get('forest')
@@ -1590,23 +1601,54 @@ export class GameRenderer {
     }
 
     const keys = ['tree1', 'tree2', 'tree3'] as const
-    const xs = this.running
-      ? this._treeRunDx.map(dx => this.charX + dx) as [number, number, number]
-      : [...TREE_X_IDLE]
-    for (let i = 0; i < 3; i++) {
-      const tex = this._textures.get(keys[i])
-      if (!tex) continue
-      const s = new PIXI.Sprite(tex)
-      s.name = keys[i]
-      s.anchor.set(0.5, 1)
-      s.x = xs[i]!
-      const targetH = TREE_HEIGHTS_PX[i]!
-      const lift0 = i === 0 ? targetH * TREE0_LIFT_FRAC_OF_HEIGHT : 0
-      s.y = TREE_ANCHOR_WORLD_Y + TREE_Y_OFFSET[i]! - lift0
-      s.scale.set(targetH / tex.height)
-      this._sceneryLayer.addChild(s)
+
+    if (this.running) {
+      const margin = 300
+      const xs = this._treeRunDx.map((dx, i) => {
+        const saved = savedTreeX[i]
+        if (saved !== null && saved >= this.camX - margin && saved <= this.camX + this.W + margin) {
+          return saved
+        }
+        let x = this.charX + dx
+        while (x < this.camX - margin) x += TREE_TILE_W
+        while (x > this.camX + this.W + margin) x -= TREE_TILE_W
+        return x
+      }) as [number, number, number]
+      for (let i = 0; i < 3; i++) {
+        const tex = this._textures.get(keys[i])
+        if (!tex) continue
+        const s = new PIXI.Sprite(tex)
+        s.name = keys[i]
+        s.anchor.set(0.5, 1)
+        s.x = xs[i]!
+        const targetH = TREE_HEIGHTS_PX[i]!
+        const lift0 = i === 0 ? targetH * TREE0_LIFT_FRAC_OF_HEIGHT : 0
+        s.y = TREE_ANCHOR_WORLD_Y + TREE_Y_OFFSET[i]! - lift0
+        s.scale.set(targetH / tex.height)
+        this._sceneryLayer.addChild(s)
+      }
+    } else {
+      // Idle: pre-place copies of each tree tiled left and right so they always cover the screen
+      const COPIES = 5
+      for (let i = 0; i < 3; i++) {
+        const tex = this._textures.get(keys[i])
+        if (!tex) continue
+        const targetH = TREE_HEIGHTS_PX[i]!
+        const lift0 = i === 0 ? targetH * TREE0_LIFT_FRAC_OF_HEIGHT : 0
+        const baseX = TREE_X_IDLE[i]!
+        for (let k = -COPIES; k <= COPIES; k++) {
+          const s = new PIXI.Sprite(tex)
+          if (k === 0) s.name = keys[i]  // named so _captureTreeRunOffsets can find it
+          s.anchor.set(0.5, 1)
+          s.x = baseX + k * this.W * 1.5
+          s.y = TREE_ANCHOR_WORLD_Y + TREE_Y_OFFSET[i]! - lift0
+          s.scale.set(targetH / tex.height)
+          this._sceneryLayer.addChild(s)
+        }
+      }
     }
   }
+
 
   /** Целочисленный сдвиг тайла неба — убирает вертикальный шов TilingSprite при параллаксе. */
   private _syncSkyBgParallax() {
@@ -1618,8 +1660,7 @@ export class GameRenderer {
 
   private _updateSkyDecor(dt: number) {
     this._cloudT += dt
-    const prevCamX = this._cloudPrevCamX
-    const camDx = prevCamX === null ? 0 : (this.camX - prevCamX)
+    const camDx = this._cloudPrevCamX === null ? 0 : (this.camX - this._cloudPrevCamX)
     this._cloudPrevCamX = this.camX
     const top = Math.max(0, Math.min(this.H, -this.camY))
     const rock = this.skyLayer.getChildByName('rockSprite') as PIXI.Sprite | null
@@ -1631,8 +1672,7 @@ export class GameRenderer {
       const name = (ch as PIXI.DisplayObject).name ?? ''
       if (!name.startsWith('cloud')) continue
       const c = ch as PIXI.Sprite & { _drift?: number; _topDy?: number }
-      const drift = c._drift ?? 14
-      // Компенсируем движение камеры, чтобы скорость облаков не зависела от направления персонажа.
+      const drift = c._drift ?? CLOUD_DRIFT_PX_S
       c.x += drift * dt - camDx
       c.y = top + (c._topDy ?? c.y - top)
       const half = (c.texture?.width ?? 100) * 0.5 * Math.abs(c.scale.x)
@@ -1640,12 +1680,11 @@ export class GameRenderer {
         const cloudKeys = ['cloud1','cloud2','cloud3','cloud4','cloud5','cloud6'] as const
         const tex = this._textures.get(cloudKeys[Math.floor(Math.random() * 6)]!)
         if (tex) c.texture = tex
-        const scl = Math.min(0.42, this.W / 900) * (0.75 + Math.random() * 0.45)
+        const scl = 0.42 * (0.75 + Math.random() * 0.45)
         c.scale.set(scl)
         const newHalf = (tex?.width ?? 100) * 0.5 * scl
-        const newDrift = 8 + Math.random() * 20
-        c._drift = newDrift
-        c.x = -newHalf - 20 - newDrift * (2 + Math.random() * 3)
+        c._drift = CLOUD_DRIFT_PX_S
+        c.x = -newHalf - 20 - CLOUD_DRIFT_PX_S * (2 + Math.random() * 3)
         const dy = -(this.H * (0.25 + Math.random() * 0.30))
         c._topDy = dy
         c.y = top + dy
@@ -1674,14 +1713,14 @@ export class GameRenderer {
     const c = new PIXI.Sprite(tex) as PIXI.Sprite & { _drift: number; _topDy: number }
     c.name = `cloud_dyn_${this._cloudCount}`
     c.anchor.set(0.5, 0.5)
-    const scl = Math.min(0.42, this.W / 900) * (0.75 + Math.random() * 0.45)
+    const scl = 0.42 * (0.75 + Math.random() * 0.45)
     c.scale.set(scl)
     const half = tex.width * 0.5 * scl
     c.x = -half - 20
     const dy = Math.random() * this.H * 0.25
     c._topDy = dy
     c.y = top + dy
-    c._drift = 4 + Math.random() * 24
+    c._drift = CLOUD_DRIFT_PX_S
     this.skyLayer.addChild(c)
   }
 
@@ -2760,6 +2799,7 @@ export class GameRenderer {
 
     this._syncSkyBgParallax()
     this._updateSkyDecor(dt)
+
 
     this._updateWorldMask(this.W, this.H)
 

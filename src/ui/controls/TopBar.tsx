@@ -1,9 +1,11 @@
-import React from "react";
+import React, { useState } from "react";
 import { useGameStore } from "../../store/gameStore";
 import { t, T } from "../../i18n/t";
+import { resolvePublicUrl } from "../../utils/publicUrl";
 import "../ui.css";
 
 export const TopBar: React.FC = () => {
+  const [logoSrc, setLogoSrc] = useState(resolvePublicUrl("rules/banner.svg"));
   const settings = useGameStore((s) => s.settings);
   const upd = useGameStore((s) => s.updateSettings);
   const setMenu = useGameStore((s) => s.setMenuOpen);
@@ -21,7 +23,13 @@ export const TopBar: React.FC = () => {
   return (
     <>
       {/* Logo */}
-      <div className="ui-logo-zone"><img src="../../../public/rules/banner.png" alt="" /></div>
+      <div className="ui-logo-zone">
+        <img
+          src={logoSrc}
+          alt=""
+          onError={() => setLogoSrc(resolvePublicUrl("rules/logo_magnetic.svg"))}
+        />
+      </div>
       {/* WIN — в RUNNING показываем живой множитель (как растёт с монетами); после раунда — сумма выигрыша */}
       <div className="ui-win-zone">
         <span className="ui-win-label">{T('win label')} </span>
@@ -44,11 +52,11 @@ export const TopBar: React.FC = () => {
           >
             {settings.soundEnabled ? (
               <span>
-                <img className="ui-icon" src="/ui/sound_icon.svg" alt="sound" />
+                <img className="ui-icon" src={resolvePublicUrl("ui/sound_icon.svg")} alt="sound" />
               </span>
             ) : (
               <span>
-                <img className="ui-icon" src="/ui/sound_icon_disabled.svg" alt="sound" />
+                <img className="ui-icon" src={resolvePublicUrl("ui/sound_icon_disabled.svg")} alt="sound" />
               </span>
             )}
           </button>
@@ -67,7 +75,7 @@ export const TopBar: React.FC = () => {
             title="Settings"
           >
             <span>
-              <img className="ui-icon" src="/ui/settings_icon.svg" alt="settings" />
+              <img className="ui-icon" src={resolvePublicUrl("ui/settings_icon.svg")} alt="settings" />
             </span>
           </button>
         </div>

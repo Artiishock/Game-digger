@@ -3,6 +3,7 @@ import { t } from "../../i18n/t";
 import { useGameStore } from "../../store/gameStore";
 import type { RoundEvent } from "../../rgs/client";
 import { gameEngine } from "../../game/GameEngine";
+import { resolvePublicUrl } from "../../utils/publicUrl";
 
 // ─── Info Panel ────────────────────────────────────────────────────────────────
 
@@ -223,8 +224,8 @@ export const ReplayPanel: React.FC = () => {
                           className="replay-icon"
                           aria-hidden="true"
                           style={{
-                            mask: `url("/ui/replay_icon.svg") center / contain no-repeat`,
-                            WebkitMask: `url("/ui/replay_icon.svg") center / contain no-repeat`,
+                            mask: `url("${resolvePublicUrl("ui/replay_icon.svg")}") center / contain no-repeat`,
+                            WebkitMask: `url("${resolvePublicUrl("ui/replay_icon.svg")}") center / contain no-repeat`,
                           }}
                         />
                       </button>

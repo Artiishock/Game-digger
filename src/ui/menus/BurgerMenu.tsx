@@ -3,18 +3,16 @@ import { useGameStore } from "../../store/gameStore";
 import { SettingsPanel } from "./SettingsPanel";
 import { InfoPanel, ReplayPanel } from "./InfoAndReplay";
 import { t, T } from "../../i18n/t";
+import { resolvePublicUrl } from "../../utils/publicUrl";
 import "../ui.css";
-import infoIcon from "/ui/info.svg";
-import historyIcon from "/ui/history.svg";
-import settingsIcon from "/ui/settings.svg";
-import cross from "/ui/cross.svg";
+const cross = resolvePublicUrl("ui/cross.svg");
 
 type Tab = "settings" | "info" | "replay";
 
 const TABS: { id: Tab; labelKey: string; icon: string }[] = [
-  { id: "info", labelKey: "information", icon: infoIcon },
-  { id: "replay", labelKey: "history", icon: historyIcon },
-  { id: "settings", labelKey: "settings", icon: settingsIcon },
+  { id: "info", labelKey: "information", icon: resolvePublicUrl("ui/info.svg") },
+  { id: "replay", labelKey: "history", icon: resolvePublicUrl("ui/history.svg") },
+  { id: "settings", labelKey: "settings", icon: resolvePublicUrl("ui/settings.svg") },
 ];
 
 const THUMB_HEIGHT = 110;
