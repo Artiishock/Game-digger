@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "vite --port 3000",
     "build": "tsc --noEmit && vite build",
+    "build:stake": "tsc --noEmit && vite build && rm -rf dist/math",
     "preview": "vite preview --port 4173",
     "type-check": "tsc --noEmit"
   },
