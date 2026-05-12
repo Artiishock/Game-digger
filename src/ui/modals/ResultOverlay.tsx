@@ -37,7 +37,6 @@ export const ResultOverlay: React.FC = () => {
   const roundID     = useGameStore(s => s.roundID)
   const currency    = useGameStore(s => s.currency)
   const autoplay    = useGameStore(s => s.autoplay)
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [counterSkipped, setCounterSkipped] = useState(false)
 
   const show = phase === 'WIN'
@@ -60,15 +59,9 @@ export const ResultOverlay: React.FC = () => {
     }
   }, [show, isBigWin])
 
-  useEffect(() => {
-    if (show && isBigWin && autoplay.active) {
-      timerRef.current = setTimeout(() => {
-        useGameStore.getState().setPhase('IDLE')
-      }, 1200)
-    }
-    return () => { if (timerRef.current) clearTimeout(timerRef.current) }
-  }, [show, isBigWin, autoplay.active])
-
+  // На автоплее WIN закрывается и следующий раунд стартует только из `GameEngine.onRoundComplete`
+  // (`autoplayDelayMs` → `startRound`). Дублирующий setTimeout на ту же задержку гонялся с этим и ломал
+  // повторный показ WinCelebrationSpine между раундами — его убрали.
   useEffect(() => {
     if (!show || !isBigWin) return
     const audioKind = resolveWinCelebration(lastWinMult)
@@ -118,7 +111,7 @@ export const ResultOverlay: React.FC = () => {
       {celebrateKind && (
         <div className="ui-result-celebrate" aria-hidden>
           <div className="ui-result-celebrate-inner">
-            <WinCelebrationSpine key={`${roundID}-${celebrateKind}`} kind={celebrateKind} />
+            <WinCelebrationSpine key={`${roundID}-${celebrateKind}`} kind={celebrateKind} roundId={roundID} />
           </div>
         </div>
       )}

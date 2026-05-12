@@ -214,10 +214,10 @@ function layoutSpine(spine: Spine, w: number, h: number, pad = 0.8, yOffset = 0)
   spine.y = h * 0.5 - (b.y + b.height * 0.5) * s + h * yOffset
 }
 
-type Props = { kind: WinCelebrateKind }
+type Props = { kind: WinCelebrateKind; roundId: string }
 
 /** Spine-анимация празднования (big / epic / mega) поверх экрана победы — вместо mp4. */
-export const WinCelebrationSpine: React.FC<Props> = ({ kind }) => {
+export const WinCelebrationSpine: React.FC<Props> = ({ kind, roundId }) => {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [errorText, setErrorText] = useState<string | null>(null)
 
@@ -334,7 +334,7 @@ export const WinCelebrationSpine: React.FC<Props> = ({ kind }) => {
       alive = false
       dispose()
     }
-  }, [kind])
+  }, [kind, roundId])
 
   return (
     <div className={`ui-result-celebrate-canvas-wrap ui-result-celebrate-canvas-wrap--${kind}`}>

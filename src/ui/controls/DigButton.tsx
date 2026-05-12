@@ -28,9 +28,6 @@ const loadSvg = async (url: string): Promise<string | null> => {
   }
 };
 
-const touchLike = (e: React.PointerEvent) =>
-  e.pointerType === "touch" || e.pointerType === "pen";
-
 export const DigButton: React.FC = () => {
   const phase = useGameStore((s) => s.phase);
   const autoplay = useGameStore((s) => s.autoplay);
@@ -38,8 +35,9 @@ export const DigButton: React.FC = () => {
   const isAPOpen = useGameStore((s) => s.autoplayOpen);
   const spaceEnabled = useGameStore((s) => s.settings.spaceEnabled);
 
-  /** После обработки тач на Spin браузер может дослать synthetic click — глушим короткое окно. */
-  const suppressSpinClickUntil = useRef(0);
+  /** Touchend + preventDefault глушит synthetic click; если он всё же приходит — один раз пропускаем. */
+  const ignoreNextSpinClick = useRef(false);
+  const clearIgnoreTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const canDig = phase === "IDLE" || phase === "WIN" || phase === "LOSE";
   const isRunning = phase === "RUNNING" || phase === "BETTING";
@@ -111,16 +109,22 @@ export const DigButton: React.FC = () => {
     }
   };
 
-  const handleSpinPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
-    if (!touchLike(e)) return;
-    if (e.button !== 0 && e.button !== -1) return;
-    e.preventDefault();
+  const handleSpinTouchEnd = (e: React.TouchEvent<HTMLButtonElement>) => {
+    if (e.cancelable) e.preventDefault();
+    ignoreNextSpinClick.current = true;
+    if (clearIgnoreTimer.current) clearTimeout(clearIgnoreTimer.current);
+    clearIgnoreTimer.current = setTimeout(() => {
+      clearIgnoreTimer.current = null;
+      ignoreNextSpinClick.current = false;
+    }, 140);
     void runSpinAction();
-    suppressSpinClickUntil.current = performance.now() + 450;
   };
 
-  const handleSpinClickMouse = () => {
-    if (performance.now() < suppressSpinClickUntil.current) return;
+  const handleSpinClick = () => {
+    if (ignoreNextSpinClick.current) {
+      ignoreNextSpinClick.current = false;
+      return;
+    }
     void runSpinAction();
   };
 
@@ -137,6 +141,10 @@ export const DigButton: React.FC = () => {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [spaceEnabled]);
+
+  useEffect(() => () => {
+    if (clearIgnoreTimer.current) clearTimeout(clearIgnoreTimer.current);
+  }, []);
 
   const handleAutospinClick = () => {
     setAP(!isAPOpen);
@@ -160,8 +168,8 @@ export const DigButton: React.FC = () => {
 
       <button
         className={`ui-spin-btn${spinPushed ? " ui-spin-btn--active" : ""}`}
-        onPointerDown={handleSpinPointerDown}
-        onClick={handleSpinClickMouse}
+        onTouchEnd={handleSpinTouchEnd}
+        onClick={handleSpinClick}
         type="button"
         aria-busy={phase === "BETTING"}
       >
