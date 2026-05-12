@@ -81,16 +81,9 @@
   position: absolute;
   top: 40px;
   left: 10px;
-  width: 270px;
-  height: 110px;
-
-  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(255, 255, 255, 0.3);
-  font-size: 24px;
-  background: rgba(255, 255, 255, 0.03);
   z-index: 60;
   pointer-events: none;
 }
@@ -111,17 +104,13 @@
   top: 40px;
   left: 50%;
   transform: translateX(-50%);
-  background: radial-gradient(
-    ellipse,
-    rgba(0, 0, 0, 1) 0%,
-    rgba(252, 70, 107, 0) 70%
-  );
-  width: 410px;
-  height: 50px;
+  background-color: rgba(6, 6, 6, 0.5);
+  padding: 25px 25px;
+  border-radius: 24px;
   z-index: 60;
   pointer-events: none;
   white-space: nowrap;
-  gap: 8px;
+  gap: 10px;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -133,7 +122,7 @@
   color: var(--text-dim);
   line-height: 1;
   text-transform: uppercase;
-  font-weight: 800;
+  font-weight: 900;
   color: #ffffff;
   font-family: "Inter", sans-serif;
   -webkit-text-stroke: 2px #000000;
@@ -144,7 +133,7 @@
 .ui-win-amount {
   line-height: 1;
   font-size: 32px;
-  font-weight: 800;
+  font-weight: 900;
   color: #facb32;
   font-variant-numeric: tabular-nums;
   font-family: "Inter", sans-serif;
@@ -156,7 +145,7 @@
 .ui-topright {
   position: absolute;
   top: 40px;
-  right: 40px;
+  right: 30px;
   display: flex;
   flex-direction: column;
   gap: 30px;
@@ -274,7 +263,7 @@
   );
   display: flex;
   align-items: center;
-  padding: 0 40px;
+  padding: 0 30px;
   z-index: 50;
   justify-content: space-between;
 }
@@ -285,19 +274,20 @@
   box-sizing: border-box;
   flex-direction: column;
   justify-content: center;
+  align-items: center;
 
   flex-shrink: 0;
   /* width: 260px; */
-  height: 120px;
+  height: 130px;
   background: rgba(6, 6, 6, 0.5);
   border: 1px solid #9f9f9f;
   border-radius: 24px;
-  padding: 26px 32px;
-  gap: 5px;
+  padding: 25px 25px;
+  gap: 10px;
 }
 
 .ui-credit-label {
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 800;
   color: #facb32;
   line-height: 1;
@@ -309,7 +299,7 @@
 }
 
 .ui-credit-value {
-  font-size: 32px;
+  font-size: 25px;
   font-weight: 800;
   color: #ffffff;
   line-height: 1;
@@ -322,7 +312,7 @@
 
 .ui-group-wrapper {
   display: flex;
-  gap: 45px;
+  gap: 40px;
   align-items: flex-end;
   border-radius: 24px;
   background: rgba(6, 6, 6, 0.5);
@@ -420,11 +410,11 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 5px;
 }
 
 .ui-bet-label {
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 900;
   color: #facb32;
   line-height: 1;
@@ -478,7 +468,7 @@
 }
 
 .ui-bet-amount {
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 900;
   color: #f2fdff;
   line-height: 1;
@@ -490,7 +480,7 @@
   text-align: center;
   text-shadow: 0 2px 0 rgba(0, 0, 0, 1);
 
-  min-width: 120px;
+  min-width: 145px;
   text-align: center;
   white-space: nowrap;
 }
@@ -4531,7 +4521,7 @@
 
 @media (min-width: 901px) and (max-width: 1300px) and (max-height: 820px) and (orientation: landscape) {
   .ui-logo-zone {
-    top: clamp(12px, 1.3vw, 15px);
+    top: clamp(15px, 1.7vw, 20px);
     left: clamp(12px, 1.3vw, 15px);
     width: 315px;
     height: 90px;
@@ -4539,28 +4529,18 @@
 
   .ui-win-zone {
     top: clamp(15px, 1.7vw, 20px);
-    left: 0;
-    transform: none;
-    width: 100%;
-    height: 35px;
-    border-radius: 0;
-    background: linear-gradient(
-      180deg,
-      rgba(0, 0, 0, 0) 0%,
-      rgba(0, 0, 0, 0.5) 30%,
-      rgba(0, 0, 0, 0.5) 70%,
-      rgba(0, 0, 0, 0) 100%
-    );
+    width: 175px;
+    height: 45px;
   }
 
   .ui-win-label,
   .ui-win-amount {
-    font-size: 24px;
+    font-size: 12px;
     font-weight: 800;
   }
 
   .ui-topright {
-    top: clamp(12px, 1.3vw, 15px);
+    top: clamp(15px, 1.7vw, 20px);
     right: clamp(12px, 1.3vw, 15px);
     gap: 10px;
   }
@@ -4650,6 +4630,7 @@
     background: none;
     border: none;
     border-radius: 0;
+    align-items: flex-start;
   }
 
   .ui-credit-label {
@@ -4754,30 +4735,19 @@
   /* ───────── WIN ZONE ───────── */
   .ui-win-zone {
     top: clamp(20px, 3.35vw, 25px);
-    left: 0;
-    transform: none;
-
-    width: 100%;
-    height: 35px;
-
-    background: linear-gradient(
-      180deg,
-      rgba(0, 0, 0, 0) 0%,
-      rgba(0, 0, 0, 0.5) 30%,
-      rgba(0, 0, 0, 0.5) 70%,
-      rgba(0, 0, 0, 0) 100%
-    );
+    width: 175px;
+    height: 45px;
   }
 
   .ui-win-label,
   .ui-win-amount {
-    font-size: 24px;
+    font-size: 12px;
     font-weight: 800;
   }
 
   /* ───────── TOP ICONS ───────── */
   .ui-topright {
-    top: clamp(15px, 2.7vw, 20px);
+    top: clamp(20px, 3.35vw, 25px);
     right: clamp(8px, 1.35vw, 10px);
     gap: 0;
   }
@@ -4802,7 +4772,7 @@
   .ui-icon-btns .ui-icon-btn:nth-child(1) {
     position: fixed;
     left: clamp(35px, 4.7vw, 37px);
-    top: clamp(15px, 2.7vw, 20px);
+    top: clamp(20px, 3.35vw, 25px);
     transform: translateX(-50%);
   }
 
@@ -4810,7 +4780,7 @@
   .ui-depth-block {
     position: fixed;
     left: clamp(35px, 4.7vw, 37px);
-    top: clamp(74px, 8.8vw, 90px);
+    top: clamp(80px, 8.8vw, 90px);
     transform: translateX(-50%);
     gap: 5px;
     align-items: center;
@@ -4872,6 +4842,7 @@
     padding: 0;
     width: auto;
     height: auto;
+    align-items: flex-start;
   }
 
   .ui-credit-label {
@@ -4992,28 +4963,18 @@
 
   .ui-win-zone {
     top: clamp(16px, 5vw, 20px);
-    left: 0;
-    transform: none;
-    width: 100%;
-    height: 35px;
-
-    background: linear-gradient(
-      180deg,
-      rgba(0, 0, 0, 0) 0%,
-      rgba(0, 0, 0, 0.5) 30%,
-      rgba(0, 0, 0, 0.5) 70%,
-      rgba(0, 0, 0, 0) 100%
-    );
+    width: 175px;
+    height: 45px;
   }
 
   .ui-win-label,
   .ui-win-amount {
-    font-size: 24px;
+    font-size: 12px;
     font-weight: 800;
   }
 
   .ui-topright {
-    top: clamp(8px, 2.5vw, 10px);
+    top: clamp(16px, 5vw, 20px);
     right: clamp(8px, 2.5vw, 10px);
     gap: 5px;
   }
@@ -5038,14 +4999,14 @@
   .ui-icon-btns .ui-icon-btn:nth-child(1) {
     position: fixed;
     left: clamp(32px, 8.75vw, 35px);
-    top: clamp(8px, 2.5vw, 10px);
+    top: clamp(16px, 5vw, 20px);
     transform: translateX(-50%);
   }
 
   .ui-depth-block {
     position: fixed;
     left: clamp(32px, 8.75vw, 35px);
-    top: clamp(62px, 16.25vw, 65px);
+    top: clamp(75px, 20vw, 80px);
     transform: translateX(-50%);
     gap: 5px;
     align-items: center;
@@ -5113,6 +5074,7 @@
     bottom: clamp(16px, 5vw, 20px);
     left: clamp(8px, 2.5vw, 10px);
     position: absolute;
+    align-items: flex-start;
   }
 
   .ui-credit-label {
@@ -5289,22 +5251,13 @@
 
   .ui-win-zone {
     top: clamp(8px, 2.5vh, 10px);
-    left: 0;
-    transform: none;
-    width: 100%;
-    height: 35px;
-    background: linear-gradient(
-      180deg,
-      rgba(0, 0, 0, 0) 0%,
-      rgba(0, 0, 0, 0.5) 30%,
-      rgba(0, 0, 0, 0.5) 70%,
-      rgba(0, 0, 0, 0) 100%
-    );
+    width: 175;
+    height: 45px;
   }
 
   .ui-win-label,
   .ui-win-amount {
-    font-size: 24px;
+    font-size: 12px;
     font-weight: 800;
   }
 
@@ -5340,7 +5293,7 @@
   .ui-depth-block {
     position: fixed;
     left: clamp(32px, 3.9vw, 35px);
-    top: clamp(62px, 16.25vh, 65px);
+    top: clamp(65px, 7.78vw, 70px);
     transform: translateX(-50%);
     gap: 5px;
     align-items: center;
@@ -5407,6 +5360,7 @@
     bottom: clamp(12px, 3.75vh, 15px);
     left: clamp(15px, 2.2vw, 20px);
     position: absolute;
+    align-items: flex-start;
   }
 
   .ui-credit-label {

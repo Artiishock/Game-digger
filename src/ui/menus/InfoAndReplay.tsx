@@ -31,7 +31,7 @@ export const InfoPanel: React.FC = () => (
         </div>
         <div className="info-list-row">
           <span className="info-list-label">{t('diamonds')}</span>
-          <span className="info-list-value">x2 / x3 / x4 / x5</span>
+          <span className="info-list-value">х2 / x3 / x4 / x5</span>
         </div>
         <div className="info-list-row">
           <span className="info-list-label">{t('rocks')}</span>
@@ -39,7 +39,7 @@ export const InfoPanel: React.FC = () => (
         </div>
         <div className="info-list-row">
           <span className="info-list-label">{t('bomb')}</span>
-          <span className="info-list-value">÷2</span>
+          <span className="info-list-value">/2</span>
         </div>
       </div>
     </section>
@@ -83,11 +83,11 @@ export const InfoPanel: React.FC = () => (
       <h3 className="info-section-title">{t('settings section')}</h3>
       <div className="info-section-content">
         <p className="info-text">{t('settings p1')}</p>
-        <p className="info-text">{t('settings p2')}</p>
+        {t('settings p2') && <p className="info-text">{t('settings p2')}</p>}
         <ul className="info-bullet-list">
-          <li>{t('settings li1')}</li>
-          <li>{t('settings li2')}</li>
-          <li>{t('settings li3')}</li>
+          {[t('settings li1'), t('settings li2'), t('settings li3')]
+            .filter(Boolean)
+            .map((item) => <li key={item}>{item}</li>)}
         </ul>
         <p className="info-text">{t('settings p3')}</p>
       </div>
@@ -109,7 +109,7 @@ export const InfoPanel: React.FC = () => (
     <section className="info-section">
       <h3 className="info-section-title">{t('additional information')}</h3>
       <p className="info-text">{t('additional info p1')}</p>
-      <p className="info-text">{t('additional info p2')}</p>
+      {t('additional info p2') && <p className="info-text">{t('additional info p2')}</p>}
       <p className="info-version">{t('rules version')}</p>
     </section>
   </div>
