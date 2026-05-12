@@ -16,6 +16,7 @@ import { buildRoundPathV2, buildRoundPathV3, cavePathHitsTunnel, decorGeneration
 import type { FullPathResult, PathPoint, RoadPoint } from './WorldMap'
 import { GameLogger } from '../dev/GameLogger'
 import { perf, installPerfProfiler } from '../dev/PerfProfiler'
+import { tickTickerFpsLog } from '../dev/tickerFpsLog'
 
 // ── Переключение варианта пути ──────────────────────────────────────────────
 // 'V2' = Коридор + сетка (плавный путь с синусоидальным блужданием)
@@ -1240,8 +1241,6 @@ const TREE_HEIGHTS_PX: readonly [number, number, number] = [540, 450, 460]
 const TREE_X_IDLE: readonly [number, number, number] = [-1000, 420, 820]
 /** В раунде: смещения от charX для тех же трёх деревьев */
 const TREE_X_RUN_DX: readonly [number, number, number] = [-480, 180, 520]
-/** Шаг тайлинга деревьев в раунде: деревья зацикливаются каждые N мировых пикселей */
-const TREE_TILE_W = 1400
 
 // ─── GameRenderer ─────────────────────────────────────────────────────────────
 
@@ -1787,16 +1786,10 @@ export class GameRenderer {
     const keys = ['tree1', 'tree2', 'tree3'] as const
 
     if (this.running) {
-      const margin = 300
       const xs = this._treeRunDx.map((dx, i) => {
         const saved = savedTreeX[i]
-        if (saved !== null && saved >= this.camX - margin && saved <= this.camX + this.W + margin) {
-          return saved
-        }
-        let x = this.charX + dx
-        while (x < this.camX - margin) x += TREE_TILE_W
-        while (x > this.camX + this.W + margin) x -= TREE_TILE_W
-        return x
+        if (saved !== null) return saved
+        return this.charX + dx
       }) as [number, number, number]
       for (let i = 0; i < 3; i++) {
         const tex = this._textures.get(keys[i])
@@ -2706,6 +2699,7 @@ export class GameRenderer {
   // ─── Tick ─────────────────────────────────────────────────────────────────
 
   private _tick(delta:number){
+    tickTickerFpsLog(this.app.ticker.deltaMS)
     const dt=Math.min(delta/60, 0.1)  // cap 100ms — безопасно при лагге вкладки
     const store=useGameStore.getState()
     const spd=store.speed

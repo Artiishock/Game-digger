@@ -5,7 +5,7 @@
  * begin() возвращает 0, end() с t0=0 — immediate return.
  *
  * Использование в браузере:
- *   __DR_PERF__.enable()        — начать сбор (автоматически при старте если URL содержит ?perf)
+ *   __DR_PERF__.enable()        — начать сбор (с `?perf` в URL — ещё и авто-отчёт по таймеру)
  *   __DR_PERF__.report()        — console.table со статистикой всех подсистем
  *   __DR_PERF__.top(5)          — топ-N самых дорогих подсистем
  *   __DR_PERF__.auto(3000)      — авто-вывод отчёта каждые N мс
@@ -210,20 +210,19 @@ export const perf = {
 }
 
 /**
- * Устанавливает профайлер на window.__DR_PERF__.
- * В DEV-режиме включается автоматически и печатает отчёт каждые 5 секунд.
- * ?perf=N в URL — задаёт интервал в секундах (напр. ?perf=10).
+ * Ставит `window.__DR_PERF__`. Авто-отчёт и сбор включаются только с `?perf` в URL
+ * (иначе `console.table` каждые N с сам рвёт FPS и засоряет консоль).
+ * `?perf` или `?perf=` — каждые 5 с; `?perf=10` — каждые 10 с.
+ * Вручную: `__DR_PERF__.enable()` и при необходимости `__DR_PERF__.auto(5000)`.
+ * Лёгкий лог кадра: `?fps` / `?nofps` (DEV) / `__DR_FPS_LOG__` — см. `tickerFpsLog.ts`.
  */
 export function installPerfProfiler(): void {
   ;(window as any).__DR_PERF__ = perf
 
-  let intervalMs = 5000
-  if (typeof location !== 'undefined') {
-    const param = new URLSearchParams(location.search).get('perf')
-    if (param !== null) {
-      intervalMs = param ? Math.max(1, parseFloat(param)) * 1000 : 5000
-    }
-  }
+  if (typeof location === 'undefined') return
+  const param = new URLSearchParams(location.search).get('perf')
+  if (param === null) return
 
+  const intervalMs = param ? Math.max(1, parseFloat(param)) * 1000 : 5000
   perf.auto(intervalMs)
 }
