@@ -508,6 +508,7 @@
   flex-direction: column;
   align-items: flex-end;
   gap: 15px;
+  touch-action: manipulation;
 }
 
 .ui-spin-btn {
@@ -525,6 +526,8 @@
   box-shadow: none;
 
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 
   display: flex;
   align-items: center;
@@ -540,6 +543,11 @@
 
 .ui-spin-btn--active {
   background-image: url("../ui/spin_bg2.png");
+}
+
+/** Во время BETTING кнопку не `disabled` — на iOS это ломает click в том же жесте; защита в `GameEngine.startRound`. */
+.ui-spin-btn[aria-busy="true"] {
+  opacity: 0.88;
 }
 
 .ui-spin-btn-icon {
@@ -580,6 +588,8 @@
 .ui-autospin-btn {
   width: 90px;
   height: 90px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
   background-color: transparent;
   background-image: url("../ui/autoplay_bg.png");
   background-size: cover;
@@ -628,8 +638,10 @@
   position: fixed;
   inset: 0;
   z-index: 200;
-  background: rgba(0, 0, 0, 0.78);
-  backdrop-filter: blur(7px);
+  background: rgba(0, 0, 0, 0.82);
+  /* blur backdrop — дорого на встроенной графике macOS/Safari; усилили непрозрачность фона */
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 
   display: flex;
   align-items: center;

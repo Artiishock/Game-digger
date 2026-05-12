@@ -88,6 +88,9 @@ export const DigButton: React.FC = () => {
   const handleSpinClick = async () => {
     gameAudio.unlock();
 
+    const phaseNow = useGameStore.getState().phase;
+    if (phaseNow === "BETTING") return;
+
     if (isAutoActive) {
       gameEngine.stopAutoplay();
       return;
@@ -139,8 +142,8 @@ export const DigButton: React.FC = () => {
       <button
         className={`ui-spin-btn${spinPushed ? " ui-spin-btn--active" : ""}`}
         onClick={handleSpinClick}
-        disabled={phase === "BETTING"}
         type="button"
+        aria-busy={phase === "BETTING"}
       >
         <span
           ref={iconRef}

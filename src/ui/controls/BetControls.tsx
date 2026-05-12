@@ -47,7 +47,7 @@ export const BetControls: React.FC = () => {
       <div style={{
         background: 'rgba(10,5,2,0.88)', borderRadius: 20,
         padding: '6px 14px', border: '1px solid rgba(255,184,48,0.2)',
-        backdropFilter: 'blur(6px)', minWidth: 80, textAlign: 'center',
+        backdropFilter: 'none', minWidth: 80, textAlign: 'center',
       }}>
         <div style={{ fontSize: 9, color: 'rgba(240,230,211,0.4)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>{T('bet')}</div>
         <div style={{ fontSize: 15, fontWeight: 700, color: '#FFB830', fontVariantNumeric: 'tabular-nums' }}>

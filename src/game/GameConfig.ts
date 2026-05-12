@@ -173,10 +173,10 @@ export const GameConfig = {
     ellipseRadiusYPx: HERO_MAX_SIDE_PX * TUNNEL_SCRATCH_RY_FRAC_OF_MAX_SIDE,
     /** Уменьшение обеих осей для тёмного слоя маски */
     darkInsetPx: 5,
-    /** Шаг субсэмплов вдоль сегмента: доля от min(rx,ry); меньше — плотнее, меньше дыр и раздуваний. */
-    segmentSpacingMul: 0.22,
-    /** Вершин полигона овала (больше — глаже контур). */
-    ellipsePolySteps: 36,
+    /** Шаг субсэмплов вдоль сегмента: доля от min(rx,ry); больше — реже точки, дешевле CPU на Mac. */
+    segmentSpacingMul: 0.32,
+    /** Вершин полигона овала (больше — глаже контур). Меньше — дешевле scratchAt. */
+    ellipsePolySteps: 24,
   },
 
   // ─── Лава ────────────────────────────────────────────────────────────────────
@@ -196,6 +196,13 @@ export const GameConfig = {
      * mask=3 → ~1/4; было (seed&1) → половина.
      */
     worldLavaSpawnMask: 3,
+    /**
+     * Размер TilingSprite лавы (логические px). Было 4096² — тяжело по памяти и fill-rate на Retina;
+     * 2560 достаточно при типичном viewport, позиция в `LavaSimulation` центрируется под камеру.
+     */
+    tilingWidthPx: 2560,
+    tilingHeightPx: 2560,
+
     /** Скорость вылета вверх с анимацией die (px/с, игровое время). */
     deathAscentSpeedPx: 500,
     /** Запас, если декодированный `finish_lose.ogg` ещё недоступен — расчёт скорости вылета призрака. */
@@ -296,6 +303,28 @@ export const GameConfig = {
     idleMenuMaxFps: 30,
     /** Остановка `app.ticker` при `document.visibilityState === 'hidden'`. */
     pauseTickerWhenPageHidden: true,
+    /**
+     * Потолок `devicePixelRatio` для внутреннего разрешения Pixi (`resolution` / backing store).
+     * На Retina‑MacBook при 2.0 пикселей в 4× больше, чем при DPR 1 на многих Windows‑дисплеях.
+     */
+    maxDevicePixelRatio: 1.25,
+
+    /** Сколько чанков из буферной очереди собирать за один кадр (меньше — ровнее FPS, дольше «догруз»). */
+    tileWorldChunkBuildsPerFrame: 2,
+
+    /** Верхний предел одновременных круглых частиц `_burst` (остальные отбрасываются). */
+    particleMax: 320,
+    /** Число частиц при сборе пропа (не HOME). */
+    burstCollectParticles: 8,
+    burstHomeParticles: 20,
+    burstLavaHitParticles: 12,
+    burstGoldBreakParticles: 2,
+    burstGoldCollectParticles: 8,
+    /**
+     * WebGL multisampling (antialias). На встроенных GPU (MacBook Air, старые Intel) даёт заметную цену кадра;
+     * на дискретных Windows часто почти бесплатно — при необходимости поставьте true.
+     */
+    webglAntialias: false,
   },
 
   // ─── Коллизии ────────────────────────────────────────────────────────────────
@@ -321,3 +350,9 @@ export const GameConfig = {
   } as Record<string, { strength: number; freezeDurSec: number }>,
 
 } // as const убран — некоторые конфигурации Vite не распознают экспорт с as const
+
+/** Единый потолок DPR для Pixi / Spine‑оверлеев (см. `GameConfig.performance.maxDevicePixelRatio`). */
+export function effectiveDevicePixelRatio(): number {
+  const cap = GameConfig.performance.maxDevicePixelRatio
+  return Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, cap)
+}

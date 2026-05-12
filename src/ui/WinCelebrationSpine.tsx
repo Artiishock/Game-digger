@@ -4,6 +4,7 @@ import * as PIXI from 'pixi.js'
 import { Spine, TextureAtlas } from 'pixi-spine'
 import { SkeletonJson, AtlasAttachmentLoader } from '@pixi-spine/runtime-4.1'
 import type { WinCelebrateKind } from './winCelebration'
+import { GameConfig, effectiveDevicePixelRatio } from '../game/GameConfig'
 
 /**
  * Абсолютный URL папки приложения (рядом с index.html), с хвостом `/`.
@@ -271,8 +272,8 @@ export const WinCelebrationSpine: React.FC<Props> = ({ kind }) => {
             width: window.innerWidth,
             height: window.innerHeight,
             backgroundAlpha: 0,
-            antialias: true,
-            resolution: Math.min(window.devicePixelRatio || 1, 2),
+            antialias: GameConfig.performance.webglAntialias,
+            resolution: effectiveDevicePixelRatio(),
             autoDensity: true,
             hello: false,
           } as PIXI.IApplicationOptions)

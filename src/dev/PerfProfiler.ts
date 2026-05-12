@@ -20,9 +20,8 @@
  *   miner       — MinerController.update (анимация персонажа)
  *   pUpdate     — _pUpdate: Spine + частицы + лава (culling + физика + рендер)
  *   spine       — SpineAnimator.tick (скелетные анимации)
- *   lava        — tileWorld.updateLavas (физика + маска текстуры по ячейкам)
- *   lava.flow   — LavaSimulation._flow (клеточный автомат)
- *   lava.render — LavaSimulation._render (маска drawRect по ячейкам для TilingSprite)
+ *   lava        — tileWorld.updateLavas (маска лавы + LavaSimulation.update)
+ *   lava.render — LavaSimulation._render (маска бассейнов для TilingSprite)
  */
 
 /** Размер скользящего окна: 2 секунды при 60fps */

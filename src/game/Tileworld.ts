@@ -1,6 +1,6 @@
 import * as PIXI from 'pixi.js'
 import { GameConfig } from './GameConfig'
-import { LavaSimulation, CELL_PX } from './LavaSimulation'
+import { LavaSimulation } from './LavaSimulation'
 import { GameAssets } from './gameAssets'
 
 export const TILE = 120
@@ -10,8 +10,8 @@ export const CHUNK_H = 4
 const CPW = CHUNK_W * TILE
 const CPH = CHUNK_H * TILE
 
-/** Буфер вокруг камеры при расчёте чанков (px) — тот же множитель, что в `TileWorld.update`. */
-export const TILEWORLD_CHUNK_VIEW_BUF_PX = CPW * 2.5
+/** Буфер вокруг камеры при расчёте чанков (px) — меньше множитель → меньше активных чанков / нагрузка на Mac. */
+export const TILEWORLD_CHUNK_VIEW_BUF_PX = CPW * 2.0
 
 /** Запас чанков вокруг окна камеры — чанк удаляется только за пределами `colMin±cull` / `rowMin±cull`. */
 export const TILEWORLD_CHUNK_CULL_MARGIN = 4
@@ -101,7 +101,6 @@ const LAVA_CAVE_HW = TILE * 2.15
 const LAVA_CAVE_HH = TILE * 1.15
 /** Радиус скругления углов пещеры (в мире, px). Маленький — чтобы угловые ячейки не были мёртвой зоной. */
 const LAVA_CAVE_CORNER_R = TILE * 0.15
-const LAVA_CAVE_FILL = 0.94
 
 export const enum T {
   AIR = 0, GRASS, DIRT, DIRT2, DIRT3,
@@ -772,10 +771,6 @@ export class TileWorld {
           this.renderer.render(this._scratchGb, { renderTexture: grassMaskRT, clear: false })
         }
 
-        if (this.lavaSimulation) {
-          this.lavaSimulation.openAreaIfNearLava(wx, wy, rx, ry, ux, uy)
-        }
-
         if (lineFrom) {
           const plx = lineFrom.x - col * CPW, ply = lineFrom.y - row * CPH
           this.line.clear()
@@ -993,9 +988,8 @@ export class TileWorld {
     this._cavesByPosition.set(`${Math.round(wx)},${Math.round(wy)}`, path)
     this._applyCavePathToExistingChunks(path)
     // Лаву инициализируем один раз на пещеру — не по каждому чанку (иначе дубли и «пустые» зоны).
-    // Без физики потока: только статическое заполнение, одна и та же доля объёма.
     if (this.lavaSimulation && path.rect) {
-      this.lavaSimulation.addLavaSource(path.points, LAVA_CAVE_FILL, { static: true, rect: path.rect })
+      this.lavaSimulation.addStaticLavaPool(path.rect)
     }
     if (!lavaTerminal) this._decorLavaCaveCount++
     return true
@@ -1084,8 +1078,9 @@ export class TileWorld {
       }
     }
 
-    // Drain build queue — 3 buffer chunks per frame to spread GPU cost.
-    const drainN = Math.min(3, this._buildQueue.length)
+    // Drain build queue — spread GPU cost (count from GameConfig).
+    const maxDrain = Math.max(1, Math.floor(GameConfig.performance.tileWorldChunkBuildsPerFrame))
+    const drainN = Math.min(maxDrain, this._buildQueue.length)
     for (let i = 0; i < drainN; i++) {
       const item = this._buildQueue.shift()!
       const k = `${item.col}_${item.row}`
