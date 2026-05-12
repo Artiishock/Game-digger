@@ -226,11 +226,13 @@ export const GameConfig = {
     autoplayDelayMs:  1200,  // задержка между раундами в автоплее, мс
     /** Множитель «экран / глубина» для ppm — больше → дальше друг от друга символы по Y */
     depthSpreadScreenFactor: 2.6,
-    /** Порог множителя для оверлея WIN в `public/animations/{megawin|epicwin|bigwin}/` (Spine). */
-    megaWinMinMultiplier: 150,
-    epicWinMinMultiplier: 450,
-    /** Строго больше этого — уровень bigwin, пока множитель ниже epic. */
-    bigWinExclusiveAboveMultiplier: 50,
+    /**
+     * Пороги финального множителя (выплата/ставка) для Spine `public/animations/{bigwin|epicwin|megawin}/`.
+     * Порядок уровней: big < mega < epic (числа по возрастанию).
+     */
+    bigWinExclusiveAboveMultiplier: 10,
+    megaWinMinMultiplier: 50,
+    epicWinMinMultiplier: 175,
   },
 
   // ─── Герой: калибровка (px; углы — радианы) ────────────────────────────────

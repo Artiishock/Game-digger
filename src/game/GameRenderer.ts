@@ -1241,6 +1241,8 @@ const TREE_HEIGHTS_PX: readonly [number, number, number] = [540, 450, 460]
 const TREE_X_IDLE: readonly [number, number, number] = [-1000, 420, 820]
 /** В раунде: смещения от charX для тех же трёх деревьев */
 const TREE_X_RUN_DX: readonly [number, number, number] = [-480, 180, 520]
+/** Шаг между соседними копиями одного дерева в idle (мир px), не от ширины канваса (= 1920×1.5). */
+const TREE_IDLE_COPY_STEP_PX = TILE * 24
 
 // ─── GameRenderer ─────────────────────────────────────────────────────────────
 
@@ -1805,9 +1807,9 @@ export class GameRenderer {
         this._sceneryLayer.addChild(s)
       }
     } else {
-      // Idle: копии деревьев по X с шагом tileW; сдвигаем сетку к центру экрана, иначе после
+      // Idle: копии деревьев по X с фиксированным шагом; сдвигаем сетку к центру экрана, иначе после
       // глубокого раунда (большой world X) все копии остаются слева от камеры — «пропадают».
-      const tileW = this.W * 1.5
+      const tileW = TREE_IDLE_COPY_STEP_PX
       const anchorX = this.camX + this.W * 0.5
       const m0 = Math.round((anchorX - TREE_X_IDLE[1]!) / tileW)
       const COPIES = 6

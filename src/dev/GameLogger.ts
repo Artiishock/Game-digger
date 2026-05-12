@@ -171,8 +171,8 @@ export const GameLogger = {
       css,
     )
     if (hasMultDrift) {
-      console.warn(
-        `[ROUND MULT] visual ×${visualMult.toFixed(2)} vs payout ×${settledMult.toFixed(2)}`
+      console.debug(
+        `[ROUND MULT] visual ×${visualMult.toFixed(2)} vs payout ×${settledMult.toFixed(2)}`,
       )
     }
 

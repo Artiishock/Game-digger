@@ -12,9 +12,9 @@ if (import.meta.env.DEV) {
     help() {
       console.log(
         `%c__DEEP_RUSH_MATH_DEV%c (FUN / demo, без rgs_url)\n` +
-          `  .nextBig()     — подобрать коэффициент из coeff_probabilities → bigwin (×>${r.bigWinExclusiveAboveMultiplier}, < epic)\n` +
+          `  .nextBig()     — → bigwin (×>${r.bigWinExclusiveAboveMultiplier}, < ${r.megaWinMinMultiplier})\n` +
+          `  .nextMega()    — → megawin (×≥${r.megaWinMinMultiplier}, < ${r.epicWinMinMultiplier})\n` +
           `  .nextEpic()    — → epicwin (×≥${r.epicWinMinMultiplier})\n` +
-          `  .nextMega()    — → megawin (×≥${r.megaWinMinMultiplier})\n` +
           `  .nextCoeff(n)  — ближайший доступный base_coeff к числу n (/math/road…)\n` +
           `  .clear()       — сброс очереди\n` +
           `  .peek()        — что в очереди\n` +

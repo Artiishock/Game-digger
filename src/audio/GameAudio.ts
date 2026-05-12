@@ -106,8 +106,8 @@ class GameAudioModule {
 
       this._fadeLooper('background_2.ogg', phase === 'RUNNING' ? targetVol : 0)
 
-      const bigWin = GameConfig.round.bigWinExclusiveAboveMultiplier
-      this._fadeLooper('background_3.ogg', phase === 'RUNNING' && multiplier >= bigWin ? targetVol : 0)
+      const intenseBgMin = GameConfig.round.megaWinMinMultiplier
+      this._fadeLooper('background_3.ogg', phase === 'RUNNING' && multiplier >= intenseBgMin ? targetVol : 0)
     } else {
       this._stopFadingLoop('background_2.ogg')
       this._stopFadingLoop('background_3.ogg')

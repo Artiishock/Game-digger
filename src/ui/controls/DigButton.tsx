@@ -6,14 +6,26 @@ import { resolvePublicUrl } from "../../utils/publicUrl";
 import "../ui.css";
 
 const svgCache = new Map<string, string>();
+/** URL, которые уже не загрузились — не повторять fetch при каждом BETTING/RUNNING. */
+const svgFetchMiss = new Set<string>();
 
-const loadSvg = async (url: string): Promise<string> => {
+const loadSvg = async (url: string): Promise<string | null> => {
+  if (svgFetchMiss.has(url)) return null;
   const cached = svgCache.get(url);
-  if (cached) return cached;
-  const res = await fetch(url);
-  const text = await res.text();
-  svgCache.set(url, text);
-  return text;
+  if (cached !== undefined) return cached;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      svgFetchMiss.add(url);
+      return null;
+    }
+    const text = await res.text();
+    svgCache.set(url, text);
+    return text;
+  } catch {
+    svgFetchMiss.add(url);
+    return null;
+  }
 };
 
 export const DigButton: React.FC = () => {
@@ -46,7 +58,7 @@ export const DigButton: React.FC = () => {
   useEffect(() => {
     let cancelled = false;
     loadSvg(iconUrl).then((markup) => {
-      if (!cancelled) setIconMarkup(markup);
+      if (!cancelled && markup != null) setIconMarkup(markup);
     });
     return () => {
       cancelled = true;
@@ -56,7 +68,7 @@ export const DigButton: React.FC = () => {
   useEffect(() => {
     let cancelled = false;
     loadSvg(autoIconUrl).then((markup) => {
-      if (!cancelled) setAutoIconMarkup(markup);
+      if (!cancelled && markup != null) setAutoIconMarkup(markup);
     });
     return () => {
       cancelled = true;
@@ -72,10 +84,6 @@ export const DigButton: React.FC = () => {
       new MouseEvent("click", { bubbles: false, cancelable: true })
     );
   }, [iconMarkup, spinPushed]);
-
-  useEffect(() => {
-    console.log(isAutoActive);
-  }, [isAutoActive]);
 
   const handleSpinClick = async () => {
     gameAudio.unlock();

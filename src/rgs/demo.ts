@@ -77,29 +77,29 @@ function nearestCoefficient(target: number, list: number[]): number {
 
 function pickCelebrateCoeffFromMath(kind: WinCelebrateKind, winCoeffs: number[]): number {
   const r = GameConfig.round
-  const mega = r.megaWinMinMultiplier ?? 50
-  const epic = r.epicWinMinMultiplier ?? 10
-  const bigEx = r.bigWinExclusiveAboveMultiplier ?? 3
+  const bigEx = r.bigWinExclusiveAboveMultiplier ?? 10
+  const megaMin = r.megaWinMinMultiplier ?? 50
+  const epicMin = r.epicWinMinMultiplier ?? 175
   const pos = winCoeffs.filter(c => c > 0)
 
-  const pickMega = (): number =>
-    pos.filter(c => c >= mega)[0] ?? pos[pos.length - 1]!
-  const pickEpic = (): number => {
-    const inTier = pos.filter(c => c >= epic && c < mega)
+  const pickEpic = (): number =>
+    pos.filter(c => c >= epicMin)[0] ?? pos[pos.length - 1]!
+  const pickMega = (): number => {
+    const inTier = pos.filter(c => c >= megaMin && c < epicMin)
     if (inTier.length) return inTier[0]!
-    const ge = pos.filter(c => c >= epic)
-    return ge[0] ?? pickMega()
+    const ge = pos.filter(c => c >= megaMin)
+    return ge[0] ?? pickEpic()
   }
   const pickBig = (): number => {
-    const inTier = pos.filter(c => c > bigEx && c < epic)
+    const inTier = pos.filter(c => c > bigEx && c < megaMin)
     if (inTier.length) return inTier[inTier.length - 1]!
     const gt = pos.filter(c => c > bigEx)
     return gt[0] ?? pos[Math.min(1, pos.length - 1)]!
   }
 
   switch (kind) {
-    case 'megawin': return pickMega()
     case 'epicwin': return pickEpic()
+    case 'megawin': return pickMega()
     case 'bigwin': return pickBig()
   }
 }
@@ -165,18 +165,49 @@ type CumTable = Array<[number, number]>
 let _winTable:  CumTable | null = null
 let _lossTable: CumTable | null = null
 let _tablesLoading: Promise<void> | null = null
+let _warnedProbFallback = false
+
+/** Если `math/coeff_probabilities*.json` не грузятся (офлайн, неверный хост в URL). */
+const DEMO_PROB_WIN_FALLBACK: Record<string, number> = { '0.5': 1 }
+const DEMO_PROB_LOSS_FALLBACK: Record<string, number> = { '45': 1 }
+
+function formatDemoErr(e: unknown): string {
+  if (e instanceof Error) return e.message || String(e)
+  return String(e)
+}
 
 async function ensureProbTables(): Promise<void> {
   if (_winTable && _lossTable) return
   if (_tablesLoading) return _tablesLoading
 
   _tablesLoading = (async () => {
-    const [win, loss] = await Promise.all([
-      fetch(resolvePublicUrl('math/coeff_probabilities.json')).then(r => r.json() as Promise<Record<string, number>>),
-      fetch(resolvePublicUrl('math/coeff_probabilities_loss.json')).then(r => r.json() as Promise<Record<string, number>>),
-    ])
-    _winTable  = buildCumTable(win)
-    _lossTable = buildCumTable(loss)
+    try {
+      const [winRes, lossRes] = await Promise.all([
+        fetch(resolvePublicUrl('math/coeff_probabilities.json')),
+        fetch(resolvePublicUrl('math/coeff_probabilities_loss.json')),
+      ])
+      if (!winRes.ok || !lossRes.ok) {
+        throw new Error(`HTTP ${winRes.status} / ${lossRes.status}`)
+      }
+      const [win, loss] = await Promise.all([
+        winRes.json() as Promise<Record<string, number>>,
+        lossRes.json() as Promise<Record<string, number>>,
+      ])
+      _winTable = buildCumTable(win)
+      _lossTable = buildCumTable(loss)
+    } catch (e) {
+      if (!_warnedProbFallback) {
+        _warnedProbFallback = true
+        console.warn(
+          '[demo] coeff_probabilities недоступны — офлайн-заглушка (win ×0.5, loss 45):',
+          formatDemoErr(e),
+        )
+      }
+      _winTable = buildCumTable(DEMO_PROB_WIN_FALLBACK)
+      _lossTable = buildCumTable(DEMO_PROB_LOSS_FALLBACK)
+    } finally {
+      _tablesLoading = null
+    }
   })()
 
   return _tablesLoading
@@ -219,16 +250,25 @@ function coeffToFilename(coeff: number): string {
   return 'coeff_' + coeff.toFixed(2).replace('.', '_') + '.jsonl'
 }
 
+/** URL, по которым fetch уже не удался — не дёргаем сеть каждый раунд в офлайне. */
+const _roadFetchUnavailable = new Set<string>()
+const _roadFailWarned = new Set<string>()
+
 async function loadRoad(coeff: number, isLoss: boolean): Promise<string[]> {
   const dir  = isLoss
     ? 'road_by_coeff_from_losses_merged'
     : 'road_by_coeff_merged_nonzero'
   const file = coeffToFilename(coeff)
   const url  = resolvePublicUrl(`math/${dir}/${file}`)
+  const fallback = (): string[] => (isLoss ? ['1', '/2'] : ['1'])
+
+  if (_roadFetchUnavailable.has(url)) {
+    return fallback()
+  }
 
   try {
     const text = await fetch(url).then(r => {
-      if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`)
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
       return r.text()
     })
     const lines = text.trim().split('\n').filter(l => l.trim())
@@ -244,8 +284,15 @@ async function loadRoad(coeff: number, isLoss: boolean): Promise<string[]> {
 
     return road
   } catch (err) {
-    console.warn('[demo] road load failed:', err, '— using fallback')
-    return isLoss ? ['1', '/2'] : ['1']
+    _roadFetchUnavailable.add(url)
+    if (!_roadFailWarned.has(url)) {
+      _roadFailWarned.add(url)
+      console.warn(
+        `[demo] road load failed (${dir}/${file}) — fallback;`,
+        formatDemoErr(err),
+      )
+    }
+    return fallback()
   }
 }
 
