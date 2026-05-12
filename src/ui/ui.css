@@ -5222,12 +5222,12 @@
 
   .ui-bet-controls .ui-bet-adj:first-child {
     grid-column: 2;
-    grid-row: 1;
+    grid-row: 2;
   }
 
   .ui-bet-controls .ui-bet-adj:last-child {
     grid-column: 2;
-    grid-row: 2;
+    grid-row: 1;
   }
 
   .ui-spin-btn-icon,
