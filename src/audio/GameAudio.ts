@@ -80,6 +80,8 @@ class GameAudioModule {
   /** Вызывать из React при смене настроек звука (громкость / mute). */
   refreshFromStore(): void {
     this.applyMusicFromStore()
+    const store = useGameStore.getState()
+    this.syncPhase(store.phase, store.stats.multiplier)
   }
 
   syncPhase(phase: GamePhase, multiplier = 1): void {
@@ -255,14 +257,17 @@ class GameAudioModule {
 
   /** Starts a loop at the given initial volume without overriding an already-running instance. */
   private _ensureLoopStartedAt(file: string, initialVolume: number): void {
+    const { soundEnabled, musicEnabled } = useGameStore.getState().settings
     const existing = this.loopers.get(file)
+    if (!soundEnabled || !musicEnabled) {
+      if (existing && !existing.paused) existing.pause()
+      return
+    }
     if (existing) {
       // First render play() may have been blocked by autoplay policy — retry on user-gesture context
       if (existing.paused) void existing.play().catch(() => {})
       return
     }
-    const { soundEnabled, musicEnabled } = useGameStore.getState().settings
-    if (!soundEnabled || !musicEnabled) return
     const a = new Audio(url(file))
     a.loop = true
     a.preload = 'auto'
@@ -273,8 +278,14 @@ class GameAudioModule {
 
   /** Gradually fades a looper to targetVolume over FADE_DURATION_MS. No-ops if already heading there. */
   private _fadeLooper(file: string, targetVolume: number): void {
+    const { soundEnabled, musicEnabled } = useGameStore.getState().settings
+    const looperEarly = this.loopers.get(file)
+    /** При выключении звука/музыки не тянуть 2s fade — иначе после mute syncPhase снова «поднимает» слой. */
+    const snapSilent =
+      targetVolume <= 0.001 && (!soundEnabled || !musicEnabled) && looperEarly
+
     const prevTarget = this.fadeTargetVolumes.get(file)
-    if (prevTarget === targetVolume && this.fadeIntervals.has(file)) return
+    if (!snapSilent && prevTarget === targetVolume && this.fadeIntervals.has(file)) return
 
     this.fadeTargetVolumes.set(file, targetVolume)
 
@@ -286,6 +297,13 @@ class GameAudioModule {
 
     const looper = this.loopers.get(file)
     if (!looper) return
+
+    if (snapSilent) {
+      looper.volume = 0
+      looper.pause()
+      this.fadeTargetVolumes.delete(file)
+      return
+    }
 
     const startVolume = looper.volume
     if (Math.abs(targetVolume - startVolume) < 0.001) {

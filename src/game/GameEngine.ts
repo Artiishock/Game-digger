@@ -19,6 +19,8 @@ import { GameLogger } from '../dev/GameLogger'
 class GameEngine {
   private static _instance: GameEngine
   private _abortAutoplay = false
+  /** Колбэк рендерера: мгновенно завершить раунд по полной дорожке RGS (повторный Spin). */
+  private _rendererInstantFinish: (() => Promise<void>) | null = null
 
   private _setPhase(store: ReturnType<typeof useGameStore.getState>, phase: GamePhase): void {
     GameLogger.phaseChange(useGameStore.getState().phase, phase)
@@ -106,6 +108,22 @@ class GameEngine {
     this._setPhase(store, 'RUNNING')
   }
 
+  /** Регистрируется из `GameCanvas` при создании `GameRenderer`. */
+  setRendererInstantFinish(fn: (() => Promise<void>) | null): void {
+    this._rendererInstantFinish = fn
+  }
+
+  /**
+   * Во время RUNNING: сразу завершить раунд так, будто собраны все предметы
+   * по текущей дорожке RGS (итог HOME/LAVA и множитель — из полной цепочки событий).
+   */
+  async instantFinishRound(): Promise<void> {
+    const store = useGameStore.getState()
+    if (store.phase !== 'RUNNING') return
+    if (store.autoplay.active) return
+    await this._rendererInstantFinish?.()
+  }
+
   async startRound(): Promise<void> {
     const store = useGameStore.getState()
     if (store.phase === 'BETTING' || store.phase === 'RUNNING') return
@@ -184,6 +202,8 @@ class GameEngine {
       let newBalance: number
       /** В demo выплата считается из base_coeff математики; экран WIN тоже показывает этот множитель. */
       let displayMult = multiplier
+      /** Баланс до зачисления выплаты — для lastWin без float-ошибок bet×mult. */
+      const balanceBeforePayout = store.balance
 
       if (RGS.isDemo()) {
         const coeffSnap = Demo.peekPendingBaseCoeff()
@@ -209,9 +229,11 @@ class GameEngine {
 
       store.setBalance(newBalance)
 
+      let creditedWinDisplay = 0
       if (won) {
-        const winDisplay = RGS.toDisplay(Math.round(bet * displayMult * RGS.MONEY_SCALE))
-        store.setLastWin(winDisplay)
+        const winApi = newBalance - balanceBeforePayout
+        creditedWinDisplay = RGS.toDisplay(winApi)
+        store.setLastWin(creditedWinDisplay)
         store.setLastWinMult(displayMult)
         this._setPhase(store, 'WIN')
       } else {
@@ -222,13 +244,14 @@ class GameEngine {
       // ── Autoplay continuation ──────────────────────────────────────────────
       const ap = store.autoplay
       if (ap.active && !this._abortAutoplay) {
-        const winDisplay = won ? bet * multiplier : 0
-        const shouldStop = this._shouldStopAutoplay(ap, winDisplay, newBalance)
-        const isLastRound = ap.remainingRounds <= 1
+        const shouldStop = this._shouldStopAutoplay(ap, creditedWinDisplay, newBalance)
+        const isLastRound = !ap.infinite && ap.remainingRounds <= 1
         if (shouldStop || isLastRound) {
-          store.setAutoplay({ active: false, remainingRounds: 0 })
+          store.setAutoplay({ active: false, remainingRounds: 0, infinite: false })
         } else {
-          store.decrementAutoplay()
+          if (!ap.infinite) {
+            store.decrementAutoplay()
+          }
           setTimeout(() => this.startRound(), GameConfig.round.autoplayDelayMs)
         }
       }
@@ -240,13 +263,26 @@ class GameEngine {
 
   // ─── Autoplay ──────────────────────────────────────────────────────────────
 
-  startAutoplay(cfg: Pick<AutoplayConfig, 'totalRounds' | 'stopOnAnyWin' | 'stopIfSingleWinExceeds' | 'stopIfBalanceIncreasesBy' | 'stopIfBalanceDecreasesBy'>): void {
+  startAutoplay(
+    cfg: Pick<
+      AutoplayConfig,
+      | 'totalRounds'
+      | 'stopOnAnyWin'
+      | 'stopIfSingleWinExceeds'
+      | 'stopIfBalanceIncreasesBy'
+      | 'stopIfBalanceDecreasesBy'
+    > & { infinite?: boolean }
+  ): void {
     const store = useGameStore.getState()
     this._abortAutoplay = false
+    const infinite = cfg.infinite === true
+    const total = infinite ? 0 : cfg.totalRounds
+    const remaining = infinite ? 0 : cfg.totalRounds
     store.setAutoplay({
       active:           true,
-      totalRounds:      cfg.totalRounds,
-      remainingRounds:  cfg.totalRounds,
+      infinite,
+      totalRounds:      total,
+      remainingRounds:  remaining,
       stopOnAnyWin:     cfg.stopOnAnyWin,
       stopIfSingleWinExceeds:   cfg.stopIfSingleWinExceeds,
       stopIfBalanceIncreasesBy: cfg.stopIfBalanceIncreasesBy,
@@ -259,7 +295,7 @@ class GameEngine {
   stopAutoplay(): void {
     this._abortAutoplay = true
     const store = useGameStore.getState()
-    store.setAutoplay({ active: false, remainingRounds: 0 })
+    store.setAutoplay({ active: false, remainingRounds: 0, infinite: false })
   }
 
   private _shouldStopAutoplay(

@@ -56,8 +56,8 @@
   { "phrase": "music desc",                       "translation": "Musik ein-/ausschalten" },
   { "phrase": "battery saver",                    "translation": "Energiesparmodus" },
   { "phrase": "battery saver desc",               "translation": "Akku schonen durch reduzierte Animationsgeschwindigkeit" },
-  { "phrase": "intro screen",                     "translation": "Intro-Bildschirm" },
-  { "phrase": "intro screen desc",                "translation": "Intro-Bildschirm vor dem Spielstart anzeigen" },
+  { "phrase": "depth hud",                        "translation": "Tiefe HUD" },
+  { "phrase": "depth hud desc",                   "translation": "Zeigt Weg und Tiefe während des Spiels in der Ecke." },
   { "phrase": "enable space",                     "translation": "Leertaste aktivieren" },
   { "phrase": "enable space desc",                "translation": "Drücke die Leertaste zum Spielen" },
 

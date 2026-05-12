@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react'
 import { GameRenderer } from './GameRenderer'
+import { gameEngine } from './GameEngine'
 import { useGameStore } from '../store/gameStore'
 
 interface Props { width: number; height: number }
@@ -27,6 +28,7 @@ export const GameCanvas: React.FC<Props> = ({ width, height }) => {
       try {
         renderer = new GameRenderer(canvas, width, height)
         rendererRef.current = renderer
+        gameEngine.setRendererInstantFinish(() => renderer!.instantFinishRoundFromRoad())
       } catch (err) {
         console.error('[GameCanvas] renderer init failed:', err)
       }
@@ -42,6 +44,7 @@ export const GameCanvas: React.FC<Props> = ({ width, height }) => {
         renderer.destroy()
         renderer = null
       }
+      gameEngine.setRendererInstantFinish(null)
       rendererRef.current = null
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps

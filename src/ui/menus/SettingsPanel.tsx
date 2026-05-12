@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { t, T } from '../../i18n/t'
-import { useGameStore } from '../../store/gameStore'
+import { useGameStore, type SettingsState } from '../../store/gameStore'
 import { gameAudio } from '../../audio/GameAudio'
 import { resolvePublicUrl } from '../../utils/publicUrl'
 import '../ui.css'
@@ -8,6 +8,27 @@ import '../ui.css'
 export const SettingsPanel: React.FC = () => {
   const settings = useGameStore(s => s.settings)
   const upd      = useGameStore(s => s.updateSettings)
+  const toggleMasterSound = useGameStore(s => s.toggleMasterSound)
+
+  const setSfxVol = (v: number) => {
+    const s = useGameStore.getState().settings
+    const patch: Partial<SettingsState> = { sfxVolume: v }
+    if (!s.soundEnabled && v > 0) {
+      patch.soundEnabled = true
+      patch.muteVolumeSnapshot = null
+    }
+    upd(patch)
+  }
+
+  const setMusicVol = (v: number) => {
+    const s = useGameStore.getState().settings
+    const patch: Partial<SettingsState> = { musicVolume: v }
+    if (!s.soundEnabled && v > 0) {
+      patch.soundEnabled = true
+      patch.muteVolumeSnapshot = null
+    }
+    upd(patch)
+  }
 
   return (
     <div className="sys-settings">
@@ -18,8 +39,8 @@ export const SettingsPanel: React.FC = () => {
             <div className="sys-settings-toggle-desc">{t('music desc')}</div>
           </div>
           <SysToggle
-            checked={settings.musicEnabled}
-            onChange={v => upd({ musicEnabled: v })}
+            checked={settings.soundEnabled}
+            onChange={() => toggleMasterSound()}
           />
         </div>
 
@@ -27,7 +48,7 @@ export const SettingsPanel: React.FC = () => {
           <span className="sys-settings-slider-icon"><img src={resolvePublicUrl("ui/sound_icon.svg")} alt="" className="sys-settings-slider-icon" /></span>
           <SysSlider
             value={settings.sfxVolume}
-            onChange={v => upd({ sfxVolume: v })}
+            onChange={setSfxVol}
           />
           <span className="sys-settings-slider-val">
             {Math.round(settings.sfxVolume * 100)}
@@ -38,7 +59,7 @@ export const SettingsPanel: React.FC = () => {
           <span className="sys-settings-slider-icon"><img src={resolvePublicUrl("ui/music-icon.svg")} alt="" className="sys-settings-slider-icon" /></span>
           <SysSlider
             value={settings.musicVolume}
-            onChange={v => upd({ musicVolume: v })}
+            onChange={setMusicVol}
           />
           <span className="sys-settings-slider-val">
             {Math.round(settings.musicVolume * 100)}
@@ -62,14 +83,14 @@ export const SettingsPanel: React.FC = () => {
 
         <div className="sys-settings-toggle-item">
           <div>
-            <div className="sys-settings-toggle-title">{T('intro screen')}</div>
+            <div className="sys-settings-toggle-title">{T('depth hud')}</div>
             <div className="sys-settings-toggle-desc">
-              {t('intro screen desc')}
+              {t('depth hud desc')}
             </div>
           </div>
           <SysToggle
-            checked={!!settings.introScreen}
-            onChange={v => upd({ introScreen: v } as any)}
+            checked={!!settings.showDepthHud}
+            onChange={v => upd({ showDepthHud: v })}
           />
         </div>
 

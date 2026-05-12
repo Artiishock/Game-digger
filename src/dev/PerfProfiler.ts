@@ -12,6 +12,7 @@
  *   __DR_PERF__.stopAuto()      — остановить авто-вывод
  *   __DR_PERF__.reset()         — очистить накопленные данные
  *   __DR_PERF__.disable()       — выключить
+ *   __DR_PERF__.scene()         — только снимок сцены (чанки, лава, спавнер, частицы)
  *
  * Подсистемы:
  *   tileWorld   — TileWorld.update: построение/удаление чанков, перестройка overrides
@@ -19,9 +20,9 @@
  *   miner       — MinerController.update (анимация персонажа)
  *   pUpdate     — _pUpdate: Spine + частицы + лава (culling + физика + рендер)
  *   spine       — SpineAnimator.tick (скелетные анимации)
- *   lava        — tileWorld.updateLavas (физика течения + рендер кружков)
+ *   lava        — tileWorld.updateLavas (физика + маска текстуры по ячейкам)
  *   lava.flow   — LavaSimulation._flow (клеточный автомат)
- *   lava.render — LavaSimulation._render (drawCircle для каждой ячейки)
+ *   lava.render — LavaSimulation._render (маска drawRect по ячейкам для TilingSprite)
  */
 
 /** Размер скользящего окна: 2 секунды при 60fps */
@@ -37,6 +38,8 @@ interface Stats {
 const _stats = new Map<string, Stats>()
 let _enabled = false
 let _autoTimer: ReturnType<typeof setInterval> | null = null
+/** Последний снимок с GameRenderer (чанки, очереди, лава…) — только при enabled. */
+let _lastScene: Record<string, string | number | boolean> = {}
 
 function _getOrCreate(name: string, warnMs: number): Stats {
   let s = _stats.get(name)
@@ -127,6 +130,10 @@ export const perf = {
     )
     console.log('%c[DR perf] === Статистика кадра (последние 120 фреймов) ===', 'color:#00d4ff;font-weight:bold')
     console.table(Object.fromEntries(sorted))
+    if (Object.keys(_lastScene).length > 0) {
+      console.log('%c[DR perf] --- Сцена (последний кадр с профайлером) ---', 'color:#88c4ff;font-weight:bold')
+      console.table(_lastScene)
+    }
   },
 
   /** Топ-N самых дорогих подсистем по среднему времени. */
@@ -145,11 +152,30 @@ export const perf = {
     }
   },
 
+  /** Снимок сцены из последнего игрового кадра (чанки, лава, спавнер…). */
+  setSceneSnapshot(data: Record<string, string | number | boolean>): void {
+    if (!_enabled) return
+    _lastScene = { ...data }
+  },
+
+  /** Вывести только снимок сцены (без таблицы ms). */
+  scene(): void {
+    if (Object.keys(_lastScene).length === 0) {
+      console.log(
+        '%c[DR perf] снимок пуст — включите enable() или ?perf и дождитесь кадра с TileWorld',
+        'color:#888',
+      )
+      return
+    }
+    console.log('%c[DR perf] сцена (последний кадр):', 'color:#88c4ff;font-weight:bold')
+    console.table(_lastScene)
+  },
+
   /** Включить сбор данных. */
   enable(): void {
     _enabled = true
     console.log(
-      '%c[DR perf] профайлер ВКЛ.\n  report() — таблица\n  top()    — топ-5\n  auto()   — авто каждые 5с\n  reset()  — сброс',
+      '%c[DR perf] профайлер ВКЛ.\n  report() — время + сцена\n  scene()  — только сцена\n  top()    — топ-5 по ms\n  auto(n)  — авто отчёт каждые n мс\n  reset()  — сброс',
       'color:#00d4ff',
     )
   },
@@ -164,6 +190,7 @@ export const perf = {
   /** Сбросить накопленные данные. */
   reset(): void {
     _stats.clear()
+    _lastScene = {}
     console.log('[DR perf] данные сброшены')
   },
 

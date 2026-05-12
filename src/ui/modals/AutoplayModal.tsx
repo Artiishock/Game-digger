@@ -113,6 +113,7 @@ export const AutoplayModal: React.FC = () => {
     setOpen(false);
 
     gameEngine.startAutoplay({
+      infinite: false,
       totalRounds: r,
       stopOnAnyWin: stopAnyWin,
       stopIfSingleWinExceeds:
@@ -175,7 +176,25 @@ export const AutoplayModal: React.FC = () => {
               onClick={() => {
                 setRounds(0);
                 setCustomRounds("");
+                if (!canStart) return;
+                setOpen(false);
+                gameEngine.startAutoplay({
+                  infinite: true,
+                  totalRounds: 0,
+                  stopOnAnyWin: stopAnyWin,
+                  stopIfSingleWinExceeds:
+                    stopWinOverActive && stopWinOver
+                      ? parseFloat(stopWinOver)
+                      : null,
+                  stopIfBalanceIncreasesBy:
+                    stopBalUpActive && stopBalUp ? parseFloat(stopBalUp) : null,
+                  stopIfBalanceDecreasesBy:
+                    stopBalDownActive && stopBalDown
+                      ? parseFloat(stopBalDown)
+                      : null,
+                });
               }}
+              disabled={!canStart}
               className={`ui-pill ${
                 rounds === 0 && !customRounds ? "ui-pill--active" : ""
               }`}
@@ -300,15 +319,14 @@ const CheckRow: React.FC<{
   checked: boolean;
   onChange: (v: boolean) => void;
 }> = ({ label, checked, onChange }) => (
-  <label className="ui-check-row">
-    <div
-      className={`ui-checkbox ${checked ? "ui-checkbox--checked" : ""}`}
-      onClick={() => onChange(!checked)}
-    >
+  <label
+    className="ui-check-row"
+    onClick={() => onChange(!checked)}
+  >
+    <div className={`ui-checkbox ${checked ? "ui-checkbox--checked" : ""}`}>
       {checked && <span className="ui-checkbox-tick" />}
     </div>
-
-    {label}
+    <span>{label}</span>
   </label>
 );
 
@@ -349,7 +367,12 @@ const InputRow: React.FC<{
       {checked && <span className="ui-checkbox-tick"></span>}
     </div>
 
-    <span className="ui-input-row-label">{label}</span>
+    <span
+      className="ui-input-row-label"
+      onClick={() => onCheckChange(!checked)}
+    >
+      {label}
+    </span>
 
     <div
       className={`ui-input-row-field-wrap ui-keyboard-anchor ${

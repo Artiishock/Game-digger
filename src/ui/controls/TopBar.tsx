@@ -7,13 +7,14 @@ import "../ui.css";
 export const TopBar: React.FC = () => {
   const [logoSrc, setLogoSrc] = useState(resolvePublicUrl("rules/banner.svg"));
   const settings = useGameStore((s) => s.settings);
-  const upd = useGameStore((s) => s.updateSettings);
+  const toggleMasterSound = useGameStore((s) => s.toggleMasterSound);
   const setMenu = useGameStore((s) => s.setMenuOpen);
   const setTab = useGameStore((s) => s.setMenuTab);
   const phase = useGameStore((s) => s.phase);
   const lastWin = useGameStore((s) => s.lastWin);
   const currency = useGameStore((s) => s.currency);
   const stats = useGameStore((s) => s.stats);
+  const logoDimmed = phase === "RUNNING" || phase === "BETTING";
 
   const openTab = (tab: "info" | "settings") => {
     setTab(tab);
@@ -23,18 +24,26 @@ export const TopBar: React.FC = () => {
   return (
     <>
       {/* Logo */}
-      <div className="ui-logo-zone">
+      <div
+        className={`ui-logo-zone${logoDimmed ? " ui-logo-zone--gameplay" : ""}`}
+      >
         <img
           src={logoSrc}
           alt=""
           onError={() => setLogoSrc(resolvePublicUrl("rules/logo_magnetic.svg"))}
         />
       </div>
-      {/* WIN — в RUNNING показываем живой множитель (как растёт с монетами); после раунда — сумма выигрыша */}
+      {/* В раунде — «Множитель»; после победы — «Последний выигрыш»; иначе — WIN */}
       <div className="ui-win-zone">
-        <span className="ui-win-label">{T('win label')} </span>
+        <span className="ui-win-label">
+          {phase === "RUNNING" || phase === "BETTING"
+            ? `${T("multiplier")} `
+            : phase === "WIN" || lastWin > 0
+              ? `${T("last win")} `
+              : `${T("win label")} `}
+        </span>
         <span className="ui-win-amount">
-          {phase === "RUNNING"
+          {phase === "RUNNING" || phase === "BETTING"
             ? `×${stats.multiplier.toFixed(2)}`
             : lastWin > 0
               ? `${lastWin.toFixed(2)} ${currency}`
@@ -47,7 +56,7 @@ export const TopBar: React.FC = () => {
         <div className="ui-icon-btns">
           <button
             className={`ui-icon-btn ${settings.soundEnabled ? "ui-icon-btn--active" : ""}`}
-            onClick={() => upd({ soundEnabled: !settings.soundEnabled })}
+            onClick={() => toggleMasterSound()}
             title={settings.soundEnabled ? t('mute') : t('unmute')}
           >
             {settings.soundEnabled ? (
@@ -80,18 +89,20 @@ export const TopBar: React.FC = () => {
           </button>
         </div>
 
-        <div className="ui-depth-block ui-depth-block--desktop">
-          <div className="ui-depth-row">
-            <span className="ui-depth-label">{T('distance')}</span>
-            <span className="ui-depth-value">
-              {stats.distance.toFixed(1)} m
-            </span>
+        {settings.showDepthHud && (
+          <div className="ui-depth-block ui-depth-block--desktop">
+            <div className="ui-depth-row">
+              <span className="ui-depth-label">{T('distance')}</span>
+              <span className="ui-depth-value">
+                {stats.distance.toFixed(1)} m
+              </span>
+            </div>
+            <div className="ui-depth-row">
+              <span className="ui-depth-label">{T('depth')}</span>
+              <span className="ui-depth-value">{stats.depth.toFixed(1)} m</span>
+            </div>
           </div>
-          <div className="ui-depth-row">
-            <span className="ui-depth-label">{T('depth')}</span>
-            <span className="ui-depth-value">{stats.depth.toFixed(1)} m</span>
-          </div>
-        </div>
+        )}
       </div>
     </>
   );

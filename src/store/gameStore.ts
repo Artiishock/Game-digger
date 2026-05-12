@@ -16,6 +16,8 @@ export type SpeedMode = 0.75 | 1 | 2 | 5
 
 export interface AutoplayConfig {
   active:                      boolean
+  /** true = играть до стоп-условий или ручной остановки; счётчик раундов не уменьшается */
+  infinite:                    boolean
   totalRounds:                 number
   remainingRounds:             number
   stopOnAnyWin:                boolean
@@ -31,14 +33,21 @@ export interface SessionStats {
   multiplier: number
 }
 
+/** Значения ползунков по умолчанию (и fallback после mute, если снимка не было). */
+export const DEFAULT_SFX_VOLUME = 0.8
+export const DEFAULT_MUSIC_VOLUME = 0.6
+
 export interface SettingsState {
   soundEnabled:    boolean
   musicEnabled:    boolean
   musicVolume:     number   // 0–1
   sfxVolume:       number   // 0–1
+  /** Громкости до mute с иконки динамика; восстанавливаются при повторном включении звука. */
+  muteVolumeSnapshot: { sfx: number; music: number } | null
   spaceEnabled:    boolean
   batterySaver:    boolean
-  introScreen:     boolean
+  /** Показывать дистанцию и глубину в верхней панели во время игры */
+  showDepthHud:    boolean
   digBtnSize:      number   // 0.5–1.5
   digBtnOpacity:   number   // 0–1
   digBtnX:         number   // 0–1 (normalised position)
@@ -104,10 +113,13 @@ interface GameStore {
   setMenuTab:       (tab: 'settings' | 'info' | 'replay') => void
   setAutoplayOpen:  (open: boolean)     => void
   updateSettings:   (s: Partial<SettingsState>) => void
+  /** Глобальный mute/unmute: звук + музыка, ползунки 0 / восстановление (как динамик в шапке). */
+  toggleMasterSound: () => void
 }
 
 const DEFAULT_AUTOPLAY: AutoplayConfig = {
   active:                   false,
+  infinite:                 false,
   totalRounds:              10,
   remainingRounds:          0,
   stopOnAnyWin:             false,
@@ -120,18 +132,19 @@ const DEFAULT_AUTOPLAY: AutoplayConfig = {
 const DEFAULT_SETTINGS: SettingsState = {
   soundEnabled:  true,
   musicEnabled:  true,
-  musicVolume:   0.6,
-  sfxVolume:     0.8,
+  musicVolume:   DEFAULT_MUSIC_VOLUME,
+  sfxVolume:     DEFAULT_SFX_VOLUME,
+  muteVolumeSnapshot: null,
   spaceEnabled:  true,
   batterySaver:  false,
-  introScreen:   true,
+  showDepthHud:  false,
   digBtnSize:    1.0,
   digBtnOpacity: 1.0,
   digBtnX:       0.88,
   digBtnY:       0.75,
 }
 
-export const useGameStore = createWithEqualityFn<GameStore>()((set) => ({
+export const useGameStore = createWithEqualityFn<GameStore>()((set, get) => ({
   phase:     'BOOT',
   sessionID: 'demo',
   currency:  'FUN',
@@ -175,8 +188,18 @@ export const useGameStore = createWithEqualityFn<GameStore>()((set) => ({
   setLastWinMult: (lastWinMult) => set({ lastWinMult }),
   setSpeed:   (speed)    => set({ speed }),
 
-  updateStats: (partial) =>
-    set((s) => ({ stats: { ...s.stats, ...partial } })),
+  updateStats: (partial) => {
+    const s = get()
+    const next = { ...s.stats, ...partial }
+    if (
+      next.depth === s.stats.depth &&
+      next.distance === s.stats.distance &&
+      next.multiplier === s.stats.multiplier
+    ) {
+      return
+    }
+    set({ stats: next })
+  },
 
   resetStats: () =>
     set({ stats: { depth: 0, distance: 0, multiplier: 0 } }),
@@ -195,5 +218,43 @@ export const useGameStore = createWithEqualityFn<GameStore>()((set) => ({
   setMenuOpen:    (menuOpen)     => set({ menuOpen }),
   setMenuTab:     (menuTab)      => set({ menuTab }),
   setAutoplayOpen:(autoplayOpen) => set({ autoplayOpen }),
-  updateSettings: (partial)      => set((s) => ({ settings: { ...s.settings, ...partial } })),
+  updateSettings: (partial) =>
+    set((s) => {
+      const next = { ...s.settings, ...partial }
+      if (Object.prototype.hasOwnProperty.call(partial, 'soundEnabled')) {
+        next.musicEnabled = next.soundEnabled
+      }
+      return { settings: next }
+    }),
+
+  toggleMasterSound: () =>
+    set((s) => {
+      const cur = s.settings
+      if (cur.soundEnabled) {
+        return {
+          settings: {
+            ...cur,
+            soundEnabled: false,
+            musicEnabled: false,
+            sfxVolume: 0,
+            musicVolume: 0,
+            muteVolumeSnapshot: {
+              sfx: cur.sfxVolume,
+              music: cur.musicVolume,
+            },
+          },
+        }
+      }
+      const snap = cur.muteVolumeSnapshot
+      return {
+        settings: {
+          ...cur,
+          soundEnabled: true,
+          musicEnabled: true,
+          sfxVolume: snap?.sfx ?? DEFAULT_SFX_VOLUME,
+          musicVolume: snap?.music ?? DEFAULT_MUSIC_VOLUME,
+          muteVolumeSnapshot: null,
+        },
+      }
+    }),
 }))

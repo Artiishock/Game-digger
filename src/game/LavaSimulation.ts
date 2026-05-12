@@ -10,46 +10,15 @@ const MIN_FLOW     = 0.04
 const FLOW_SPEED   = 0.45
 const GRAVITY_BIAS = 0.85
 
-const METABALL_FRAG = `
-precision mediump float;
-varying vec2 vTextureCoord;
-uniform sampler2D uSampler;
-uniform float uTime;
-
-void main(void) {
-  vec4 col = texture2D(uSampler, vTextureCoord);
-  float alpha = col.a;
-  float threshold = 0.35;
-  if (alpha < threshold) { gl_FragColor = vec4(0.0); return; }
-
-  float t = clamp((alpha - threshold) / (1.0 - threshold), 0.0, 1.0);
-  float wave = sin(vTextureCoord.x * 18.0 + uTime * 1.8)
-             * cos(vTextureCoord.y * 14.0 + uTime * 1.3) * 0.15;
-  t = clamp(t + wave, 0.0, 1.0);
-
-  vec3 coreColor = vec3(0.95, 0.35, 0.0);
-  vec3 edgeColor = vec3(0.75, 0.10, 0.0);
-  vec3 hotColor  = vec3(1.0,  0.75, 0.1);
-  vec3 lavaColor = mix(edgeColor, coreColor, smoothstep(0.0, 0.6, t));
-  lavaColor      = mix(lavaColor, hotColor,  smoothstep(0.7, 1.0, t));
-  float rim = smoothstep(0.35, 0.42, alpha) * (1.0 - smoothstep(0.42, 0.55, alpha));
-  lavaColor += vec3(1.0, 0.9, 0.4) * rim * 0.6;
-  gl_FragColor = vec4(lavaColor, 1.0);
-}
-`
-
 export class LavaSimulation {
-  private _texLayer:     PIXI.Container = new PIXI.Container()
-  private _texMaskGfx:   PIXI.Graphics  = new PIXI.Graphics()
+  private _texLayer!:     PIXI.Container
+  private _texMaskGfx!:   PIXI.Graphics
   private _tilingSprite: PIXI.TilingSprite | null = null
   private cells: Map<string, { amount: number; static?: boolean }> = new Map()
   private dirty: Set<string> = new Set()
 
   readonly container: PIXI.Container
-  readonly glowGfx:   PIXI.Graphics
 
-  private _inner:        PIXI.Container
-  private blobGfx:       PIXI.Graphics
   private _caveMaskGfx:  PIXI.Graphics   // маска = форма пещеры
   private _texOffX = 0
   private _texOffY = 0
@@ -58,49 +27,33 @@ export class LavaSimulation {
   /** Размер вьюпорта (экрана) для отсечения рендера — иначе перерисовываются все ячейки мира */
   private _viewW = 1920
   private _viewH = 1080
-  private _blurFilter:   PIXI.BlurFilter
-  private _threshFilter: PIXI.Filter
   private time = 0
   private _destroyed = false
+  /** Прямоугольные «бассейны» со скруглением — маска текстуры и коллизия по полной форме (без дыр в углах от сетки). */
+  private _fullStaticLavaRects: Array<{ cx: number; cy: number; hw: number; hh: number; cr: number }> = []
 
   constructor() {
     this.container = new PIXI.Container()
-    this._inner    = new PIXI.Container()
-    this.blobGfx   = new PIXI.Graphics()
-    this._inner.addChild(this.blobGfx)
 
-    // Слабее blur — заметно дешевле на GPU при большом числе метаболлов
-    this._blurFilter         = new PIXI.BlurFilter(9, 3)
-    this._blurFilter.padding = 28
-    this._threshFilter       = new PIXI.Filter(undefined, METABALL_FRAG, { uTime: 0.0 })
-    this._inner.filters      = [this._blurFilter, this._threshFilter]
-
-    this._caveMaskGfx = new PIXI.Graphics()
-    this.container.addChild(this._inner)
-
-    // Вариант A: TilingSprite поверх metaballs через MULTIPLY + маска из blobGfx
+    // Только TilingSprite + маска по ячейкам (без метаболов / blur / шейдера).
     this._texLayer   = new PIXI.Container()
     this._texMaskGfx = new PIXI.Graphics()
     this._texLayer.addChild(this._texMaskGfx)
     this._texLayer.mask = this._texMaskGfx
     this.container.addChild(this._texLayer)
 
-    // Маска пещеры — лава не выходит за границы зарегистрированных форм
+    this._caveMaskGfx = new PIXI.Graphics()
     this.container.addChild(this._caveMaskGfx)
     this.container.mask = this._caveMaskGfx
 
     const proceduralTex = this._makeProceduralLavaTex()
-    // Размер покрывает экран с запасом — позиция обновляется каждый кадр
     this._tilingSprite = new PIXI.TilingSprite(proceduralTex, 4096, 4096)
-    this._tilingSprite.blendMode = PIXI.BLEND_MODES.MULTIPLY
-    this._tilingSprite.alpha = 0.85
+    this._tilingSprite.blendMode = PIXI.BLEND_MODES.NORMAL
+    this._tilingSprite.alpha = 0.92
     this._texLayer.addChild(this._tilingSprite)
     PIXI.Texture.fromURL(GameAssets.lavaTex)
       .then(tex => { if (this._tilingSprite) this._tilingSprite.texture = tex })
       .catch(() => {})
-
-    this.glowGfx       = new PIXI.Graphics()
-    this.glowGfx.alpha = 0.18
   }
 
   // ── openArea: для туннеля игрока (scratchAt) ──────────────────────────────
@@ -192,6 +145,38 @@ export class LavaSimulation {
     else g.beginFill(0xffffff).drawRect(x, y, 2 * rect.hw, 2 * rect.hh).endFill()
   }
 
+  /** Точка внутри скруглённого прямоугольника (центр cx,cy, полуразмеры hw/hh, радиус угла cr). */
+  private _pointInRoundedRect(
+    px: number,
+    py: number,
+    cx: number,
+    cy: number,
+    hw: number,
+    hh: number,
+    cr: number,
+  ): boolean {
+    const dx = Math.abs(px - cx)
+    const dy = Math.abs(py - cy)
+    if (dx > hw || dy > hh) return false
+    const iw = hw - cr
+    const ih = hh - cr
+    if (cr <= 0 || dx <= iw || dy <= ih) return true
+    const qx = dx - iw
+    const qy = dy - ih
+    return qx * qx + qy * qy <= cr * cr
+  }
+
+  /** Центр клетки (gx,gy) уже внутри статического бассейна — дублировать rect в маске не нужно. */
+  private _cellCenterInsideAnyStaticPool(gx: number, gy: number): boolean {
+    if (this._fullStaticLavaRects.length === 0) return false
+    const px = gx * SIM_CELL + SIM_CELL / 2
+    const py = gy * SIM_CELL + SIM_CELL / 2
+    for (const r of this._fullStaticLavaRects) {
+      if (this._pointInRoundedRect(px, py, r.cx, r.cy, r.hw, r.hh, r.cr)) return true
+    }
+    return false
+  }
+
   /** Ячейки симуляции, центр которых попадает в axis-aligned прямоугольник (мир). */
   private _registerAabbCells(
     cx: number,
@@ -263,8 +248,16 @@ export class LavaSimulation {
     const rect = opts?.rect
     if (rect) {
       this._addCaveMaskRect(rect)
+      const cr0 = Math.max(0, rect.cr ?? 0)
+      this._fullStaticLavaRects.push({
+        cx: rect.cx,
+        cy: rect.cy,
+        hw: rect.hw,
+        hh: rect.hh,
+        cr: cr0,
+      })
       const caveKeys = new Set<string>()
-      this._registerAabbCells(rect.cx, rect.cy, rect.hw, rect.hh, Math.max(0, rect.cr ?? 0), caveKeys)
+      this._registerAabbCells(rect.cx, rect.cy, rect.hw, rect.hh, cr0, caveKeys)
       if (caveKeys.size === 0) return
       for (const key of caveKeys) {
         const cell = this.cells.get(key)
@@ -460,8 +453,23 @@ export class LavaSimulation {
     this._viewH = Math.max(240, viewH)
   }
 
+  /** Есть что рисовать или крутить в симуляции (без полного скана сетки по viewport). */
+  hasRenderableLava(): boolean {
+    if (this._fullStaticLavaRects.length > 0) return true
+    for (const c of this.cells.values()) {
+      if (c.amount >= MIN_FLOW) return true
+    }
+    return false
+  }
+
   update(dt: number) {
     if (this._destroyed) return
+    if (!this.hasRenderableLava()) {
+      if (this.container.visible) this.container.visible = false
+      return
+    }
+    if (!this.container.visible) this.container.visible = true
+
     let hasFlowing = false
     for (const c of this.cells.values()) {
       if (!c.static && c.amount >= MIN_FLOW) {
@@ -482,7 +490,6 @@ export class LavaSimulation {
     this._render()
     perf.end('lava.render', _tr)
     if (this._destroyed) return
-    this._threshFilter.uniforms.uTime = this.time
     if (this._tilingSprite) {
       // Спрайт следует за камерой — всегда покрывает видимую область
       this._tilingSprite.x = this._camX - 1024
@@ -500,7 +507,8 @@ export class LavaSimulation {
   private _flow(topDown: boolean) {
     const lavaCells: Array<[string, number, number]> = []
     for (const [key, cell] of this.cells) {
-      if (cell.amount < MIN_FLOW) continue
+      // Статика не течёт — не тащим тысячи декоративных ячеек через сортировку и проход.
+      if (cell.static || cell.amount < MIN_FLOW) continue
       const [gx, gy] = key.split(',').map(Number)
       lavaCells.push([key, gx, gy])
     }
@@ -570,41 +578,85 @@ export class LavaSimulation {
 
   private _render() {
     if (this._destroyed) return
-    this.blobGfx.clear()
-    this.glowGfx.clear()
-    this._texMaskGfx.clear()
+    const g = this._texMaskGfx
+    g.clear()
 
-    const padPx = CELL_PX * 10 + this._blurFilter.padding * 2
-    const minGX = Math.floor((this._camX - padPx) / SIM_CELL)
-    const maxGX = Math.ceil ((this._camX + this._viewW + padPx) / SIM_CELL)
-    const minGY = Math.floor((this._camY - padPx) / SIM_CELL)
-    const maxGY = Math.ceil ((this._camY + this._viewH + padPx) / SIM_CELL)
+    const padPx = CELL_PX * 8
+    const vx0 = this._camX - padPx
+    const vx1 = this._camX + this._viewW + padPx
+    const vy0 = this._camY - padPx
+    const vy1 = this._camY + this._viewH + padPx
 
-    for (const [key, cell] of this.cells) {
-      if (cell.amount < MIN_FLOW) continue
-      const [gx, gy] = key.split(',').map(Number)
-      if (gx < minGX || gx > maxGX || gy < minGY || gy > maxGY) continue
-      const cx = gx * SIM_CELL + SIM_CELL / 2
-      const cy = gy * SIM_CELL + SIM_CELL / 2
-      const r  = SIM_CELL * (0.6 + cell.amount * 0.25)
-
-      this.blobGfx.beginFill(0xFFFFFF, cell.amount)
-      this.blobGfx.drawCircle(cx, cy, r)
-      this.blobGfx.endFill()
-
-      this.glowGfx.beginFill(0xFF6600, 0.06 * cell.amount)
-      this.glowGfx.drawCircle(cx, cy, r * 1.8)
-      this.glowGfx.endFill()
-
-      this._texMaskGfx.beginFill(0xFFFFFF, 1.0)
-      this._texMaskGfx.drawCircle(cx, cy, r)
-      this._texMaskGfx.endFill()
+    // Один beginFill/endFill: меньше state changes в Graphics; ячейки под статическими бассейнами не дублируем.
+    g.beginFill(0xffffff, 1)
+    for (const r of this._fullStaticLavaRects) {
+      const x = r.cx - r.hw
+      const y = r.cy - r.hh
+      const w = 2 * r.hw
+      const h = 2 * r.hh
+      if (r.cr > 0) (g as any).drawRoundedRect(x, y, w, h, r.cr)
+      else g.drawRect(x, y, w, h)
     }
+    // Только ячейки из Map в окне камеры — O(кол-во ячеек лавы), а не O(площадь viewport).
+    for (const [key, cell] of this.cells) {
+      if (cell.static || cell.amount < MIN_FLOW) continue
+      const comma = key.indexOf(',')
+      const gx = +key.slice(0, comma)
+      const gy = +key.slice(comma + 1)
+      const x0 = gx * SIM_CELL
+      const y0 = gy * SIM_CELL
+      if (x0 + SIM_CELL < vx0 || x0 > vx1 || y0 + SIM_CELL < vy0 || y0 > vy1) continue
+      if (this._cellCenterInsideAnyStaticPool(gx, gy)) continue
+      g.drawRect(x0, y0, SIM_CELL, SIM_CELL)
+    }
+    g.endFill()
   }
 
   // ── Коллизия ──────────────────────────────────────────────────────────────
 
+  /** Снимок для __DR_PERF__: размер сетки лавы и статические бассейны. */
+  getPerfSnapshot(): { lavaCells: number; staticLavaPools: number } {
+    return {
+      lavaCells: this.cells.size,
+      staticLavaPools: this._fullStaticLavaRects.length,
+    }
+  }
+
+  /**
+   * Быстрая проверка для спавнера (много раз за кадр): пересечение с лавой.
+   * Без sqrt по кругам ячеек — статические бассейны + сетка 3×3 вокруг точки (и углы AABB декора).
+   */
+  decorBlocksSpawnAt(wx: number, wy: number, w = 0, h = 0): boolean {
+    const hit = (px: number, py: number): boolean => {
+      for (const r of this._fullStaticLavaRects) {
+        if (this._pointInRoundedRect(px, py, r.cx, r.cy, r.hw, r.hh, r.cr)) return true
+      }
+      const gx = Math.floor(px / SIM_CELL)
+      const gy = Math.floor(py / SIM_CELL)
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const cell = this.cells.get(`${gx + dx},${gy + dy}`)
+          if (cell && cell.amount >= MIN_FLOW) return true
+        }
+      }
+      return false
+    }
+    const hw = w > 2 ? w * 0.5 : 0
+    const hh = h > 2 ? h * 0.5 : 0
+    if (hw <= 0 && hh <= 0) return hit(wx, wy)
+    return (
+      hit(wx, wy) ||
+      hit(wx - hw, wy - hh) ||
+      hit(wx + hw, wy - hh) ||
+      hit(wx - hw, wy + hh) ||
+      hit(wx + hw, wy + hh)
+    )
+  }
+
   touchesPoint(wx: number, wy: number, charRadius: number = CELL_PX * 0.45): boolean {
+    for (const r of this._fullStaticLavaRects) {
+      if (this._pointInRoundedRect(wx, wy, r.cx, r.cy, r.hw, r.hh, r.cr)) return true
+    }
     const gx = Math.round(wx / SIM_CELL)
     const gy = Math.round(wy / SIM_CELL)
     const cr = Math.ceil(charRadius / SIM_CELL) + 1
@@ -640,6 +692,8 @@ export class LavaSimulation {
   // ── Culling ───────────────────────────────────────────────────────────────
 
   cullFarCells(camX: number, camY: number, viewW: number, viewH: number) {
+    if (this.cells.size === 0 && this._fullStaticLavaRects.length === 0) return
+
     // Высокие пещеры: узкий margin по Y обрезал лаву ровной линией и «съедал» симуляцию вне кадра.
     const marginX = Math.max(CELL_PX * 40, viewW * 6)
     const marginY = Math.max(CELL_PX * 120, viewH * 22)
@@ -654,6 +708,9 @@ export class LavaSimulation {
     const sx1 = Math.ceil ((camX + viewW + statPadX) / SIM_CELL)
     const sy0 = Math.floor((camY - statPadY) / SIM_CELL)
     const sy1 = Math.ceil ((camY + viewH + statPadY) / SIM_CELL)
+    // _fullStaticLavaRects не режем здесь: иначе при отъезде камеры пропадает маска текстуры,
+    // хотя _caveMaskGfx и геометрия пещеры остаются — при возврате будут щели.
+
     for (const key of this.cells.keys()) {
       const [gx, gy] = key.split(',').map(Number)
       const cell = this.cells.get(key)
@@ -673,32 +730,26 @@ export class LavaSimulation {
 
   /**
    * Сбрасывает состояние симуляции для повторного использования между раундами.
-   * Фильтры, контейнеры и шейдеры не пересоздаются — только чистим данные.
+   * Контейнер и текстуры не пересоздаются — только чистим данные и графику.
    */
   reset() {
     if (this._destroyed) return
     this.cells.clear()
     this.dirty.clear()
-    this.blobGfx.clear()
-    this.glowGfx.clear()
+    this._fullStaticLavaRects.length = 0
     this._caveMaskGfx.clear()
     this._texMaskGfx.clear()
     this.time = 0
     this._texOffX = 0
     this._texOffY = 0
+    this.container.visible = false
   }
 
   destroy() {
     if (this._destroyed) return
     this._destroyed = true
-    this._blurFilter.destroy()
-    this._threshFilter.destroy()
-    this._texMaskGfx.destroy()
-    this._caveMaskGfx.destroy()
-    this.blobGfx.destroy()
-    if (this._tilingSprite) { this._tilingSprite.destroy(); this._tilingSprite = null }
     this.container.destroy({ children: true })
-    this.glowGfx.destroy()
+    this._tilingSprite = null
     this.cells.clear()
   }
 }

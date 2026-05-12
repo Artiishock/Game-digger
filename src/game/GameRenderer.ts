@@ -5,14 +5,14 @@ import { useGameStore } from '../store/gameStore'
 import type { RoundEvent, EventType } from '../rgs/client'
 import * as RGS from '../rgs/client'
 import * as Demo from '../rgs/demo'
-import { TileWorld, TILE } from './Tileworld'
+import { TileWorld, TILE, tileWorldMaxChunkWindowFromConfig } from './Tileworld'
 import { LavaSimulation } from './LavaSimulation'
 import { SpineAnimator, HERO_ANIM, ROCK_ANIM, GOLD_ANIM, GOLD_STAGE, STONE_STAGE, BREAK_ACTION_DURATION, getSpineItemSize } from './SpineAnimator'
 import type { Spine } from 'pixi-spine'
 import { GameConfig, HERO_MAX_SIDE_PX } from './GameConfig'
 import { gameAudio } from '../audio/GameAudio'
 import { GameAssets } from './gameAssets'
-import { buildRoundPathV2, buildRoundPathV3, cavePathHitsTunnel, decorSpawnAcceptByPath, distancePointToTunnelPolyline, pruneDecorObstaclesAfterPathChange } from './WorldMap'
+import { buildRoundPathV2, buildRoundPathV3, cavePathHitsTunnel, decorGenerationHorizontalExtent, distancePointToTunnelPolyline, pruneDecorObstaclesAfterPathChange, tunnelXAtWorldY } from './WorldMap'
 import type { FullPathResult, PathPoint, RoadPoint } from './WorldMap'
 import { GameLogger } from '../dev/GameLogger'
 import { perf, installPerfProfiler } from '../dev/PerfProfiler'
@@ -198,25 +198,6 @@ export function installTopLayerStats(app: PIXI.Application) {
   };
 }
 
-/** X на оси туннеля для произвольной глубины (линейная интерполяция по сегментам path). */
-function pathXAtWorldY(wy: number, path: PathPoint[], surfY: number): number {
-  if (path.length === 0) return 0
-  if (path.length === 1) return path[0]!.x
-  const p0 = path[0]!
-  if (wy <= p0.y) return p0.x
-  const pl = path[path.length - 1]!
-  if (wy >= pl.y) return pl.x
-  for (let i = 0; i < path.length - 1; i++) {
-    const a = path[i]!, b = path[i + 1]!
-    if (wy <= b.y) {
-      const dy = b.y - a.y
-      const t = dy > 1e-6 ? (wy - a.y) / dy : 0
-      return a.x + t * (b.x - a.x)
-    }
-  }
-  return pl.x
-}
-
 /** Длина дуги до заданной глубины Y (монотонно по пути сверху вниз). */
 function tunnelArcLengthAtWorldY(wy: number, path: PathPoint[], cum: number[]): number {
   if (path.length === 0 || cum.length === 0) return 0
@@ -226,16 +207,20 @@ function tunnelArcLengthAtWorldY(wy: number, path: PathPoint[], cum: number[]): 
   const lastIdx = path.length - 1
   const pl = path[lastIdx]!
   if (wy >= pl.y) return cum[lastIdx] ?? 0
-  for (let i = 0; i < path.length - 1; i++) {
-    const a = path[i]!, b = path[i + 1]!
-    if (wy <= b.y) {
-      const dy = b.y - a.y
-      const t = dy > 1e-6 ? (wy - a.y) / dy : 0
-      const segLen = (cum[i + 1] ?? cum[i] ?? 0) - (cum[i] ?? 0)
-      return (cum[i] ?? 0) + segLen * t
-    }
+  let lo = 0
+  let hi = path.length - 2
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (wy <= path[mid + 1]!.y) hi = mid
+    else lo = mid + 1
   }
-  return cum[lastIdx] ?? 0
+  const i = lo
+  const a = path[i]!
+  const b = path[i + 1]!
+  const dy = b.y - a.y
+  const t = dy > 1e-6 ? (wy - a.y) / dy : 0
+  const segLen = (cum[i + 1] ?? cum[i] ?? 0) - (cum[i] ?? 0)
+  return (cum[i] ?? 0) + segLen * t
 }
 
 /** Префиксные длины вдоль полилинии: cum[i] = длина от path[0] до path[i]. */
@@ -260,8 +245,14 @@ function pointOnTunnelAtArcLength(
   if (path.length === 1) return { x: p0.x, y: p0.y, nx: 0, ny: 1 }
   const total = cum[cum.length - 1]!
   const clampedS = Math.max(0, Math.min(s, total))
-  let i = 0
-  while (i < path.length - 1 && cum[i + 1]! < clampedS) i++
+  let lo = 0
+  let hi = path.length - 2
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (cum[mid + 1]! >= clampedS) hi = mid
+    else lo = mid + 1
+  }
+  const i = lo
   const a = path[i]!, b = path[i + 1]!
   const segLen = cum[i + 1]! - cum[i]!
   const t = segLen > 1e-6 ? (clampedS - cum[i]!) / segLen : 0
@@ -331,8 +322,16 @@ function pickupTextureScale(type: EventType): number {
   return PICKUP_SPRITE_SCALE
 }
 
-const LIVE_WIN_BADGE_OFFSET_Y = -20
-const LIVE_WIN_AMOUNT_OFFSET_Y = 21
+const LIVE_WIN_AMOUNT_OFFSET_Y = 20
+/**
+ * Бейдж крепится к кости головы, но якорь контейнера — центр строки «MULTIPLIER»;
+ * сумма (`fontSize` 25) идёт ниже на `LIVE_WIN_AMOUNT_OFFSET_Y`. Чтобы блок целиком
+ * был НАД головой, поднимаем на высоту нижней части бейджа + зазор от макушки.
+ */
+const LIVE_WIN_BADGE_BELOW_ANCHOR_PX = LIVE_WIN_AMOUNT_OFFSET_Y + 50
+const LIVE_WIN_BADGE_GAP_CROWN_TO_BADGE_BOTTOM_PX = 14
+const LIVE_WIN_BADGE_LIFT_ABOVE_HEAD_PX =
+  LIVE_WIN_BADGE_BELOW_ANCHOR_PX + LIVE_WIN_BADGE_GAP_CROWN_TO_BADGE_BOTTOM_PX
 
 function formatLiveWinAmount(value: number, currency: string): string {
   const safeValue = Number.isFinite(value) ? Math.max(0, value) : 0
@@ -340,6 +339,17 @@ function formatLiveWinAmount(value: number, currency: string): string {
     ? safeValue.toFixed(0)
     : safeValue.toFixed(2)
   return `${display} ${currency || 'FUN'}`
+}
+
+/** Безопасное destroy: HMR / двойной teardown / WebGL уже снят — иначе Pixi кидает refCount. */
+function safePixiDestroyDisplay(obj: PIXI.DisplayObject | null | undefined): void {
+  if (!obj) return
+  if ((obj as { destroyed?: boolean }).destroyed) return
+  try {
+    obj.destroy({ children: true })
+  } catch {
+    /* ignore */
+  }
 }
 
 function isInViewWithMargin(
@@ -403,6 +413,7 @@ class SpriteCharacter {
 
   constructor() {
     this.root = new PIXI.Container()
+    this.root.sortableChildren = true
   }
 
   private _setAnim(name: string, loop = true): void {
@@ -447,6 +458,7 @@ class SpriteCharacter {
     this._resetStartCarveLatchPose()
     this._setYOffset(false)
     this._setAnim(HERO_ANIM.idle, true)
+    spine.zIndex = 0
     this.root.addChild(spine)
     return true
   }
@@ -477,6 +489,7 @@ class SpriteCharacter {
     this._pivotFootCompensateY = (HERO_LEGACY_FEET_ANCHOR_Y - 0.5) * h
     this._setYOffset(false)
     this._spr = s
+    s.zIndex = 0
     this.root.addChild(s)
     this._spr.y = this._pivotFootCompensateY + GameConfig.hero.idle.spriteOffsetYPx
   }
@@ -670,6 +683,50 @@ class SpriteCharacter {
     return Math.max(0.015, Math.min(1, t))
   }
 
+  /**
+   * Якорь бейджа в **локальных** координатах `this.root`.
+   * Spine: та же геометрия, что у pixi-spine (слот головы или `bone.matrix`), иначе бейдж
+   * нельзя вешать на `spine` — каждый `update()` перезаписывает `spine.children` только слотами.
+   * Вызывать после `SpineAnimator.tick`.
+   */
+  getLiveWinBadgePositionInRootLocal(out: PIXI.Point): void {
+    const root = this.root
+    const spine = this._spine
+    if (spine?.skeleton) {
+      const skel = spine.skeleton
+      const slotContainers = (spine as unknown as { slotContainers?: PIXI.Container[] }).slotContainers
+      if (slotContainers && skel.slots) {
+        for (let i = 0; i < skel.slots.length; i++) {
+          const slot = skel.slots[i]
+          if (!slot || slot.bone.data.name !== 'character_head') continue
+          const sc = slotContainers[i]
+          if (!sc) continue
+          out.set(sc.x, sc.y)
+          spine.toGlobal(out, out)
+          root.toLocal(out, undefined, out)
+          return
+        }
+      }
+      const bone = skel.findBone('character_head')
+      if (bone) {
+        const m = (bone as unknown as { matrix?: { tx?: number; ty?: number } }).matrix
+        if (m && typeof m.tx === 'number' && typeof m.ty === 'number') {
+          out.set(m.tx, m.ty)
+          spine.toGlobal(out, out)
+          root.toLocal(out, undefined, out)
+          return
+        }
+      }
+    }
+    if (this._spr) {
+      out.set(0, -HERO_MAX_SIDE_PX * 0.42)
+      this._spr.toGlobal(out, out)
+      root.toLocal(out, undefined, out)
+      return
+    }
+    out.set(0, -HERO_MAX_SIDE_PX * 0.4)
+  }
+
   update(_dt: number, _spd: number, digging: boolean) {
     if (!this._spr && !this._spine) return
     const inHeroStartIntro =
@@ -721,6 +778,9 @@ interface SpawnedObj {
 
 // ─── ObjectSpawner ────────────────────────────────────────────────────────────
 
+/** Не разгребать всю очередь safeObjects за один кадр (скачок камеры / fast-forward). */
+const SPAWNER_SAFE_STEPS_PER_FRAME = 36
+
 class ObjectSpawner {
   private layer:   PIXI.Container
   private objects: SpawnedObj[] = []
@@ -747,6 +807,17 @@ class ObjectSpawner {
   onLavaDecorObstacle: ((so: import('./WorldMap').SafeObject) => void) | null = null
   /** Возвращает true, если декоративный объект нельзя спавнить в этой позиции (например, зона лавы). */
   shouldSkipDecorSpawn: ((x: number, y: number, w: number, h: number) => boolean) | null = null
+  /**
+   * STONE/GOLD после коллизии помечаются `collected`, но `gfx` ещё нужен для сценария бурения
+   * (`GameRenderer._breakGfx`). Пока колбэк true — не вызывать `_disposeSpawnedVisual` в update.
+   */
+  retainCollectedGfx: ((o: SpawnedObj) => boolean) | null = null
+
+  /**
+   * Кэш `decorGenerationHorizontalExtent` по полосе Y (как в WorldMap placeObstacles) + viewW.
+   * Иначе на каждом safe-шаге заново гоняется tunnelXEnvelopeAroundY (~сотни tunnelXAtWorldY).
+   */
+  private _horizExtentCache = new Map<number, { minX: number; maxX: number }>()
 
   // ── Getters ───────────────────────────────────────────────────────────────
   getNextRoadTarget(): SpawnedObj | null {
@@ -760,6 +831,19 @@ class ObjectSpawner {
   }
   getRoadItems():  readonly SpawnedObj[] { return this._roadItems }
   getObjects():    readonly SpawnedObj[] { return this.objects }
+
+  /** Снимок для __DR_PERF__: объекты спавнера и прогресс safe-декора. */
+  getPerfSnapshot(): {
+    spawnedObjects: number
+    roadItems: number
+    safeDecorProgress: string
+  } {
+    return {
+      spawnedObjects: this.objects.length,
+      roadItems: this._roadItems.length,
+      safeDecorProgress: `${this._safeSpawnedIdx}/${this._safeObjects.length}`,
+    }
+  }
 
   constructor(
     layer: PIXI.Container, seed: number, surfY: number,
@@ -792,6 +876,7 @@ class ObjectSpawner {
     this._roadItems    = []
     this._safeObjects  = [...safeObjects].sort((a, b) => a.y - b.y || a.x - b.x)
     this._safeSpawnedIdx = 0
+    this._horizExtentCache.clear()
 
     for (let i = 0; i < roadPoints.length; i++) {
       const rp = roadPoints[i]
@@ -806,7 +891,9 @@ class ObjectSpawner {
       }
     }
 
-    console.log(`[spawner] road items: ${this._roadItems.map(o => `${o.type}@(${o.worldX},${o.worldY.toFixed(0)})`).join(' → ')}`)
+    if (import.meta.env.DEV) {
+      console.log(`[spawner] road items: ${this._roadItems.map(o => `${o.type}@(${o.worldX},${o.worldY.toFixed(0)})`).join(' → ')}`)
+    }
   }
 
   /**
@@ -820,74 +907,79 @@ class ObjectSpawner {
     const genUpTo = camY + viewH + preloadPx
 
     // Спавним безопасные декорации из WorldMap (по мере продвижения)
-    while (this._safeSpawnedIdx < this._safeObjects.length) {
+    const skipDecor = this.shouldSkipDecorSpawn
+    let safeSteps = 0
+    while (
+      safeSteps < SPAWNER_SAFE_STEPS_PER_FRAME &&
+      this._safeSpawnedIdx < this._safeObjects.length
+    ) {
       const so = this._safeObjects[this._safeSpawnedIdx]
       if (so.y > genUpTo) break
       this._safeSpawnedIdx++
+      safeSteps++
       // Совпадает с WorldMap.placeObstacles: полоса следует траектории (envelope zigzag по Y), не точке оси только на этой глубости.
-      if (!decorSpawnAcceptByPath(so.x, so.y, this._pathPointsForSpawn, viewW)) continue
+      if (!this._decorSpawnAcceptCached(so.x, so.y, viewW)) continue
       if (so.kind === 'decor') {
         const decorType = so.decorVisual ?? this._pickType(so.y, this._rng(so.y ^ 0xABC))
         const sz = this._sizeForType(decorType)
-        if (this.shouldSkipDecorSpawn?.(so.x, so.y, sz.w, sz.h)) continue
+        if (skipDecor?.(so.x, so.y, sz.w, sz.h)) continue
         this._spawnDecor(so.x, so.y, decorType)
       } else if (so.kind === 'lava') {
         this.onLavaDecorObstacle?.(so)
       }
     }
 
-    // Culling
-    this.objects = this.objects.filter(o => {
-      if (o.collected) return false
-      if (!o.isRoadItem && this.shouldSkipDecorSpawn?.(o.worldX, o.worldY, o.width, o.height)) {
-        SpineAnimator.remove(o.spine)
-        if (o.roadMarker) {
-          if (o.roadMarker.parent) o.roadMarker.parent.removeChild(o.roadMarker)
-          o.roadMarker.destroy()
-        }
-        if (o.valueLabel) {
-          if (o.valueLabel.parent) o.valueLabel.parent.removeChild(o.valueLabel)
-          o.valueLabel.destroy()
-        }
-        if (o.gfx.parent) o.gfx.parent.removeChild(o.gfx)
-        o.gfx.destroy()
-        return false
+    // Culling — in-place, без нового массива каждый кадр (GC / CPU).
+    const objs = this.objects
+    const viewM = TILE * 2.4
+    const vLeft = camX - viewM
+    const vRight = camX + viewW + viewM
+    const vTop = camY - viewM
+    const vBottom = camY + viewH + viewM
+    for (let i = objs.length - 1; i >= 0; i--) {
+      const o = objs[i]!
+      if (o.collected) {
+        if (this.retainCollectedGfx?.(o)) continue
+        this._disposeSpawnedVisual(o)
+        objs.splice(i, 1)
+        continue
       }
+      // Сначала дешёвый отсев выше камеры — не дергаем лаву/декор-хуки для «ушедших» объектов.
       if (o.worldY < camY - TILE * 15) {
-        SpineAnimator.remove(o.spine)
-        if (o.roadMarker) {
-          if (o.roadMarker.parent) o.roadMarker.parent.removeChild(o.roadMarker)
-          o.roadMarker.destroy()
-        }
-        if (o.valueLabel) {
-          if (o.valueLabel.parent) o.valueLabel.parent.removeChild(o.valueLabel)
-          o.valueLabel.destroy()
-        }
-        if (o.gfx.parent) o.gfx.parent.removeChild(o.gfx)
-        o.gfx.destroy()
-        return false
+        this._disposeSpawnedVisual(o)
+        objs.splice(i, 1)
+        continue
       }
-      const inView = isInViewWithMargin(
-        o.worldX,
-        o.worldY,
-        o.width,
-        o.height,
-        camX,
-        camY,
-        viewW,
-        viewH,
-        TILE * 2.4,
-      )
+      if (!o.isRoadItem && skipDecor?.(o.worldX, o.worldY, o.width, o.height)) {
+        this._disposeSpawnedVisual(o)
+        objs.splice(i, 1)
+        continue
+      }
+      const hw = Math.max(1, o.width * 0.5)
+      const hh = Math.max(1, o.height * 0.5)
+      const inView =
+        o.worldX + hw >= vLeft &&
+        o.worldX - hw <= vRight &&
+        o.worldY + hh >= vTop &&
+        o.worldY - hh <= vBottom
       const sleep = !inView
       if (o.spine) {
-        o.isSpineSleeping = sleep
-        ;(o.spine as any).sleeping = sleep
+        if (o.isSpineSleeping !== sleep) {
+          o.isSpineSleeping = sleep
+          ;(o.spine as any).sleeping = sleep
+        }
       }
-      o.gfx.visible = inView
-      if (o.roadMarker) o.roadMarker.visible = inView
-      if (o.valueLabel) o.valueLabel.visible = inView
-      return true
-    })
+      if (o.gfx.visible !== inView) o.gfx.visible = inView
+      if (o.roadMarker && o.roadMarker.visible !== inView) o.roadMarker.visible = inView
+      if (o.valueLabel && o.valueLabel.visible !== inView) o.valueLabel.visible = inView
+    }
+  }
+
+  private _disposeSpawnedVisual(o: SpawnedObj): void {
+    SpineAnimator.remove(o.spine)
+    safePixiDestroyDisplay(o.roadMarker)
+    safePixiDestroyDisplay(o.valueLabel)
+    safePixiDestroyDisplay(o.gfx)
   }
 
   private _roadItemHit(charX: number, charY: number, o: SpawnedObj): boolean {
@@ -923,6 +1015,7 @@ class ObjectSpawner {
   /** Сдвигает все координаты спавнера по X (очередь + уже созданные объекты/лейблы/маркеры). */
   shiftWorldX(dx: number): void {
     if (Math.abs(dx) < 1e-6) return
+    this._horizExtentCache.clear()
     for (const so of this._safeObjects) so.x += dx
     for (const o of this.objects) {
       o.worldX += dx
@@ -932,24 +1025,54 @@ class ObjectSpawner {
     }
   }
 
+  /** Быстрый аналог decorSpawnAcceptByPath с кэшем по Y-полосе (10 px) и ширине экрана. */
+  private _decorSpawnAcceptCached(worldX: number, worldY: number, viewW: number): boolean {
+    const path = this._pathPointsForSpawn
+    if (path.length === 0) return false
+    const yKey = Math.round(worldY / 10)
+    const cacheKey = yKey * 1_000_003 + (viewW | 0)
+    let ext = this._horizExtentCache.get(cacheKey)
+    if (!ext) {
+      ext = decorGenerationHorizontalExtent(path, worldY, viewW)
+      if (this._horizExtentCache.size < 6000) this._horizExtentCache.set(cacheKey, ext)
+    }
+    return worldX >= ext.minX && worldX <= ext.maxX
+  }
+
+  /**
+   * После `_destroyBreakObj`: `gfx` уже уничтожен, убрать «висячие» collected-записи STONE/GOLD.
+   */
+  removeDeferredCollectedBreakVisual(gfx: PIXI.DisplayObject) {
+    for (let i = this.objects.length - 1; i >= 0; i--) {
+      const o = this.objects[i]!
+      if (o.collected && o.gfx === gfx) {
+        safePixiDestroyDisplay(o.roadMarker)
+        safePixiDestroyDisplay(o.valueLabel)
+        this.objects.splice(i, 1)
+        break
+      }
+    }
+    for (let i = this._roadItems.length - 1; i >= 0; i--) {
+      const o = this._roadItems[i]!
+      if (o.collected && o.gfx === gfx) {
+        this._roadItems.splice(i, 1)
+        break
+      }
+    }
+  }
+
   reset() {
     this.objects.forEach(o => {
       SpineAnimator.remove(o.spine)
-      if (o.roadMarker) {
-        if (o.roadMarker.parent) o.roadMarker.parent.removeChild(o.roadMarker)
-        o.roadMarker.destroy()
-      }
-      if (o.valueLabel) {
-        if (o.valueLabel.parent) o.valueLabel.parent.removeChild(o.valueLabel)
-        o.valueLabel.destroy()
-      }
-      if (o.gfx.parent) o.gfx.parent.removeChild(o.gfx)
-      o.gfx.destroy()
+      safePixiDestroyDisplay(o.roadMarker)
+      safePixiDestroyDisplay(o.valueLabel)
+      safePixiDestroyDisplay(o.gfx)
     })
     this.objects         = []
     this._roadItems      = []
     this._safeObjects    = []
     this._safeSpawnedIdx = 0
+    this._horizExtentCache.clear()
   }
 
   // ── Private helpers ───────────────────────────────────────────────────────
@@ -1155,6 +1278,7 @@ export class GameRenderer {
   private liveWinAmountCached = ''
   private _liveWinBadgeFading = false
   private _liveWinBadgeFadeT = 1
+  private readonly _badgeAnchorScratch = new PIXI.Point()
   private _cloudT = 0
   private _cloudPrevCamX: number | null = null
   private _cloudSpawnTimer = 0
@@ -1172,6 +1296,18 @@ export class GameRenderer {
   // Idle
   private idleActive=true
   private idleX=0; private idleDir=1; private _bounceT=0
+
+  /** Page Visibility: стоп тикера в фоне; при возврате — снова лимит FPS для idle. */
+  private readonly _onPageVisibility = (): void => {
+    const cfg = GameConfig.performance
+    if (!this.app || !cfg.pauseTickerWhenPageHidden) return
+    if (document.visibilityState === 'hidden') {
+      this.app.ticker.stop()
+    } else {
+      this.app.ticker.start()
+      this._syncTickerPowerSave()
+    }
+  }
 
   // Round
   private running=false
@@ -1191,6 +1327,8 @@ export class GameRenderer {
   private ppm=TILE*2
   private rgsQueue:RoundEvent[]=[]
   private rgsEvents:RoundEvent[]=[]   // оригинальный список — нужен для вычисления дельты
+  /** Совпадает с `store.roundID` после `startRound` для этого раунда; иначе мгновенный финиш недоступен (RAF ещё не применил события). */
+  private _rendererRoundId = ''
 
   private _waypoints:number[]=[]
   private _ended=false
@@ -1369,7 +1507,8 @@ export class GameRenderer {
       this.miner.root.x = this.idleX + hi.rootOffsetXPx
       this.miner.root.y = this.surfY + hi.rootOffsetYPx
     }
-    this.minerLayer.addChild(this.miner.root, this.liveWinBadge)
+    this.miner.root.addChild(this.liveWinBadge)
+    this.minerLayer.addChild(this.miner.root)
     this.camX = this.idleX + GameConfig.hero.idle.rootOffsetXPx - w / 2
     this.camY = this.idleCamY
     this._syncLayerScroll()
@@ -1383,6 +1522,15 @@ export class GameRenderer {
     })
     SpineAnimator.loadGoldStone()   // грузим параллельно с текстурами, не ждём
     this.app.ticker.add(this._tick.bind(this))
+    this._installPageVisibilityPowerSave()
+    this._syncTickerPowerSave()
+    if (
+      GameConfig.performance.pauseTickerWhenPageHidden &&
+      typeof document !== 'undefined' &&
+      document.visibilityState === 'hidden'
+    ) {
+      this.app.ticker.stop()
+    }
 
     // Dev-only: print per-stage-child stats so we can attribute Sprite counts to a layer.
     if (import.meta.env.DEV) {
@@ -1398,7 +1546,7 @@ export class GameRenderer {
 
   private _createLiveWinBadge(): void {
     this.liveWinBadge.visible = false
-    this.liveWinBadge.zIndex = 10
+    this.liveWinBadge.zIndex = 20
     this.liveWinBadge.addChild(this.liveWinTitleText, this.liveWinAmountText)
     this.liveWinTitleText.anchor.set(0.5)
     this.liveWinAmountText.anchor.set(0.5)
@@ -1439,7 +1587,9 @@ export class GameRenderer {
       this.liveWinAmountText.text = amount
     }
 
-    this.liveWinBadge.position.set(this.miner.root.x, this.miner.root.y + LIVE_WIN_BADGE_OFFSET_Y)
+    this.miner.getLiveWinBadgePositionInRootLocal(this._badgeAnchorScratch)
+    this._badgeAnchorScratch.y -= LIVE_WIN_BADGE_LIFT_ABOVE_HEAD_PX
+    this.liveWinBadge.position.copyFrom(this._badgeAnchorScratch)
     this.liveWinBadge.rotation = 0
     this.liveWinBadge.scale.set(1)
     this.liveWinBadge.visible = true
@@ -1486,15 +1636,22 @@ export class GameRenderer {
     }
   }
 
-  private _makeIdleWorld(){
-    if(this.tileWorld){this.tileWorld.destroy();this.tileWorld=null}
-    TileWorld.loadGrassTex().then(()=>{
-      if(!this.app) return
-      this.tileWorld=new TileWorld(this.worldBgLayer, this.worldChunkLayer, this.worldSeed)
-      this.tileWorld.renderer=this.app.renderer as PIXI.Renderer
+  private _makeIdleWorld() {
+    if (this.tileWorld) {
+      this.tileWorld.destroy()
+      this.tileWorld = null
+    }
+    // Сначала трава/чанки, затем дожидаемся текстур (constructor уже вызывает _loadTextures()).
+    // Иначе первый _syncSurfaceScenery уходит без forest/tree — пустой сценарий на старте.
+    void TileWorld.loadGrassTex().then(async () => {
+      if (!this.app) return
+      this.tileWorld = new TileWorld(this.worldBgLayer, this.worldChunkLayer, this.worldSeed)
+      this.tileWorld.renderer = this.app.renderer as PIXI.Renderer
       this.tileWorld.initMasks()
-      this.tileWorld.update(-this.W*2,this.idleCamY,this.W*5,this.H*2)
+      this.tileWorld.update(-this.W * 2, this.idleCamY, this.W, this.H, { w: this.W * 5, h: this.H * 2 })
       this._initLavaSimulation()
+      await this._loadTextures()
+      if (!this.app) return
       this._syncSurfaceScenery()
     })
   }
@@ -1508,7 +1665,6 @@ export class GameRenderer {
       this.lavaSimulation = new LavaSimulation()
       this.lavaSimulation.setViewport(this.W, this.H)
       const lava = this.lavaSimulation as any
-      this.worldChunkLayer.addChild(lava.glowGfx)
       this.worldChunkLayer.addChild(lava.container)
     }
     if (this.tileWorld) {
@@ -1579,25 +1735,53 @@ export class GameRenderer {
       }
     }
 
-    this._sceneryLayer.removeChildren()
+    // Не трогаем TilingSprite «forest» — пересоздание даёт кадр без текстуры / мигание.
+    for (let i = this._sceneryLayer.children.length - 1; i >= 0; i--) {
+      const ch = this._sceneryLayer.children[i]!
+      if (ch.name === 'forest') continue
+      this._sceneryLayer.removeChildAt(i)
+      ch.destroy({ children: true })
+    }
 
     const forestTex = this._textures.get('forest')
     if (forestTex) {
       const sc = this.H * 0.2 / forestTex.height
       const forestH = forestTex.height * sc
       const pad = 4
-      const forest = new PIXI.TilingSprite(forestTex, this.W, forestH + pad)
-      forest.name = 'forest'
+      let forest = this._sceneryLayer.getChildByName('forest') as PIXI.TilingSprite | null
+      if (!forest) {
+        forest = new PIXI.TilingSprite(forestTex, this.W, forestH + pad)
+        forest.name = 'forest'
+        const forestMask = new PIXI.Graphics()
+        forestMask.name = 'forestMask'
+        forestMask.beginFill(0xffffff)
+        forestMask.drawRect(0, pad, this.W, forestH)
+        forestMask.endFill()
+        forest.addChild(forestMask)
+        forest.mask = forestMask
+        this._sceneryLayer.addChildAt(forest, 0)
+      } else {
+        forest.texture = forestTex
+        forest.width = this.W
+        forest.height = forestH + pad
+        forest.tileScale.set(sc)
+        const forestMask = forest.getChildByName('forestMask') as PIXI.Graphics | null
+        if (forestMask) {
+          forestMask.clear()
+          forestMask.beginFill(0xffffff)
+          forestMask.drawRect(0, pad, this.W, forestH)
+          forestMask.endFill()
+        }
+      }
       forest.tileScale.set(sc)
-      forest.x = this.camX
-      forest.y = TREE_ANCHOR_WORLD_Y - forestH - 140 
-      const forestMask = new PIXI.Graphics()
-      forestMask.beginFill(0xffffff)
-      forestMask.drawRect(0, pad, this.W, forestH)
-      forestMask.endFill()
-      forest.addChild(forestMask)
-      forest.mask = forestMask
-      this._sceneryLayer.addChild(forest)
+      forest.y = TREE_ANCHOR_WORLD_Y - forestH - 140
+      this._syncForestToCamera()
+    } else {
+      const dead = this._sceneryLayer.getChildByName('forest')
+      if (dead) {
+        this._sceneryLayer.removeChild(dead)
+        dead.destroy({ children: true })
+      }
     }
 
     const keys = ['tree1', 'tree2', 'tree3'] as const
@@ -1628,8 +1812,12 @@ export class GameRenderer {
         this._sceneryLayer.addChild(s)
       }
     } else {
-      // Idle: pre-place copies of each tree tiled left and right so they always cover the screen
-      const COPIES = 5
+      // Idle: копии деревьев по X с шагом tileW; сдвигаем сетку к центру экрана, иначе после
+      // глубокого раунда (большой world X) все копии остаются слева от камеры — «пропадают».
+      const tileW = this.W * 1.5
+      const anchorX = this.camX + this.W * 0.5
+      const m0 = Math.round((anchorX - TREE_X_IDLE[1]!) / tileW)
+      const COPIES = 6
       for (let i = 0; i < 3; i++) {
         const tex = this._textures.get(keys[i])
         if (!tex) continue
@@ -1640,7 +1828,7 @@ export class GameRenderer {
           const s = new PIXI.Sprite(tex)
           if (k === 0) s.name = keys[i]  // named so _captureTreeRunOffsets can find it
           s.anchor.set(0.5, 1)
-          s.x = baseX + k * this.W * 1.5
+          s.x = baseX + (m0 + k) * tileW
           s.y = TREE_ANCHOR_WORLD_Y + TREE_Y_OFFSET[i]! - lift0
           s.scale.set(targetH / tex.height)
           this._sceneryLayer.addChild(s)
@@ -1658,10 +1846,21 @@ export class GameRenderer {
     bg.tilePosition.y = 0
   }
 
+  /** Лес привязан к camX; вызывать после любого скачка камеры до первого _tick (старт раунда / спин). */
+  private _syncForestToCamera(): void {
+    const forest = this._sceneryLayer.getChildByName('forest') as PIXI.TilingSprite | null
+    if (!forest) return
+    forest.x = this.camX
+    forest.tilePosition.x = -this.camX * 0.4
+    forest.tilePosition.y = 0
+  }
+
   private _updateSkyDecor(dt: number) {
     this._cloudT += dt
     const camDx = this._cloudPrevCamX === null ? 0 : (this.camX - this._cloudPrevCamX)
     this._cloudPrevCamX = this.camX
+    // Скорость камеры вправо (px/сек в масштабе dt): усиливаем дрейф облаков на эту величину
+    const camVxRight = dt > 1e-9 ? Math.max(0, camDx / dt) : 0
     const top = Math.max(0, Math.min(this.H, -this.camY))
     const rock = this.skyLayer.getChildByName('rockSprite') as PIXI.Sprite | null
     if (rock) {
@@ -1673,7 +1872,7 @@ export class GameRenderer {
       if (!name.startsWith('cloud')) continue
       const c = ch as PIXI.Sprite & { _drift?: number; _topDy?: number }
       const drift = c._drift ?? CLOUD_DRIFT_PX_S
-      c.x += drift * dt - camDx
+      c.x += (drift + camVxRight) * dt - camDx
       c.y = top + (c._topDy ?? c.y - top)
       const half = (c.texture?.width ?? 100) * 0.5 * Math.abs(c.scale.x)
       if (c.x > this.W + half + 20) {
@@ -1690,11 +1889,7 @@ export class GameRenderer {
         c.y = top + dy
       }
     }
-    const forest = this._sceneryLayer.getChildByName('forest') as PIXI.TilingSprite | null
-    if (forest) {
-      forest.x = this.camX
-      forest.tilePosition.x = -this.camX * 0.4
-    }
+    this._syncForestToCamera()
 
     if (this._cloudCount < 18) {
       this._cloudSpawnTimer -= dt
@@ -1724,7 +1919,11 @@ export class GameRenderer {
     this.skyLayer.addChild(c)
   }
 
-  /** Фиксирует смещения деревьев от героя в момент старта, чтобы сцена не прыгала. */
+  /**
+   * Фиксирует смещения деревьев от логического `charX` в момент перехода idle-сетка → три дерева в раунде.
+   * Вызывать только когда `charX` уже привязан к туннелю (после `tunnelXAtWorldY` / конец start-интро),
+   * иначе `dx` считаются от старой idle-X и деревья скачут при первом `_syncSurfaceScenery` с `running`.
+   */
   private _captureTreeRunOffsets(startX: number): void {
     const offsets: number[] = []
     for (const ch of this._sceneryLayer.children) {
@@ -1779,7 +1978,7 @@ export class GameRenderer {
     // После смягчения старта пересчитываем X дорожных точек по финальному пути,
     // сохраняя Y-глубину каждой точки неизменной.
     for (const rpPoint of rp.roadPoints) {
-      rpPoint.worldX = pathXAtWorldY(rpPoint.worldY, rp.pathPoints, this.surfY)
+      rpPoint.worldX = tunnelXAtWorldY(rp.pathPoints, rpPoint.worldY)
     }
   }
 
@@ -1805,7 +2004,6 @@ export class GameRenderer {
     const startY = this.miner.root.y
     const startCamX = this.camX
     const startCamY = this.camY
-    this._captureTreeRunOffsets(startX)
 
     this.running=false;this.idleActive=false;this._ended=false
     this._awaitingStartAnim=false
@@ -1818,6 +2016,7 @@ export class GameRenderer {
     this.floatTexts=[]
     this.rgsQueue=[...events]
     this.rgsEvents=events
+    this._rendererRoundId = ''
     this._lossRound = events.some(e => e.type === 'LAVA')
     {
       const _st = useGameStore.getState()
@@ -1907,9 +2106,10 @@ export class GameRenderer {
       this._getHomeSize.bind(this),
       this._getLavaSize.bind(this),
     )
+    this.spawner.retainCollectedGfx = (o) => this._breakGfx !== null && this._breakGfx === o.gfx
     // ── Строим полный маршрут ДО спавна объектов ────────────────────────────
     this._roundPath = buildRoundPath(this.worldSeed, this.surfY, this.ppm, events, this.W)
-    const initialPathX = pathXAtWorldY(startY, this._roundPath.pathPoints, this.surfY)
+    const initialPathX = tunnelXAtWorldY(this._roundPath.pathPoints, startY)
     this._shiftRoundPathX(startX - initialPathX)
     this._softenRoundPathStart(startX)
     this._roundPath.obstacles = pruneDecorObstaclesAfterPathChange(
@@ -1922,7 +2122,7 @@ export class GameRenderer {
     this._tunnelPath  = this._roundPath.pathPoints.map(p => ({ x: p.x, y: p.y }))
     this._lossLavaCenterX = null  // будет обновлён после спавна терминальной пещеры
     this._promotedCount = 0
-    this.charX = pathXAtWorldY(this.charY, this._tunnelPath, this.surfY)
+    this.charX = tunnelXAtWorldY(this._tunnelPath, this.charY)
     this._tunnelCumPathLen = 0  // invalidate cache — new round, new geometry
     this._rebuildTunnelCumLengths()
     this._pathArcS = projectWorldXYToTunnelArcLength(this._tunnelPath, this._tunnelCumLen, this.charX, this.charY)
@@ -1961,10 +2161,12 @@ export class GameRenderer {
         }
         // Целевой X для притяжения персонажа = реальный центр лавовой пещеры, а не ось туннеля
         this._lossLavaCenterX = tc.x
-        if (!ok) {
-          console.warn('[GameRenderer] terminal lava cave spawn returned false, using fallback zone only')
-        } else {
-          console.log(`[GameRenderer] terminal cave (${tc.x.toFixed(0)}, ${tc.y.toFixed(0)})`)
+        if (import.meta.env.DEV) {
+          if (!ok) {
+            console.warn('[GameRenderer] terminal lava cave spawn returned false, using fallback zone only')
+          } else {
+            console.log(`[GameRenderer] terminal cave (${tc.x.toFixed(0)}, ${tc.y.toFixed(0)})`)
+          }
         }
       }
     }
@@ -2013,34 +2215,37 @@ export class GameRenderer {
       const path = this.tileWorld.getLastCavePath()
       if (path) this._caveZones.push(...path.points)
     }
-    this.spawner.shouldSkipDecorSpawn = (x, y) =>
-      !!(this.lavaSimulation?.touchesPoint(x, y))
+    this.spawner.shouldSkipDecorSpawn = (x, y, w, h) =>
+      !!this.lavaSimulation?.decorBlocksSpawnAt(x, y, w, h)
 
     const _t4 = performance.now() // after spawner.setRgsEvents
 
     this.tileWorld.update(this.camX,this.camY,this.W,this.H)
     const _t5 = performance.now() // after tileWorld.update (chunk builds)
 
-    this.minerLayer.addChild(this.miner.root, this.liveWinBadge)
+    this.minerLayer.addChild(this.miner.root)
     this.liveWinAmountCached = ''
-    this._updateLiveWinBadge()
     this.miner.chunkParent=this.worldChunkLayer
     this.miner.root.x=this.charX;this.miner.root.y=this.charY
     this.miner.root.scale.x=1
     this._syncLayerScroll()
+    // До первого _tick лес иначе один кадр с параллаксом от старой камеры (idle) — заметно при нажатии спина.
+    this._syncForestToCamera()
 
     const _t6 = performance.now() // end of startRound
     performance.mark('dr-renderer-end')
     performance.measure('[DR] renderer.startRound total', 'dr-raf-fired', 'dr-renderer-end')
-    console.table({
-      'tileWorld reset + lava':  { ms: (_t1 - _t0).toFixed(1) },
-      'buildRoundPath + geom':   { ms: (_t2 - _t1).toFixed(1) },
-      'setPathWaypoints + cave': { ms: (_t3 - _t2).toFixed(1) },
-      'spawner.setRgsEvents':    { ms: (_t4 - _t3).toFixed(1) },
-      'tileWorld.update (chunks)':{ ms: (_t5 - _t4).toFixed(1) },
-      'rest (miner/sync)':       { ms: (_t6 - _t5).toFixed(1) },
-      '── RENDERER TOTAL':       { ms: (_t6 - _t0).toFixed(1) },
-    })
+    if (import.meta.env.DEV) {
+      console.table({
+        'tileWorld reset + lava':  { ms: (_t1 - _t0).toFixed(1) },
+        'buildRoundPath + geom':   { ms: (_t2 - _t1).toFixed(1) },
+        'setPathWaypoints + cave': { ms: (_t3 - _t2).toFixed(1) },
+        'spawner.setRgsEvents':    { ms: (_t4 - _t3).toFixed(1) },
+        'tileWorld.update (chunks)':{ ms: (_t5 - _t4).toFixed(1) },
+        'rest (miner/sync)':       { ms: (_t6 - _t5).toFixed(1) },
+        '── RENDERER TOTAL':       { ms: (_t6 - _t0).toFixed(1) },
+      })
+    }
 
     const awaitHeroStart = this.miner.heroHasStartDigClip()
     if (awaitHeroStart) {
@@ -2056,11 +2261,17 @@ export class GameRenderer {
       this.miner.playStartDigTransition()
       this.miner.setIdleMode(false)
       this._spawnDirtEntry()
+      this._captureTreeRunOffsets(this.charX)
       this.running = true
       this._syncSurfaceScenery()
     }
+    this._rendererRoundId = useGameStore.getState().roundID
     // skyLayer visibility is managed dynamically in _tick based on camera depth
     this.skyLayer.visible = true
+    this._syncTickerPowerSave()
+    SpineAnimator.tick(0)
+    this.miner.update(0, 1, !this.running)
+    this._updateLiveWinBadge()
   }
 
   /**
@@ -2341,6 +2552,60 @@ export class GameRenderer {
     }
   }
 
+  /**
+   * Повторный Spin во время RUNNING: сразу считаем исход как после сбора всех предметов
+   * по цепочке `rgsEvents` (тот же порядок эффектов, что при обычном прохождении).
+   */
+  async instantFinishRoundFromRoad(): Promise<void> {
+    const store = useGameStore.getState()
+    if (store.phase !== 'RUNNING') return
+    if (this.idleActive || this._ended) return
+    if (this.rgsEvents.length === 0) return
+    if (!store.roundID || this._rendererRoundId !== store.roundID) return
+
+    const { mult, won } = this._computeFullRoadOutcome(this.rgsEvents)
+    this.multiplier = mult
+    store.updateStats({ multiplier: Math.round(mult * 100) / 100 })
+
+    if (this._lavaLossResultTimerId !== null) {
+      clearTimeout(this._lavaLossResultTimerId)
+      this._lavaLossResultTimerId = null
+    }
+    this._lavaLossTimeoutPending = false
+
+    this._ended = true
+    this.running = false
+    this._awaitingStartAnim = false
+    this._lossTerminalDescent = false
+
+    this.stoneBreakActive = false
+    this.goldBreakActive = false
+    this.stoneBreakRemainingTime = 0
+    this.goldBreakRemainingTime = 0
+    this._destroyBreakObj()
+
+    gameAudio.setLoop('drill.ogg', false)
+    this._cleanupLavaDeathCinematic({ snapToSurfaceIdlePose: false })
+    this._lavaDeathCinematic = false
+    this._lavaExitFlightActive = false
+    this._lavaLossIdleGlideActive = false
+    this.miner.clearLavaDeathVisualOverride()
+
+    this.rgsQueue = []
+
+    if (won) {
+      gameAudio.playCollect('HOME', { terminal: true, won: true, multiplier: mult })
+    } else {
+      gameAudio.stopMusicForLose()
+      gameAudio.playCollect('LAVA', { terminal: true })
+    }
+
+    this._logTerminal('simulation', won ? 'HOME' : 'LAVA')
+
+    await gameEngine.onRoundComplete(won ? mult : 0, won)
+    this._returnToIdle()
+  }
+
   /** После звука/задержки: либо ~1 с выезда камеры к поверхности, либо сразу сборка idle. */
   private _startLavaLossIdleGlideOrIdle(): void {
     const glideSec = GameConfig.round.loseIdleGlideSec ?? 1
@@ -2391,6 +2656,7 @@ export class GameRenderer {
     if (this.tileWorld) this.tileWorld.update(this.camX, this.camY, this.W, this.H)
     this.miner.update(dt, 0.9, false)
     this._pUpdate(dt, dt)
+    this._perfPushSceneSnapshot()
 
     if (uRaw >= 1) {
       this._lavaLossIdleGlideActive = false
@@ -2434,6 +2700,7 @@ export class GameRenderer {
     // Spine: реальный dt кадра — иначе deathSceneMotionScale на gameDtM даёт рваный die.
     this._pUpdate(gameDtM, dt)
     this._updateLiveWinBadge(dt)
+    this._perfPushSceneSnapshot()
   }
 
   // ─── Tick ─────────────────────────────────────────────────────────────────
@@ -2468,8 +2735,10 @@ export class GameRenderer {
       this._updateWorldMask(this.W, this.H)
       if(this.tileWorld)this.tileWorld.update(this.camX,this.camY,this.W,this.H)
       this.miner.update(dt,0.9,false)
+      this._pUpdate(dt)
       this._updateLiveWinBadge()
-      this._pUpdate(dt);return
+      this._perfPushSceneSnapshot()
+      return
     }
 
     if (this._awaitingStartAnim) {
@@ -2504,6 +2773,7 @@ export class GameRenderer {
       this.miner.update(gameDt, 1, true)
       this._pUpdate(gameDt, dt)
       this.miner.syncStartCarveLatchAfterSpineTick()
+      this._perfPushSceneSnapshot()
       if (this._startTunnelCarveDelaySec <= 0) {
         const p = this.miner.getHeroStartTunnelLengthProgress()
         if (p !== null) {
@@ -2527,6 +2797,7 @@ export class GameRenderer {
         }
         this.miner.setIdleMode(false)
         this._spawnDirtEntry()
+        this._captureTreeRunOffsets(this.charX)
         this.running = true
         this._syncSurfaceScenery()
       }
@@ -2543,7 +2814,11 @@ export class GameRenderer {
       return
     }
 
-    if(!this.running){this._pUpdate(dt);return}
+    if (!this.running) {
+      this._pUpdate(dt)
+      this._perfPushSceneSnapshot()
+      return
+    }
 
     // ── DIGGING ───────────────────────────────────────────────────────────────
 
@@ -2753,7 +3028,7 @@ export class GameRenderer {
       this._velY += (0 - this._velY) * Math.min(gameDt * 10, 1)
       this._velX = 0
       this.charY += this._velY * gameDt
-      const txb = pathXAtWorldY(this.charY, this._tunnelPath, this.surfY)
+      const txb = tunnelXAtWorldY(this._tunnelPath, this.charY)
       const kxb = GameConfig.movement.tunnelXSmoothing
       this.charX += (txb - this.charX) * Math.min(1, kxb * gameDt)
       this._rebuildTunnelCumLengths()
@@ -2817,8 +3092,6 @@ export class GameRenderer {
     this.miner.update(gameDt, 1, true)
     perf.end('miner', _pmn)
 
-    this._updateLiveWinBadge()
-
     store.updateStats({
       depth:    Math.max(0,Math.round(this.depth*10)/10),
       distance: Math.round(this.distance*10)/10,
@@ -2871,6 +3144,50 @@ export class GameRenderer {
     const _ppu = perf.begin('pUpdate', 3)
     this._pUpdate(gameDt)
     perf.end('pUpdate', _ppu)
+
+    this._updateLiveWinBadge()
+
+    this._perfPushSceneSnapshot()
+  }
+
+  /** Снимок сцены для __DR_PERF__ (чанки, лава, спавнер, FX) — нулевая цена, если профайлер выкл. */
+  private _perfPushSceneSnapshot(): void {
+    if (!perf.enabled || !this.tileWorld) return
+    const tw = this.tileWorld.getPerfSnapshot()
+    const win = tileWorldMaxChunkWindowFromConfig()
+    const lava = this.lavaSimulation?.getPerfSnapshot()
+    const sp = this.spawner?.getPerfSnapshot()
+    const phase = useGameStore.getState().phase
+    const vp = GameConfig.viewportChunks
+    const canvasMatchCfg = this.W === vp.widthPx && this.H === vp.heightPx
+    perf.setSceneSnapshot({
+      phase,
+      running: this.running,
+      canvasWxH: `${this.W}×${this.H}`,
+      viewportCfgChunks: tw.viewportChunksWxH,
+      canvasMatchesViewportCfg: canvasMatchCfg,
+      canvasDeltaIfAny:
+        canvasMatchCfg
+          ? '—'
+          : `W${this.W - vp.widthPx >= 0 ? '+' : ''}${this.W - vp.widthPx} H${this.H - vp.heightPx >= 0 ? '+' : ''}${this.H - vp.heightPx}`,
+      chunksActive: tw.activeChunks,
+      chunksBuildQueue: tw.buildQueue,
+      chunksInnerColsRows: `${win.innerCols}×${win.innerRows}`,
+      chunksCullMargin: win.cullMarginChunks,
+      chunksMaxColsRows: `${win.colsWithCull}×${win.rowsWithCull}`,
+      chunksActiveVsMax: `${tw.activeChunks}/${win.chunksUpperBound}`,
+      chunksUpperBound: win.chunksUpperBound,
+      earthTileSpritesUpperBound: win.earthTileSpritesUpperBound,
+      tunnelBgPanels: tw.tunnelBgPanels,
+      tilePendingCaves: tw.pendingCaves,
+      lavaCells: lava?.lavaCells ?? 0,
+      lavaStaticPools: lava?.staticLavaPools ?? 0,
+      particles: this.particles.length,
+      floatTexts: this.floatTexts.length,
+      spawnerObjects: sp?.spawnedObjects ?? 0,
+      spawnerRoadItems: sp?.roadItems ?? 0,
+      spawnerSafeDecor: sp?.safeDecorProgress ?? '—',
+    })
   }
 
   // ─── Сбор объекта ─────────────────────────────────────────────────────────
@@ -3201,10 +3518,10 @@ export class GameRenderer {
 
   private _destroyBreakObj(){
     if (this._breakSpine) { SpineAnimator.remove(this._breakSpine); this._breakSpine = null }
-    if (this._breakGfx && !(this._breakGfx as any).destroyed) {
-      this._breakGfx.destroy()
-    }
+    const breakGfx = this._breakGfx
+    safePixiDestroyDisplay(this._breakGfx)
     this._breakGfx = null
+    if (breakGfx) this.spawner?.removeDeferredCollectedBreakVisual(breakGfx)
   }
 
   /** Последние секунды бурения — переход в stage_04; при коротком sN/gN длина фазы не превышает долю от полного времени. */
@@ -3234,6 +3551,45 @@ export class GameRenderer {
       case 'STONE':   return m  // обрабатывается через stoneBreak
       default:        return m
     }
+  }
+
+  private _applyEventEffectForSimulation(ev: RoundEvent, m: number): number {
+    const e = ev.effect!
+    const floor = GameConfig.multiplier.floor
+    switch (e.op) {
+      case 'add': return this._roundMultiplier(m + e.value)
+      case 'sub': return this._roundMultiplier(Math.max(floor, m - e.value))
+      case 'mul': return this._roundMultiplier(m * e.value)
+      case 'div': return this._roundMultiplier(Math.max(floor, m / e.value))
+    }
+  }
+
+  /** Итоговый множитель и WIN/LOSS по полной последовательности событий раунда. */
+  private _computeFullRoadOutcome(events: readonly RoundEvent[]): { mult: number, won: boolean } {
+    let m = 0
+    for (const ev of events) {
+      const t = ev.type
+      if (t === 'HOME') return { mult: this._roundMultiplier(m), won: true }
+      if (t === 'LAVA') return { mult: this._roundMultiplier(m), won: false }
+      if (ev.effect) {
+        m = this._applyEventEffectForSimulation(ev, m)
+      } else if (t === 'STONE') {
+        const stoneSub =
+          GameConfig.items.STONE.subValues[
+            Math.floor(Math.random() * GameConfig.items.STONE.subValues.length)
+          ]!
+        m = this._roundMultiplier(Math.max(GameConfig.multiplier.floor, m - stoneSub))
+      } else if (t === 'GOLD') {
+        const goldAdd =
+          GameConfig.items.GOLD.addValues[
+            Math.floor(Math.random() * GameConfig.items.GOLD.addValues.length)
+          ]!
+        m = this._roundMultiplier(m + goldAdd)
+      } else {
+        m = this._applyEffect(t, m)
+      }
+    }
+    return { mult: this._roundMultiplier(m), won: false }
   }
 
   // ─── Точка входа — эффект грязи ──────────────────────────────────────────
@@ -3272,7 +3628,6 @@ export class GameRenderer {
     this.idleDir = 1
     this._bounceT = 0
     this.miner.resetFromDeath()
-    this._hideTunnel()
     this.spawner?.reset(); this.spawner=null
 
     // Убираем эффект грязи
@@ -3283,20 +3638,24 @@ export class GameRenderer {
     }
     this.activeLavas.clear()
     this.lavasCavePathUpdated = new WeakSet()
+    if (this.tileWorld) {
+      this.tileWorld.lavaSimulation = null
+    }
     if (this.lavaSimulation) {
       const lava = this.lavaSimulation as any
       if (lava.container?.parent) lava.container.parent.removeChild(lava.container)
-      if (lava.glowGfx?.parent)   lava.glowGfx.parent.removeChild(lava.glowGfx)
       this.lavaSimulation.destroy()
       this.lavaSimulation = null
     }
 
+    // Сначала «залечиваем» маски чанков (цельная трава), затем скрываем подложку туннеля.
+    // Иначе на кадр видны прорези при bgLight.visible=false → вспышка цвета фона Canvas.
     if (this.tileWorld) {
-      this.tileWorld.lavaSimulation = null
       this.tileWorld.clearRuntimeDigging()
       // В idle не нужен защитный коридор пути.
       this.tileWorld.setPathWaypoints([], this.surfY)
     }
+    this._hideTunnel()
 
     this.floatTexts=[]
     this.objectsLayer.removeChildren()  // ← чистим объекты при возврате
@@ -3304,6 +3663,7 @@ export class GameRenderer {
     // Как в конструкторе: не тянем X из charX (после раунда/лавы — герой вдали от стартовой сцены)
     this.running = false
     this._ended = false
+    this._rendererRoundId = ''
     this._liveWinBadgeFading = false
     this._liveWinBadgeFadeT = 1
     this.liveWinBadge.alpha = 1
@@ -3336,8 +3696,10 @@ export class GameRenderer {
     this._syncSkyBgParallax()
     this._updateWorldMask(this.W, this.H)
     if (this.tileWorld) this.tileWorld.update(this.camX, this.camY, this.W, this.H)
+    this._perfPushSceneSnapshot()
     this.stoneBreakActive = false
     this._destroyBreakObj()
+    this._syncTickerPowerSave()
   }
 
   // ─── Particles ────────────────────────────────────────────────────────────
@@ -3367,12 +3729,22 @@ export class GameRenderer {
 
   private _animCollect(gfx:PIXI.Graphics, spine: import('pixi-spine').Spine | null = null){
     SpineAnimator.remove(spine)
+    const app = this.app
     let t=0
     const tick=()=>{
-      t+=0.1;gfx.scale.set(1.5-t*0.5);gfx.alpha=1-t
-      if(t>=1){gfx.visible=false;this.app.ticker.remove(tick)}
+      if (!app?.ticker || (gfx as { destroyed?: boolean }).destroyed) {
+        app?.ticker.remove(tick)
+        return
+      }
+      t+=0.1
+      gfx.scale.set(1.5-t*0.5)
+      gfx.alpha=1-t
+      if(t>=1){
+        gfx.visible=false
+        app.ticker.remove(tick)
+      }
     }
-    this.app.ticker.add(tick)
+    app.ticker.add(tick)
   }
 
   /**
@@ -3385,19 +3757,33 @@ export class GameRenderer {
     perf.end('spine', _tsp)
 
     this.particles=this.particles.filter(p=>{
+      if ((p.gfx as { destroyed?: boolean }).destroyed) return false
       p.life-=dt*1.8
-      if(p.life<=0){this.objectsLayer.removeChild(p.gfx);p.gfx.destroy();return false}
+      if(p.life<=0){
+        if(!(p.gfx as { destroyed?: boolean }).destroyed){
+          this.objectsLayer.removeChild(p.gfx)
+          p.gfx.destroy()
+        }
+        return false
+      }
       p.gfx.x+=p.vx*dt;p.gfx.y+=p.vy*dt;p.vy+=260*dt
       p.gfx.alpha=p.life;p.gfx.scale.set(p.life*0.7+0.3);return true
     })
     this.floatTexts=this.floatTexts.filter(f=>{
+      if ((f.txt as { destroyed?: boolean }).destroyed) return false
       f.life-=dt*1.1
-      if(f.life<=0){this.objectsLayer.removeChild(f.txt);f.txt.destroy();return false}
+      if(f.life<=0){
+        if(!(f.txt as { destroyed?: boolean }).destroyed){
+          this.objectsLayer.removeChild(f.txt)
+          f.txt.destroy()
+        }
+        return false
+      }
       f.txt.y+=f.vy*dt;f.vy*=Math.pow(0.92,dt*60)
       f.txt.alpha=f.life;f.txt.scale.set(0.8+f.life*0.4);return true
     })
 
-    if (this.lavaSimulation) {
+    if (this.lavaSimulation?.hasRenderableLava()) {
       this.lavaSimulation.setCameraPos(this.camX, this.camY)
       this.lavaSimulation.setViewport(this.W, this.H)
       this.lavaSimulation.cullFarCells(this.camX, this.camY, this.W, this.H)
@@ -3449,7 +3835,7 @@ export class GameRenderer {
 
       const xOffset = ((localSeed & 0xFF) / 0xFF - 0.5) * TILE * 12
       const caveWY = this._lastCaveY
-      const tunX = pathXAtWorldY(caveWY, path, this.surfY)
+      const tunX = tunnelXAtWorldY(path, caveWY)
       const caveWX = tunX + xOffset
 
       if (spawnedThisTick < perFrameCap && this._spawnCaveClearOfTunnel(caveWX, caveWY, localSeed)) {
@@ -3492,6 +3878,28 @@ export class GameRenderer {
     this._worldMask.endFill()
   }
 
+  private _installPageVisibilityPowerSave(): void {
+    if (typeof document === 'undefined') return
+    document.addEventListener('visibilitychange', this._onPageVisibility)
+  }
+
+  /** Лимит FPS в главном меню; в фоновой вкладке тикер уже остановлен обработчиком visibility. */
+  private _syncTickerPowerSave(): void {
+    if (!this.app) return
+    const cfg = GameConfig.performance
+    if (cfg.pauseTickerWhenPageHidden && typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      return
+    }
+    const cap = cfg.idleMenuMaxFps ?? 0
+    const idleMenuOnly =
+      this.idleActive &&
+      !this.running &&
+      !this._awaitingStartAnim &&
+      !this._lavaDeathCinematic &&
+      !this._lavaLossIdleGlideActive
+    this.app.ticker.maxFPS = idleMenuOnly && cap > 0 ? cap : 0
+  }
+
   resize(w:number,h:number){
     this.W=w;this.H=h;this.charScreenY=h*0.42
     this.lavaSimulation?.setViewport(w, h)
@@ -3499,6 +3907,8 @@ export class GameRenderer {
     this.skyLayer.removeChildren();this._buildSky()
     this._updateWorldMask(w, h)
     this._buildTunnel()
+    // forest / маска / idle-сетка деревьев завязаны на W,H — иначе после ресайза артефакты
+    this._syncSurfaceScenery()
     if (this.idleActive) {
       this.camY = this.idleCamY
       this._syncLayerScroll()
@@ -3506,14 +3916,20 @@ export class GameRenderer {
   }
 
   destroy(){
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this._onPageVisibility)
+    }
     this._lavaLossIdleGlideActive = false
     this.skyLayer.mask=null
     this.worldBgLayer.mask=null
     this.worldChunkLayer.mask=null
     this._worldMask.destroy()
+    this._destroyBreakObj()
     this.spawner?.reset()
     this.tileWorld?.destroy()
+    this.liveWinBadge.removeFromParent()
     this.miner.destroy()
+    this.liveWinBadge.destroy({ children: true })
     this.app.destroy(false,{children:true,texture:true})
   }
 }

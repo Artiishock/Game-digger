@@ -1,4 +1,4 @@
-import{r as g}from"./vendor-react-CG7svFXk.js";import{g as $}from"./vendor-pixi-WZaN9XRs.js";var h={exports:{}},w={},j={exports:{}},_={};/**
+import{r as g}from"./vendor-react-AcUZBxQo.js";import{g as $}from"./vendor-pixi-FgV3VPWf.js";var h={exports:{}},w={},j={exports:{}},_={};/**
  * @license React
  * use-sync-external-store-shim.production.js
  *

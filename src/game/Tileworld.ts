@@ -10,6 +10,57 @@ export const CHUNK_H = 4
 const CPW = CHUNK_W * TILE
 const CPH = CHUNK_H * TILE
 
+/** Буфер вокруг камеры при расчёте чанков (px) — тот же множитель, что в `TileWorld.update`. */
+export const TILEWORLD_CHUNK_VIEW_BUF_PX = CPW * 2.5
+
+/** Запас чанков вокруг окна камеры — чанк удаляется только за пределами `colMin±cull` / `rowMin±cull`. */
+export const TILEWORLD_CHUNK_CULL_MARGIN = 4
+
+/** Текущий размер viewport для чанков из `GameConfig.viewportChunks`. */
+export function tileWorldChunkViewportFromConfig(): { w: number; h: number } {
+  return {
+    w: GameConfig.viewportChunks.widthPx,
+    h: GameConfig.viewportChunks.heightPx,
+  }
+}
+
+/**
+ * Оценка сетки чанков при `GameConfig.viewportChunks` и буфере `TILEWORLD_CHUNK_VIEW_BUF_PX`.
+ * `inner*` — окно как в update (floor/ceil камеры); `colsWithCull` — с полем `TILEWORLD_CHUNK_CULL_MARGIN`,
+ * иначе `chunksActive` кажется «выше лимита», хотя это нормально.
+ */
+export function tileWorldMaxChunkWindowFromConfig(): {
+  innerCols: number
+  innerRows: number
+  innerChunksEst: number
+  cullMarginChunks: number
+  colsWithCull: number
+  rowsWithCull: number
+  chunksUpperBound: number
+  tilesPerChunk: number
+  earthTileSpritesUpperBound: number
+} {
+  const { widthPx: W, heightPx: H } = GameConfig.viewportChunks
+  const buf = TILEWORLD_CHUNK_VIEW_BUF_PX
+  const innerCols = Math.ceil((W + 2 * buf) / CPW) + 1
+  const innerRows = Math.ceil((H + 2 * buf) / CPH) + 1
+  const c = TILEWORLD_CHUNK_CULL_MARGIN
+  const colsWithCull = innerCols + 2 * c
+  const rowsWithCull = innerRows + 2 * c
+  const tilesPerChunk = CHUNK_W * CHUNK_H
+  return {
+    innerCols,
+    innerRows,
+    innerChunksEst: innerCols * innerRows,
+    cullMarginChunks: c,
+    colsWithCull,
+    rowsWithCull,
+    chunksUpperBound: colsWithCull * rowsWithCull,
+    tilesPerChunk,
+    earthTileSpritesUpperBound: colsWithCull * rowsWithCull * tilesPerChunk,
+  }
+}
+
 /**
  * Эллипс в локальных координатах чанка: `rx` поперёк движения, `ry` вдоль;
  * (ux, uy) — направление копания (необязательно единичное, нормализуем).
@@ -451,6 +502,8 @@ export class TileWorld {
   private _caveGfx: PIXI.Graphics = new PIXI.Graphics()
 
   lavaSimulation: LavaSimulation | null = null
+  private _lavaViewportW = -1
+  private _lavaViewportH = -1
 
   // Путь персонажа — лава не генерируется в коридоре пути
   private _pathWaypoints:  number[] = []
@@ -953,16 +1006,47 @@ export class TileWorld {
     return this._cavesByPosition.get(`${Math.round(wx)},${Math.round(wy)}`) || null
   }
 
+  /** Снимок для __DR_PERF__: активные чанки, очереди, подложка туннеля. */
+  getPerfSnapshot(): {
+    activeChunks: number
+    buildQueue: number
+    tunnelBgPanels: number
+    pendingCaves: number
+    viewportChunksWxH: string
+  } {
+    const vp = GameConfig.viewportChunks
+    return {
+      activeChunks: this.chunks.size,
+      buildQueue: this._buildQueue.length,
+      tunnelBgPanels: this._tunnelBgPanels.size,
+      pendingCaves: this._pendingCaves.length,
+      viewportChunksWxH: `${vp.widthPx}×${vp.heightPx}`,
+    }
+  }
+
   // ── Update ─────────────────────────────────────────────────────────────────
 
-  update(camX: number, camY: number, screenW: number, screenH: number) {
+  /**
+   * @param _screenW устар.: окно чанков задаётся `GameConfig.viewportChunks` (или `chunkViewport`).
+   * @param _screenH устар.: то же.
+   * @param chunkViewport если задан (idle) — временно подменяет размер окна для чанков/подложки.
+   */
+  update(
+    camX: number,
+    camY: number,
+    _screenW: number,
+    _screenH: number,
+    chunkViewport?: { w: number; h: number },
+  ) {
+    const vw = chunkViewport?.w ?? GameConfig.viewportChunks.widthPx
+    const vh = chunkViewport?.h ?? GameConfig.viewportChunks.heightPx
     // Perf: keep a smaller offscreen buffer. Too large buffer explodes active chunks,
     // which multiplies the cost of RT masks + scene graph traversal.
-    const buf    = CPW * 2.5
+    const buf    = TILEWORLD_CHUNK_VIEW_BUF_PX
     const colMin = Math.floor((camX-buf)/CPW)
-    const colMax = Math.ceil((camX+screenW+buf)/CPW)
+    const colMax = Math.ceil((camX+vw+buf)/CPW)
     const rowMin = Math.max(0, Math.floor((camY-buf)/CPH))
-    const rowMax = Math.ceil((camY+screenH+buf)/CPH)
+    const rowMax = Math.ceil((camY+vh+buf)/CPH)
 
     const needRebuild =
       !this.overridesBuilt ||
@@ -982,9 +1066,9 @@ export class TileWorld {
 
     // Visible viewport (no buffer) — build immediately to avoid blank tiles on screen.
     const vc0 = Math.floor(camX / CPW)
-    const vc1 = Math.ceil((camX + screenW) / CPW)
+    const vc1 = Math.ceil((camX + vw) / CPW)
     const vr0 = Math.max(0, Math.floor(camY / CPH))
-    const vr1 = Math.ceil((camY + screenH) / CPH)
+    const vr1 = Math.ceil((camY + vh) / CPH)
 
     for (let row = rowMin; row <= rowMax; row++) {
       for (let col = colMin; col <= colMax; col++) {
@@ -1011,7 +1095,7 @@ export class TileWorld {
 
     this._extendBg(colMin, colMax, rowMin, rowMax)
 
-    const cull = 4
+    const cull = TILEWORLD_CHUNK_CULL_MARGIN
     for (const [key, chunk] of this.chunks) {
       if (chunk.col < colMin-cull || chunk.col > colMax+cull ||
           chunk.row < rowMin-cull || chunk.row > rowMax+cull) {
@@ -1035,7 +1119,7 @@ export class TileWorld {
       }
     }
 
-    this._syncTunnelBgEarthTiles(camX, camY, screenW, screenH)
+    this._syncTunnelBgEarthTiles(camX, camY, vw, vh)
   }
 
   private _extendBg(_colMin:number, _colMax:number, _rowMin:number, _rowMax:number) {
@@ -1249,7 +1333,13 @@ export class TileWorld {
 
   updateLavas(deltaTime: number, viewW?: number, viewH?: number) {
     if (!this.lavaSimulation) return
-    if (viewW != null && viewH != null) this.lavaSimulation.setViewport(viewW, viewH)
+    if (viewW != null && viewH != null) {
+      if (viewW !== this._lavaViewportW || viewH !== this._lavaViewportH) {
+        this._lavaViewportW = viewW
+        this._lavaViewportH = viewH
+        this.lavaSimulation.setViewport(viewW, viewH)
+      }
+    }
     this.lavaSimulation.update(deltaTime)
   }
 

@@ -51,6 +51,7 @@ const en: PhraseMap = {
   'mute':                            'Mute',
   'unmute':                          'Unmute',
   'win label':                       'WIN',
+  'last win':                        'LAST WIN',
   'distance':                        'Distance',
   'depth':                           'Depth',
   'bet':                             'Bet',
@@ -65,12 +66,12 @@ const en: PhraseMap = {
   'custom number of plays':          'Custom number of plays',
 
   // ── settings panel ──────────────────────────────────────────────────────────
-  'music':                           'Music',
-  'music desc':                      'Turn off/on music',
+  'music':                           'MASTER VOLUME',
+  'music desc':                      'Turns off all game audio — music and sound effects (same as the speaker button).',
   'battery saver':                   'Battery Saver',
   'battery saver desc':              'Save battery life by reducing animation speed',
-  'intro screen':                    'Intro Screen',
-  'intro screen desc':               'Show the intro screen before starting the game',
+  'depth hud':                       'Depth HUD',
+  'depth hud desc':                  'Show distance and depth in the corner while you play.',
   'enable space':                    'Enable Space',
   'enable space desc':               'Press space bar to play',
 
@@ -172,6 +173,7 @@ const es: PhraseMap = {
   'mute':                            'Silenciar',
   'unmute':                          'Activar sonido',
   'win label':                       'GANANCIA',
+  'last win':                        'ÚLTIMA GANANCIA',
   'distance':                        'Distancia',
   'depth':                           'Profundidad',
   'bet':                             'Apuesta',
@@ -186,12 +188,12 @@ const es: PhraseMap = {
   'custom number of plays':          'Número personalizado de jugadas',
 
   // ── settings panel ──────────────────────────────────────────────────────────
-  'music':                           'Música',
-  'music desc':                      'Activar/desactivar música',
+  'music':                           'Volumen maestro',
+  'music desc':                      'Desactiva todo el audio del juego: música y efectos de sonido (igual que el altavoz).',
   'battery saver':                   'Ahorro de batería',
   'battery saver desc':              'Ahorra batería reduciendo la velocidad de animación',
-  'intro screen':                    'Pantalla de inicio',
-  'intro screen desc':               'Mostrar la pantalla de inicio antes de comenzar el juego',
+  'depth hud':                       'Prof. / dist.',
+  'depth hud desc':                  'Muestra distancia y profundidad en la esquina durante el juego.',
   'enable space':                    'Activar espacio',
   'enable space desc':               'Presiona la barra espaciadora para jugar',
 
@@ -293,6 +295,7 @@ const de: PhraseMap = {
   'mute':                            'Stummschalten',
   'unmute':                          'Ton einschalten',
   'win label':                       'GEWINN',
+  'last win':                        'LETZTER GEWINN',
   'distance':                        'Distanz',
   'depth':                           'Tiefe',
   'bet':                             'Einsatz',
@@ -307,12 +310,12 @@ const de: PhraseMap = {
   'custom number of plays':          'Benutzerdefinierte Spielanzahl',
 
   // ── settings panel ──────────────────────────────────────────────────────────
-  'music':                           'Musik',
-  'music desc':                      'Musik ein-/ausschalten',
+  'music':                           'Master-Lautstärke',
+  'music desc':                      'Schaltet die gesamte Spiel-Audio aus — Musik und Soundeffekte (wie die Lautsprecher-Taste).',
   'battery saver':                   'Energiesparmodus',
   'battery saver desc':              'Akku schonen durch reduzierte Animationsgeschwindigkeit',
-  'intro screen':                    'Intro-Bildschirm',
-  'intro screen desc':               'Intro-Bildschirm vor dem Spielstart anzeigen',
+  'depth hud':                       'Tiefe HUD',
+  'depth hud desc':                  'Zeigt Weg und Tiefe während des Spiels in der Ecke.',
   'enable space':                    'Leertaste aktivieren',
   'enable space desc':               'Drücke die Leertaste zum Spielen',
 
@@ -414,6 +417,7 @@ const ru: PhraseMap = {
   'mute':                            'Выключить звук',
   'unmute':                          'Включить звук',
   'win label':                       'ВЫИГРЫШ',
+  'last win':                        'ПОСЛЕДНИЙ ВЫИГРЫШ',
   'distance':                        'Дистанция',
   'depth':                           'Глубина',
   'bet':                             'Ставка',
@@ -428,12 +432,12 @@ const ru: PhraseMap = {
   'custom number of plays':          'Произвольное количество игр',
 
   // ── settings panel ──────────────────────────────────────────────────────────
-  'music':                           'Музыка',
-  'music desc':                      'Включить/выключить музыку',
+  'music':                           'Общая громкость',
+  'music desc':                      'Выключает весь звук игры — музыку и эффекты (как кнопка динамика).',
   'battery saver':                   'Экономия батареи',
   'battery saver desc':              'Экономьте заряд батареи, снижая скорость анимации',
-  'intro screen':                    'Вступительный экран',
-  'intro screen desc':               'Показывать вступительный экран перед началом игры',
+  'depth hud':                       'Глубина HUD',
+  'depth hud desc':                  'Показывать дистанцию и глубину в углу во время игры.',
   'enable space':                    'Включить пробел',
   'enable space desc':               'Нажмите пробел для игры',
 
@@ -535,6 +539,7 @@ const tr: PhraseMap = {
   'mute':                            'Sesi kapat',
   'unmute':                          'Sesi aç',
   'win label':                       'KAZANÇ',
+  'last win':                        'SON KAZANÇ',
   'distance':                        'Mesafe',
   'depth':                           'Derinlik',
   'bet':                             'Bahis',
@@ -549,12 +554,12 @@ const tr: PhraseMap = {
   'custom number of plays':          'Özel oyun sayısı',
 
   // ── settings panel ──────────────────────────────────────────────────────────
-  'music':                           'Müzik',
-  'music desc':                      'Müziği aç/kapat',
+  'music':                           'Ana ses',
+  'music desc':                      'Tüm oyun sesini kapatır — müzik ve efektler (hoparlör düğmesiyle aynı).',
   'battery saver':                   'Pil tasarrufu',
   'battery saver desc':              'Animasyon hızını azaltarak pil tasarrufu sağla',
-  'intro screen':                    'Giriş ekranı',
-  'intro screen desc':               'Oyun başlamadan önce giriş ekranını göster',
+  'depth hud':                       'Derinlik HUD',
+  'depth hud desc':                  'Oynarken köşede mesafe ve derinliği göster.',
   'enable space':                    'Boşluk tuşunu etkinleştir',
   'enable space desc':               'Oynamak için boşluk tuşuna bas',
 

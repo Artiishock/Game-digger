@@ -98,7 +98,12 @@
   width: 70%;
   height: auto;
   display: block;
-  opacity: 45%;
+  opacity: 1;
+  transition: opacity 0.28s ease;
+}
+/* После START (раунд активен) — логотип в фоне */
+.ui-logo-zone--gameplay img {
+  opacity: 0.45;
 }
 
 .ui-win-zone {
@@ -1045,6 +1050,7 @@
   grid-template-columns: 32px max-content;
   align-items: center;
   gap: 12px;
+  cursor: pointer;
 }
 
 .ui-input-row {
@@ -1056,6 +1062,8 @@
 
 .ui-input-row-label {
   white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
 }
 
 .ui-checkbox {

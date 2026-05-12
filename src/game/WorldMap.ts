@@ -225,15 +225,18 @@ export function tunnelXAtWorldY(path: PathPoint[], wy: number): number {
   if (wy <= p0.y) return p0.x
   const pl = path[path.length - 1]!
   if (wy >= pl.y) return pl.x
-  for (let i = 0; i < path.length - 1; i++) {
-    const a = path[i]!, b = path[i + 1]!
-    if (wy <= b.y) {
-      const dy = b.y - a.y
-      const t = dy > 1e-6 ? (wy - a.y) / dy : 0
-      return a.x + t * (b.x - a.x)
-    }
+  let lo = 0
+  let hi = path.length - 2
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (wy <= path[mid + 1]!.y) hi = mid
+    else lo = mid + 1
   }
-  return pl.x
+  const a = path[lo]!
+  const b = path[lo + 1]!
+  const dy = b.y - a.y
+  const t = dy > 1e-6 ? (wy - a.y) / dy : 0
+  return a.x + t * (b.x - a.x)
 }
 
 /**
@@ -432,6 +435,8 @@ export function buildTunnel(
   let curX = 0
   const targets = [...roadTargets].sort((a, b) => a.worldY - b.worldY)
   let tIdx = 0
+  /** Следующая цель строго ниже по Y — без O(n) `find` на каждом шаге пути. */
+  let nextTIdx = 0
 
   let y = surfY
   while (y <= terminalY + STEP_Y) {
@@ -453,7 +458,10 @@ export function buildTunnel(
       ))
       curX = Math.round(curX / TILE) * TILE
     } else {
-      const nextT  = targets.find(t => t.worldY > y)
+      while (nextTIdx < targets.length && targets[nextTIdx].worldY <= y) {
+        nextTIdx++
+      }
+      const nextT = nextTIdx < targets.length ? targets[nextTIdx] : null
       const idealX = nextT ? nextT.worldX : 0
 
       const drift  = (idealX - curX) * (calmPath ? 0.14 : 0.09)
@@ -826,36 +834,36 @@ export function placeObstacles(
     }
   }
 
-  // ── Предвычисление позиций пещер для исключения декора внутри/около них ──────
-  // Должно выполняться до main decor loop — иначе tryPlace не знает о пещерах
-  // и ставит декор прямо внутри cave rect, блокируя ring items через _pgHit.
+  // ── Пещеры: один проход по глубине — и для исключения декора, и для объектов ─
+  // Должно выполняться до main decor loop — иначе tryPlace не знает о пещерах.
   const CAVE_RHW = TILE * 2.15
   const CAVE_RHH = TILE * 1.15
-  const preCaveRects: Array<{ cx: number; cy: number }> = []
+  const cavePlacements: Array<{ cx: number; cy: number; cr: number }> = []
   {
-    let _cs = worldSeed ^ 0xCAFE1234
-    let _cY = surfY + TILE * 3
-    while (_cY < terminalY + TILE * 8) {
-      const _df = Math.max(0.5, Math.min(2, (_cY - surfY) / 2000))
-      _cY += TILE * (15 + 5 * _df)
-      _cs = (Math.imul(1664525, _cs) + 1013904223) >>> 0
-      const _ls = _cs
-      const _cx1 = tunnelXAtWorldY(path, _cY) + ((_ls & 0xFF) / 0xFF - 0.5) * TILE * 12
-      const _cr1 = TILE * (3 + (_ls & 0x3))
-      if (!intersectsTunnel(_cx1, _cY, _cr1, path, surfY, CAVE_MARGIN)) {
-        preCaveRects.push({ cx: _cx1, cy: _cY })
+    let cs = worldSeed ^ 0xCAFE1234
+    let cY = surfY + TILE * 3
+    while (cY < terminalY + TILE * 8) {
+      const df = Math.max(0.5, Math.min(2, (cY - surfY) / 2000))
+      cY += TILE * (15 + 5 * df)
+      cs = (Math.imul(1664525, cs) + 1013904223) >>> 0
+      const ls = cs
+      const cx1 = tunnelXAtWorldY(path, cY) + ((ls & 0xFF) / 0xFF - 0.5) * TILE * 12
+      const cr1 = TILE * (3 + (ls & 0x3))
+      if (!intersectsTunnel(cx1, cY, cr1, path, surfY, CAVE_MARGIN)) {
+        cavePlacements.push({ cx: cx1, cy: cY, cr: cr1 })
       }
-      const _ls2 = (Math.imul(69069, _ls) + 1) >>> 0
-      if ((_ls2 & 0xF) < 5) {
-        const _cx2 = _cx1 + ((_ls2 & 0xFF) / 0xFF - 0.5) * TILE * 8
-        const _cy2 = _cY + TILE * (4 + (_ls2 & 0x7))
-        const _cr2 = TILE * (2 + (_ls2 & 0x2))
-        if (!intersectsTunnel(_cx2, _cy2, _cr2, path, surfY, CAVE_MARGIN)) {
-          preCaveRects.push({ cx: _cx2, cy: _cy2 })
+      const ls2 = (Math.imul(69069, ls) + 1) >>> 0
+      if ((ls2 & 0xF) < 5) {
+        const cx2 = cx1 + ((ls2 & 0xFF) / 0xFF - 0.5) * TILE * 8
+        const cy2 = cY + TILE * (4 + (ls2 & 0x7))
+        const cr2 = TILE * (2 + (ls2 & 0x2))
+        if (!intersectsTunnel(cx2, cy2, cr2, path, surfY, CAVE_MARGIN)) {
+          cavePlacements.push({ cx: cx2, cy: cy2, cr: cr2 })
         }
       }
     }
   }
+  const preCaveRects = cavePlacements.map(p => ({ cx: p.cx, cy: p.cy }))
 
   let dy = surfY + SPAWN_INTERVAL * (0.42 + rng(surfY ^ 0x51EC, worldSeed) * 0.86)
   let decorStepIdx = 0
@@ -939,7 +947,22 @@ export function placeObstacles(
   }
 
   // ── Контроль наполненности по полю видимости вдоль каждой точки маршрута ───
-  // Проверяем обе стороны от оси пути и добрасываем декор, если в "экранной" полосе пусто.
+  // Индекс декора по Y — countInBand не сканирует весь objects на каждую точку пути.
+  const decorYBucketInv = 1 / (TILE * 1.05)
+  const decorYBuckets = new Map<number, Array<{ x: number; y: number }>>()
+  const decorBucketAdd = (x: number, y: number) => {
+    const k = Math.floor(y * decorYBucketInv)
+    let arr = decorYBuckets.get(k)
+    if (!arr) {
+      arr = []
+      decorYBuckets.set(k, arr)
+    }
+    arr.push({ x, y })
+  }
+  for (const o of objects) {
+    if (o.kind === 'decor') decorBucketAdd(o.x, o.y)
+  }
+
   const ensureDecorCoverageAtPathPoint = (pt: PathPoint, idx: number): void => {
     if (pt.y < surfY + TILE * 0.35 || pt.y > terminalY + TILE * 7.5) return
     const bounds = decorBoundsAtY(pt.y)
@@ -957,13 +980,19 @@ export function placeObstacles(
     const rightMax = Math.min(bounds.maxX, pt.x + halfView)
 
     const targetPerSide = viewW > TILE * 9 ? 2 : 1
+    const kLo = Math.floor((pt.y - yBand) * decorYBucketInv)
+    const kHi = Math.ceil((pt.y + yBand) * decorYBucketInv)
     const countInBand = (xMin: number, xMax: number): number => {
       if (xMax <= xMin) return 0
       let count = 0
-      for (const o of objects) {
-        if (o.kind !== 'decor') continue
-        if (Math.abs(o.y - pt.y) > yBand) continue
-        if (o.x >= xMin && o.x <= xMax) count++
+      for (let bk = kLo; bk <= kHi; bk++) {
+        const arr = decorYBuckets.get(bk)
+        if (!arr) continue
+        for (let j = 0; j < arr.length; j++) {
+          const o = arr[j]!
+          if (Math.abs(o.y - pt.y) > yBand) continue
+          if (o.x >= xMin && o.x <= xMax) count++
+        }
       }
       return count
     }
@@ -973,7 +1002,7 @@ export function placeObstacles(
       let have = countInBand(xMin, xMax)
       if (have >= targetPerSide) return
       const need = targetPerSide - have
-      const attempts = need * 16
+      const attempts = need * 12
       for (let a = 0; a < attempts && have < targetPerSide; a++) {
         const u = rng((idx + 1) * 0x9E37 ^ sideKey ^ a * 71, worldSeed)
         const yJ = (rng((idx + 1) * 0x85EB ^ sideKey ^ a * 29, worldSeed) - 0.5) * TILE * 1.3
@@ -983,7 +1012,10 @@ export function placeObstacles(
           y + sideKey * 0.1,
           rng(Math.floor(y) ^ sideKey ^ a * 0x2D2D, worldSeed),
         )
-        if (tryPlaceDecorForced(t, x, y, DECOR_VISUAL_TUNNEL_MARGIN)) have++
+        if (tryPlaceDecorForced(t, x, y, DECOR_VISUAL_TUNNEL_MARGIN)) {
+          have++
+          decorBucketAdd(x, y)
+        }
       }
     }
 
@@ -1002,30 +1034,10 @@ export function placeObstacles(
     objects.push({ x: lv.x, y: lv.y, w: lv.w, h: lv.h, kind: 'lava' })
   }
 
-  // ── Пещеры (только вне туннеля) ───────────────────────────────────────────
-  // CAVE_RHW / CAVE_RHH определены выше (pre-compute block)
-  let caveSeed  = worldSeed ^ 0xCAFE1234
-  let lastCaveY = surfY + TILE * 3
-  while (lastCaveY < terminalY + TILE * 8) {
-    const df       = Math.max(0.5, Math.min(2, (lastCaveY - surfY) / 2000))
-    lastCaveY     += TILE * (15 + 5 * df)
-    caveSeed = (Math.imul(1664525, caveSeed) + 1013904223) >>> 0
-    const ls  = caveSeed
-    const tunX1 = tunnelXAtWorldY(path, lastCaveY)
-    const cx1 = tunX1 + ((ls & 0xFF) / 0xFF - 0.5) * TILE * 12
-    const cr1 = TILE * (3 + (ls & 0x3))
-    if (!intersectsTunnel(cx1, lastCaveY, cr1, path, surfY, CAVE_MARGIN)) {
-      objects.push({ x: cx1, y: lastCaveY, w: cr1 * 2 + TILE * 3, h: cr1 * 2 + TILE * 3, kind: 'cave' })
-    }
-    const ls2 = (Math.imul(69069, ls) + 1) >>> 0
-    if ((ls2 & 0xF) < 5) {
-      const cx2 = cx1 + ((ls2 & 0xFF) / 0xFF - 0.5) * TILE * 8
-      const cy2 = lastCaveY + TILE * (4 + (ls2 & 0x7))
-      const cr2 = TILE * (2 + (ls2 & 0x2))
-      if (!intersectsTunnel(cx2, cy2, cr2, path, surfY, CAVE_MARGIN)) {
-        objects.push({ x: cx2, y: cy2, w: cr2 * 2 + TILE * 3, h: cr2 * 2 + TILE * 3, kind: 'cave' })
-      }
-    }
+  // ── Пещеры (те же координаты, что в cavePlacements выше) ───────────────────
+  for (const p of cavePlacements) {
+    const w = p.cr * 2 + TILE * 3
+    objects.push({ x: p.cx, y: p.cy, w, h: w, kind: 'cave' })
   }
 
   return objects
@@ -1077,10 +1089,12 @@ export function buildRoundPath(
   // Pass 4: road items точно на финальном туннеле + на оси туннеля (проекция на полилинию)
   let roadPoints = placeRoadItems(roadEvents, path, surfY)
   roadPoints = snapRoadPointsOntoTunnelAxis(roadPoints, path)
-  for (const rp of roadPoints) {
-    const d = distancePointToTunnelPolyline(rp.worldX, rp.worldY, path)
-    if (d > 0.5 || !roadItemTouchesTunnelAxis(rp.worldX, rp.worldY, path, rp.type)) {
-      console.warn(`[WorldMap] road ${rp.type}: dist до оси=${d.toFixed(2)}px`)
+  if (import.meta.env.DEV) {
+    for (const rp of roadPoints) {
+      const d = distancePointToTunnelPolyline(rp.worldX, rp.worldY, path)
+      if (d > 0.5 || !roadItemTouchesTunnelAxis(rp.worldX, rp.worldY, path, rp.type)) {
+        console.warn(`[WorldMap] road ${rp.type}: dist до оси=${d.toFixed(2)}px`)
+      }
     }
   }
   const _wt4 = performance.now()
@@ -1088,14 +1102,16 @@ export function buildRoundPath(
   // Pass 5: объекты вне туннеля (капсульная проверка)
   const obstacles  = placeObstacles(path, surfY, terminalY, worldSeed, roadPoints, viewportWidthPx)
   const _wt5 = performance.now()
-  console.table({
-    'P1 buildTunnel rough':    { ms: (_wt1-_wt0).toFixed(1), pts: roughPath.length },
-    'P2 roadItems+ghost':      { ms: (_wt2-_wt1).toFixed(1) },
-    'P3 buildTunnel final':    { ms: (_wt3-_wt2).toFixed(1), pts: path.length },
-    'P4 snapRoadPoints':       { ms: (_wt4-_wt3).toFixed(1) },
-    'P5 placeObstacles':       { ms: (_wt5-_wt4).toFixed(1) },
-    '── terminalY (px)':       { ms: terminalY.toFixed(0) },
-  })
+  if (import.meta.env.DEV) {
+    console.table({
+      'P1 buildTunnel rough':    { ms: (_wt1-_wt0).toFixed(1), pts: roughPath.length },
+      'P2 roadItems+ghost':      { ms: (_wt2-_wt1).toFixed(1) },
+      'P3 buildTunnel final':    { ms: (_wt3-_wt2).toFixed(1), pts: path.length },
+      'P4 snapRoadPoints':       { ms: (_wt4-_wt3).toFixed(1) },
+      'P5 placeObstacles':       { ms: (_wt5-_wt4).toFixed(1) },
+      '── terminalY (px)':       { ms: terminalY.toFixed(0) },
+    })
+  }
 
   // Waypoints для GameRenderer (только X)
   const waypoints  = path.map(p => p.x)
@@ -1114,11 +1130,13 @@ export function buildRoundPath(
     ? { x: pathLast.x + _caveSign * _caveHw, y: pathLast.y, seed: (worldSeed ^ 0xDEAD1234) >>> 0 }
     : null
 
-  const dc = obstacles.filter(o => o.kind === 'decor').length
-  const lv = obstacles.filter(o => o.kind === 'lava').length
-  const cv = obstacles.filter(o => o.kind === 'cave').length
-  console.log(`[WorldMap] туннель R=${TUNNEL_R}px | ${path.length} wp | декор: ${dc}, лава: ${lv}, пещеры: ${cv}${terminalCave ? ' | 🔥 терм. пещера' : ''}`)
-  console.log(`[WorldMap] road: ${roadPoints.map(r => `${r.type}@(${r.worldX},${r.worldY.toFixed(0)})`).join(' → ')}`)
+  if (import.meta.env.DEV) {
+    const dc = obstacles.filter(o => o.kind === 'decor').length
+    const lv = obstacles.filter(o => o.kind === 'lava').length
+    const cv = obstacles.filter(o => o.kind === 'cave').length
+    console.log(`[WorldMap] туннель R=${TUNNEL_R}px | ${path.length} wp | декор: ${dc}, лава: ${lv}, пещеры: ${cv}${terminalCave ? ' | 🔥 терм. пещера' : ''}`)
+    console.log(`[WorldMap] road: ${roadPoints.map(r => `${r.type}@(${r.worldX},${r.worldY.toFixed(0)})`).join(' → ')}`)
+  }
 
   return { waypoints, pathPoints: path, roadPoints, roadEventsOrdered, obstacles, terminalCave }
 }

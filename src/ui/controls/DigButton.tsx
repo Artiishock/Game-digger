@@ -25,6 +25,7 @@ export const DigButton: React.FC = () => {
 
   const canDig = phase === "IDLE" || phase === "WIN" || phase === "LOSE";
   const isRunning = phase === "RUNNING" || phase === "BETTING";
+  const isRoundPlay = phase === "RUNNING";
   const isAutoActive = autoplay.active;
 
   const spinPushed = isRunning || isAutoActive;
@@ -76,13 +77,20 @@ export const DigButton: React.FC = () => {
     console.log(isAutoActive);
   }, [isAutoActive]);
 
-  const handleSpinClick = () => {
+  const handleSpinClick = async () => {
     gameAudio.unlock();
 
-    if (isAutoActive) gameEngine.stopAutoplay();
-    else if (canDig) {
+    if (isAutoActive) {
+      gameEngine.stopAutoplay();
+      return;
+    }
+    if (isRoundPlay) {
+      await gameEngine.instantFinishRound();
+      return;
+    }
+    if (canDig) {
       gameAudio.playStartGame();
-      gameEngine.startRound();
+      await gameEngine.startRound();
     }
   };
 
@@ -123,7 +131,7 @@ export const DigButton: React.FC = () => {
       <button
         className={`ui-spin-btn${spinPushed ? " ui-spin-btn--active" : ""}`}
         onClick={handleSpinClick}
-        disabled={isRunning && !isAutoActive}
+        disabled={phase === "BETTING"}
         type="button"
       >
         <span
@@ -134,7 +142,7 @@ export const DigButton: React.FC = () => {
         />
         {isAutoActive && (
           <span className="ui-spin-btn-counter">
-            {autoplay.remainingRounds}
+            {autoplay.infinite ? "∞" : autoplay.remainingRounds}
           </span>
         )}
       </button>

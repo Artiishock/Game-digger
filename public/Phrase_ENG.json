@@ -56,8 +56,8 @@
   { "phrase": "music desc",                       "translation": "Turn off/on music" },
   { "phrase": "battery saver",                    "translation": "Battery Saver" },
   { "phrase": "battery saver desc",               "translation": "Save battery life by reducing animation speed" },
-  { "phrase": "intro screen",                     "translation": "Intro Screen" },
-  { "phrase": "intro screen desc",                "translation": "Show the intro screen before starting the game" },
+  { "phrase": "depth hud",                        "translation": "Depth HUD" },
+  { "phrase": "depth hud desc",                   "translation": "Show distance and depth in the corner while you play." },
   { "phrase": "enable space",                     "translation": "Enable Space" },
   { "phrase": "enable space desc",                "translation": "Press space bar to play" },
 
