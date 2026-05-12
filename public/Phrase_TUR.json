@@ -56,8 +56,8 @@
   { "phrase": "music desc",                       "translation": "Müziği aç/kapat" },
   { "phrase": "battery saver",                    "translation": "Pil tasarrufu" },
   { "phrase": "battery saver desc",               "translation": "Animasyon hızını azaltarak pil tasarrufu sağla" },
-  { "phrase": "depth hud",                        "translation": "Derinlik HUD" },
-  { "phrase": "depth hud desc",                   "translation": "Oynarken köşede mesafe ve derinliği göster." },
+  { "phrase": "depth hud",                        "translation": "Mesafeyi göster" },
+  { "phrase": "depth hud desc",                   "translation": "Oynarken köşede mesafeyi göster." },
   { "phrase": "enable space",                     "translation": "Boşluk tuşunu etkinleştir" },
   { "phrase": "enable space desc",                "translation": "Oynamak için boşluk tuşuna bas" },
 

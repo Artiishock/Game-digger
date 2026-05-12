@@ -56,8 +56,8 @@
   { "phrase": "music desc",                       "translation": "Включить/выключить музыку" },
   { "phrase": "battery saver",                    "translation": "Экономия батареи" },
   { "phrase": "battery saver desc",               "translation": "Экономьте заряд батареи, снижая скорость анимации" },
-  { "phrase": "depth hud",                        "translation": "Глубина HUD" },
-  { "phrase": "depth hud desc",                   "translation": "Показывать дистанцию и глубину в углу во время игры." },
+  { "phrase": "depth hud",                        "translation": "Показывать дистанцию" },
+  { "phrase": "depth hud desc",                   "translation": "Показывать дистанцию в углу во время игры." },
   { "phrase": "enable space",                     "translation": "Включить пробел" },
   { "phrase": "enable space desc",                "translation": "Нажмите пробел для игры" },
 
