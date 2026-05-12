@@ -111,6 +111,7 @@ export const DigButton: React.FC = () => {
 
   const handleSpinTouchEnd = (e: React.TouchEvent<HTMLButtonElement>) => {
     if (e.cancelable) e.preventDefault();
+    e.currentTarget.blur();
     ignoreNextSpinClick.current = true;
     if (clearIgnoreTimer.current) clearTimeout(clearIgnoreTimer.current);
     clearIgnoreTimer.current = setTimeout(() => {
