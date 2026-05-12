@@ -1622,6 +1622,17 @@ export class GameRenderer {
     this.minerLayer.position.set(x, y)
   }
 
+  /**
+   * Камера: тот же темп сходимости к цели, что и фиксированный lerp за кадр при 60 FPS,
+   * но масштабированный по реальному `dt` — на 30/120 Hz персонаж не «уезжает» к краю экрана.
+   */
+  private _camFollowAlpha(lerpPerTickAt60: number, dtStep: number): number {
+    const l = Math.min(Math.max(lerpPerTickAt60, 1e-6), 0.95)
+    const n = 60 * Math.max(0, dtStep)
+    if (n <= 0) return 0
+    return 1 - Math.pow(1 - l, n)
+  }
+
   private _buildTunnel(){
     if (this.tileWorld) {
       this.tileWorld.renderer = this.app.renderer as PIXI.Renderer
@@ -2845,8 +2856,9 @@ export class GameRenderer {
       this.miner.root.x = this.idleX + hiIdle.rootOffsetXPx
       this.miner.root.y = this.surfY + hiIdle.rootOffsetYPx
       const tcX = this.miner.root.x - this.W / 2
-      this.camX+=(tcX-this.camX)*0.08
-      this.camY+=(this.idleCamY-this.camY)*0.08
+      const aIdle = this._camFollowAlpha(0.08, dt)
+      this.camX += (tcX - this.camX) * aIdle
+      this.camY += (this.idleCamY - this.camY) * aIdle
       this._syncLayerScroll()
       // Параллакс фона — двигается в 0.2x медленнее камеры
       this._syncSkyBgParallax()
@@ -2875,9 +2887,9 @@ export class GameRenderer {
       if (!this.tunnelActive) this._showTunnel()
       const tCX = this.charX - this.W / 2
       const tCY = this.charY - this.charScreenY
-      const camLerp = Math.min(0.12 * spd, 0.9)
-      this.camX += (tCX - this.camX) * camLerp
-      this.camY += (tCY - this.camY) * camLerp
+      const camA = this._camFollowAlpha(Math.min(0.12 * spd, 0.9), gameDt)
+      this.camX += (tCX - this.camX) * camA
+      this.camY += (tCY - this.camY) * camA
       this._syncLayerScroll()
       this._startTunnelCarveDelaySec = Math.max(0, this._startTunnelCarveDelaySec - gameDt)
       const skyVisible = this.camY < this.surfY + TILE * 2
@@ -3177,10 +3189,9 @@ export class GameRenderer {
 
     const tCX=this.charX-this.W/2
     const tCY=this.charY-this.charScreenY
-    // Камера с gameDt — при высокой скорости закрывает большее расстояние за тик
-    const camLerp=Math.min(0.12*spd, 0.9)
-    this.camX+=(tCX-this.camX)*camLerp
-    this.camY+=(tCY-this.camY)*camLerp
+    const camA = this._camFollowAlpha(Math.min(0.12 * spd, 0.9), gameDt)
+    this.camX+=(tCX-this.camX)*camA
+    this.camY+=(tCY-this.camY)*camA
 
     this._syncLayerScroll()
     // Рисуем туннель после обновления камеры — иначе он «убегает» вперёд.

@@ -28,12 +28,18 @@ const loadSvg = async (url: string): Promise<string | null> => {
   }
 };
 
+const touchLike = (e: React.PointerEvent) =>
+  e.pointerType === "touch" || e.pointerType === "pen";
+
 export const DigButton: React.FC = () => {
   const phase = useGameStore((s) => s.phase);
   const autoplay = useGameStore((s) => s.autoplay);
   const setAP = useGameStore((s) => s.setAutoplayOpen);
   const isAPOpen = useGameStore((s) => s.autoplayOpen);
   const spaceEnabled = useGameStore((s) => s.settings.spaceEnabled);
+
+  /** После обработки тач на Spin браузер может дослать synthetic click — глушим короткое окно. */
+  const suppressSpinClickUntil = useRef(0);
 
   const canDig = phase === "IDLE" || phase === "WIN" || phase === "LOSE";
   const isRunning = phase === "RUNNING" || phase === "BETTING";
@@ -85,7 +91,7 @@ export const DigButton: React.FC = () => {
     );
   }, [iconMarkup, spinPushed]);
 
-  const handleSpinClick = async () => {
+  const runSpinAction = async () => {
     gameAudio.unlock();
 
     const phaseNow = useGameStore.getState().phase;
@@ -105,8 +111,21 @@ export const DigButton: React.FC = () => {
     }
   };
 
-  const handleSpinClickRef = useRef(handleSpinClick);
-  useEffect(() => { handleSpinClickRef.current = handleSpinClick; });
+  const handleSpinPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (!touchLike(e)) return;
+    if (e.button !== 0 && e.button !== -1) return;
+    e.preventDefault();
+    void runSpinAction();
+    suppressSpinClickUntil.current = performance.now() + 450;
+  };
+
+  const handleSpinClickMouse = () => {
+    if (performance.now() < suppressSpinClickUntil.current) return;
+    void runSpinAction();
+  };
+
+  const handleSpinClickRef = useRef(runSpinAction);
+  useEffect(() => { handleSpinClickRef.current = runSpinAction; });
 
   useEffect(() => {
     if (!spaceEnabled) return;
@@ -141,7 +160,8 @@ export const DigButton: React.FC = () => {
 
       <button
         className={`ui-spin-btn${spinPushed ? " ui-spin-btn--active" : ""}`}
-        onClick={handleSpinClick}
+        onPointerDown={handleSpinPointerDown}
+        onClick={handleSpinClickMouse}
         type="button"
         aria-busy={phase === "BETTING"}
       >

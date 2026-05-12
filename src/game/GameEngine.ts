@@ -125,10 +125,15 @@ class GameEngine {
   }
 
   async startRound(): Promise<void> {
-    const store = useGameStore.getState()
+    let store = useGameStore.getState()
     if (store.phase === 'BETTING' || store.phase === 'RUNNING') return
 
     performance.mark('dr-round-click')
+    // Один кадр перед BETTING: на тач-устройствах иначе иногда «съедается» жест вместе с обновлением React.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    store = useGameStore.getState()
+    if (store.phase === 'BETTING' || store.phase === 'RUNNING') return
+
     this._setPhase(store, 'BETTING')
     store.resetStats()
 
