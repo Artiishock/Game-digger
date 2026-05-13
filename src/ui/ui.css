@@ -4515,32 +4515,44 @@
   flex-shrink: 0;
 }
 
-/* ═══════════════════════════════════════════════════════
-   GAME UI — tablet landscape (≈1150x744)
-   ═══════════════════════════════════════════════════════ */
 
-@media (min-width: 901px) and (max-width: 1300px) and (max-height: 820px) and (orientation: landscape) {
+
+
+/* ======================================================
+   GAME UI landscape aspect ratio under 1250px
+   Positions switch at 550px height; sizes scale smoothly between states.
+   ====================================================== */
+
+@media (max-width: 1250px) and (min-aspect-ratio: 1/1) {
   .ui-logo-zone {
-    top: clamp(15px, 1.7vw, 20px);
-    left: clamp(12px, 1.3vw, 15px);
-    width: 315px;
-    height: 90px;
+    top: 20px;
+    left: 15px;
+    width: clamp(85px, calc(68.1818vh - 279.0909px), 220px);
+    height: auto;
+    transform: none;
+  }
+
+  .ui-logo-zone img {
+    width: 100%;
+    max-width: 100%;
+    height: auto;
   }
 
   .ui-win-zone {
-    top: clamp(15px, 1.7vw, 20px);
+    top: 20px;
+    padding: clamp(15px, calc(5.1546vh - 13.3505px), 25px);
   }
 
   .ui-win-label,
   .ui-win-amount {
-    font-size: 12px;
+    font-size: clamp(12px, calc(10.3093vh - 44.701px), 32px);
     font-weight: 800;
   }
 
   .ui-topright {
-    top: clamp(15px, 1.7vw, 20px);
-    right: clamp(12px, 1.3vw, 15px);
-    gap: 10px;
+    top: 20px;
+    right: 15px;
+    gap: clamp(5px, calc(2.5773vh - 9.1753px), 10px);
   }
 
   .ui-icon-btns {
@@ -4560,65 +4572,59 @@
   }
 
   .ui-depth-block {
-    gap: 15px;
+    gap: clamp(5px, calc(5.1546vh - 23.3505px), 15px);
+    align-items: center;
   }
 
   .ui-depth-label {
-    font-size: 14px;
+    font-size: clamp(10px, calc(2.0619vh - 1.3402px), 14px);
     font-weight: 800;
   }
 
   .ui-depth-value {
-    font-size: 18px;
+    font-size: clamp(15px, calc(1.5464vh + 6.4948px), 18px);
     font-weight: 900;
   }
 
   .ui-spin-control {
     bottom: 28%;
-    gap: 15px;
+    gap: clamp(10px, calc(2.5773vh - 4.1753px), 15px);
   }
 
   .ui-spin-btn {
-    width: 200px;
-    height: 200px;
+    width: clamp(100px, calc(51.5464vh - 183.5052px), 200px);
+    height: clamp(100px, calc(51.5464vh - 183.5052px), 200px);
   }
 
   .ui-spin-btn-icon {
-    width: 159px;
-    height: 159px;
+    width: clamp(80px, calc(40.7216vh - 143.9691px), 159px);
+    height: clamp(80px, calc(40.7216vh - 143.9691px), 159px);
+  }
+
+  .ui-spin-btn-counter {
+    font-size: clamp(20px, calc(7.732vh - 22.5258px), 35px);
   }
 
   .ui-autospin-btn {
-    width: 100px;
-    height: 100px;
+    width: clamp(75px, calc(12.8866vh + 4.1237px), 100px);
+    height: clamp(75px, calc(12.8866vh + 4.1237px), 100px);
   }
 
   .ui-autospin-btn-icon {
-    width: 55px;
-    height: 55px;
+    width: clamp(40px, calc(7.732vh - 2.5258px), 55px);
+    height: clamp(40px, calc(7.732vh - 2.5258px), 55px);
   }
 
   .ui-hud {
-    height: clamp(100px, 13.5vh, 120px);
-    padding-left: clamp(12px, 1.3vw, 15px);
-    padding-right: clamp(12px, 1.3vw, 15px);
+    height: clamp(60px, calc(30.9278vh - 110.2062px), 120px);
+    padding-left: 15px;
+    padding-right: 15px;
     position: absolute;
-  }
-
-  .ui-speed-group {
-    position: absolute;
-    left: 50%;
-    overflow: visible;
-    bottom: clamp(12px, 1.3vw, 15px);
-    transform: translateX(-50%);
-    padding: 0;
-  }
-
-  .ui-bet-block {
-    position: absolute;
-    right: clamp(12px, 1.3vw, 15px);
-    bottom: clamp(12px, 1.3vw, 15px);
-    padding: 0;
+    background: linear-gradient(
+      to top,
+      rgba(6, 6, 6, 0.75) 0%,
+      rgba(0, 0, 0, 0) 100%
+    );
   }
 
   .ui-credit {
@@ -4632,52 +4638,94 @@
   }
 
   .ui-credit-label {
-    font-size: 24px;
+    font-size: clamp(12px, calc(6.1856vh - 22.0206px), 26px);
     font-weight: 900;
   }
 
   .ui-credit-value {
-    font-size: 32px;
+    font-size: clamp(12px, calc(10.3093vh - 44.701px), 28px);
     font-weight: 900;
   }
 
   .ui-group-wrapper {
     padding: 0;
-    gap: 20px;
+    gap: clamp(0px, calc(10.3093vh - 56.701px), 20px);
     background: none;
     border: none;
     box-shadow: none;
     position: static;
   }
 
+  .ui-speed-group {
+    position: absolute;
+    left: 50%;
+    overflow: visible;
+    bottom: 15px;
+    transform: translateX(-50%);
+    gap: clamp(5px, calc(2.5773vh - 9.1753px), 10px);
+    padding: 0;
+  }
+
   .ui-speed-btn {
-    width: 64px;
-    height: 67px;
+    width: clamp(31.5px, calc(16.7526vh - 60.6392px), 64px);
+    height: clamp(33px, calc(17.5258vh - 63.3918px), 67px);
   }
 
   .ui-speed-icon {
-    width: 43px;
-    height: 43px;
+    width: clamp(20px, calc(11.8557vh - 45.2062px), 43px);
+    height: clamp(20px, calc(11.8557vh - 45.2062px), 43px);
+  }
+
+  .ui-speed-label {
+    font-size: clamp(7px, calc(3.6082vh - 12.8454px), 14px);
+  }
+
+  .ui-speed-btn:hover .ui-speed-icon,
+  .ui-speed-btn:active .ui-speed-icon,
+  .ui-speed-btn--active .ui-speed-icon {
+    width: clamp(22px, calc(14.433vh - 57.3814px), 50px);
+    height: clamp(22px, calc(14.433vh - 57.3814px), 50px);
+    color: #f2fdff;
+  }
+
+  .ui-speed-btn--active {
+    width: clamp(30px, calc(17.5258vh - 66.3918px), 64px) !important;
+    height: clamp(30px, calc(19.0722vh - 74.8969px), 67px) !important;
+  }
+
+  .ui-speed-btn:hover .ui-speed-label,
+  .ui-speed-btn:active .ui-speed-label,
+  .ui-speed-btn--active .ui-speed-label {
+    font-size: clamp(10px, calc(3.0928vh - 7.0103px), 16px);
+    color: #facb32;
+  }
+
+  .ui-bet-block {
+    position: absolute;
+    right: 15px;
+    bottom: 15px;
+    gap: 5px;
+    padding: 0;
   }
 
   .ui-bet-label {
-    font-size: 24px;
+    font-size: clamp(12px, calc(6.1856vh - 22.0206px), 26px);
     font-weight: 900;
   }
 
   .ui-bet-amount {
-    font-size: 32px;
+    font-size: clamp(12px, calc(10.3093vh - 44.701px), 28px);
     font-weight: 900;
   }
 
   .ui-bet-adj {
-    width: 51.5px;
-    height: 53px;
+    width: clamp(31.5px, calc(10.3093vh - 25.201px), 51.5px);
+    height: clamp(33px, calc(10.3093vh - 23.701px), 53px);
   }
 
   .ui-bet-icon {
-    width: 22px;
-    height: 22px;
+    width: clamp(13px, calc(4.6392vh - 12.5155px), 22px);
+    height: clamp(13px, calc(4.6392vh - 12.5155px), 22px);
   }
 
   .ui-spin-btn-icon,
@@ -4692,32 +4740,108 @@
 
   .ui-spin-btn-icon svg,
   .ui-spin-btn-icon img {
+    width: clamp(80px, calc(40.7216vh - 143.9691px), 159px) !important;
+    height: clamp(80px, calc(40.7216vh - 143.9691px), 159px) !important;
+    max-width: clamp(80px, calc(40.7216vh - 143.9691px), 159px);
+    max-height: clamp(80px, calc(40.7216vh - 143.9691px), 159px);
     display: block;
   }
 
   .ui-autospin-btn-icon svg,
   .ui-autospin-btn-icon img {
+    width: clamp(40px, calc(7.732vh - 2.5258px), 55px) !important;
+    height: clamp(40px, calc(7.732vh - 2.5258px), 55px) !important;
+    max-width: clamp(40px, calc(7.732vh - 2.5258px), 55px);
+    max-height: clamp(40px, calc(7.732vh - 2.5258px), 55px);
     display: block;
   }
 
   .ui-speed-icon svg,
   .ui-speed-icon img {
-    width: 43px !important;
-    height: 43px !important;
-    max-width: 43px;
-    max-height: 43px;
+    width: clamp(20px, calc(11.8557vh - 45.2062px), 43px) !important;
+    height: clamp(20px, calc(11.8557vh - 45.2062px), 43px) !important;
+    max-width: clamp(20px, calc(11.8557vh - 45.2062px), 43px);
+    max-height: clamp(20px, calc(11.8557vh - 45.2062px), 43px);
     display: block;
   }
 
   .ui-bet-icon svg,
   .ui-bet-icon img {
-    width: 22px !important;
-    height: 22px !important;
-    max-width: 22px;
-    max-height: 22px;
+    width: clamp(13px, calc(4.6392vh - 12.5155px), 22px) !important;
+    height: clamp(13px, calc(4.6392vh - 12.5155px), 22px) !important;
+    max-width: clamp(13px, calc(4.6392vh - 12.5155px), 22px);
+    max-height: clamp(13px, calc(4.6392vh - 12.5155px), 22px);
     display: block;
   }
 }
+
+@media (max-width: 1250px) and (min-aspect-ratio: 1/1) and (max-height: 600px) {
+  .ui-logo-zone {
+    display: flex;
+    position: fixed;
+    left: max(35px, calc(clamp(85px, calc(68.1818vh - 279.0909px), 220px) / 2 + 5px));
+    top: clamp(63px, calc(3.3333vh + 49.6667px), 68px);
+    height: auto;
+    transform: translateX(-50%);
+  }
+
+  .ui-logo-zone img {
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+  }
+
+  .ui-win-zone {
+    top: 10px;
+  }
+
+  .ui-topright {
+    top: 10px;
+    right: 10px;
+  }
+
+  .ui-icon-btns .ui-icon-btn:nth-child(1) {
+    position: fixed;
+    left: max(35px, calc(clamp(85px, calc(68.1818vh - 279.0909px), 220px) / 2 + 5px));
+    top: 10px;
+    transform: translateX(-50%);
+  }
+
+  .ui-depth-block {
+    position: fixed;
+    left: max(35px, calc(clamp(85px, calc(68.1818vh - 279.0909px), 220px) / 2 + 5px));
+    top: clamp(140px, calc(50vh - 120px), 180px);
+    transform: translateX(-50%);
+  }
+
+  .ui-spin-control {
+    right: 0;
+    bottom: 25%;
+  }
+
+  .ui-credit {
+    bottom: 15px;
+    left: 20px;
+    position: absolute;
+  }
+
+  .ui-bet-block {
+    right: 20px;
+    bottom: 15px;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* =======================================================
    GAME UI portrait aspect ratio
@@ -4747,6 +4871,7 @@
 
   .ui-win-zone {
     top: clamp(20px, 3.35vw, 25px);
+    padding: clamp(15px, calc(2vw + 7px), 25px);
   }
 
   .ui-win-label,
@@ -4868,12 +4993,12 @@
   }
 
   .ui-credit-label {
-    font-size: clamp(12px, calc(2.8vw + 0.8px), 26px);
+    font-size: clamp(10px, calc(2.8vw - 0.64px), 26px);
     font-weight: 800;
   }
 
   .ui-credit-value {
-    font-size: clamp(12px, calc(2.6vw + 1.6px), 28px);
+    font-size: clamp(10px, calc(2.6vw + 0.12px), 28px);
     font-weight: 900;
   }
 
@@ -4931,7 +5056,7 @@
   }
 
   .ui-bet-label {
-    font-size: clamp(12px, calc(2.8vw + 0.8px), 26px);
+    font-size: clamp(10px, calc(2.8vw - 0.64px), 26px);
     font-weight: 800;
   }
 
@@ -4940,7 +5065,7 @@
   }
 
   .ui-bet-amount {
-    font-size: clamp(12px, calc(3.2vw - 0.8px), 28px);
+    font-size: clamp(10px, calc(3.2vw - 2.16px), 28px);
     font-weight: 900;
   }
 
@@ -5108,267 +5233,7 @@
 
 }
 
-/* =======================================================
-   GAME UI — mobile landscape (≈900x400)
-   Uses mobile portrait sizes.
-   ═══════════════════════════════════════════════════════ */
 
-@media (max-width: 900px) and (max-height: 500px) and (orientation: landscape) {
-  .ui-logo-zone {
-    display: none;
-  }
-
-  .ui-win-zone {
-    top: clamp(8px, 2.5vh, 10px);
-    width: 175;
-    height: 45px;
-  }
-
-  .ui-win-label,
-  .ui-win-amount {
-    font-size: 12px;
-    font-weight: 800;
-  }
-
-  .ui-topright {
-    top: clamp(8px, 2.5vh, 10px);
-    right: clamp(8px, 1.2vw, 10px);
-    gap: 5px;
-  }
-
-  .ui-icon-btns {
-    gap: 5px;
-  }
-
-  .ui-icon-btn {
-    width: 51.5px;
-    height: 53px;
-  }
-
-  .ui-icon,
-  .ui-icon-btn svg,
-  .ui-icon-btn img {
-    width: 24px;
-    height: 24px;
-  }
-
-  .ui-icon-btns .ui-icon-btn:nth-child(1) {
-    position: fixed;
-    left: clamp(32px, 3.9vw, 35px);
-    top: clamp(8px, 2.5vh, 10px);
-    transform: translateX(-50%);
-  }
-
-  .ui-depth-block {
-    position: fixed;
-    left: clamp(32px, 3.9vw, 35px);
-    top: clamp(65px, 7.78vw, 70px);
-    transform: translateX(-50%);
-    gap: 5px;
-    align-items: center;
-  }
-
-  .ui-depth-label {
-    font-size: 10px;
-    font-weight: 800;
-  }
-
-  .ui-depth-value {
-    font-size: 15px;
-    font-weight: 800;
-  }
-
-  .ui-spin-control {
-    right: 0;
-    bottom: 25%;
-    gap: 10px;
-  }
-
-  .ui-spin-btn {
-    width: 100px;
-    height: 100px;
-  }
-
-  .ui-spin-btn-icon {
-    width: 80px;
-    height: 80px;
-  }
-
-  .ui-spin-btn-counter {
-    font-size: 20px;
-  }
-
-  .ui-autospin-btn {
-    width: 75px;
-    height: 75px;
-  }
-
-  .ui-autospin-btn-icon {
-    width: 40px;
-    height: 40px;
-  }
-
-  .ui-hud {
-    height: clamp(55px, 15vh, 60px);
-    padding-left: clamp(15px, 2.2vw, 20px);
-    padding-right: clamp(15px, 2.2vw, 20px);
-    background: linear-gradient(
-      to top,
-      rgba(6, 6, 6, 0.75) 0%,
-      rgba(0, 0, 0, 0) 100%
-    );
-  }
-
-  .ui-credit {
-    width: auto;
-    height: auto;
-    padding: 0;
-    background: none;
-    border: none;
-    border-radius: 0;
-    bottom: clamp(12px, 3.75vh, 15px);
-    left: clamp(15px, 2.2vw, 20px);
-    position: absolute;
-    align-items: flex-start;
-  }
-
-  .ui-credit-label {
-    font-size: 12px;
-    font-weight: 800;
-  }
-
-  .ui-credit-value {
-    font-size: 12px;
-    font-weight: 900;
-  }
-
-  .ui-group-wrapper {
-    position: static;
-    padding: 0;
-    gap: 0;
-    background: none;
-    border: none;
-    box-shadow: none;
-  }
-
-  .ui-speed-group {
-    position: absolute;
-    left: 50%;
-    bottom: clamp(12px, 3.75vh, 15px);
-    transform: translateX(-50%);
-    gap: 5px;
-    padding: 0;
-  }
-
-  .ui-speed-btn {
-    width: 31.5px;
-    height: 33px;
-  }
-
-  .ui-speed-icon {
-    width: 20px;
-    height: 20px;
-  }
-
-  .ui-speed-label {
-    font-size: 7px;
-  }
-
-  .ui-speed-btn:hover .ui-speed-icon,
-  .ui-speed-btn:active .ui-speed-icon,
-  .ui-speed-btn--active .ui-speed-icon {
-    width: 22px;
-    height: 22px;
-    color: #f2fdff;
-  }
-
-  .ui-speed-btn--active {
-    width: 30px !important;
-    height: 30px !important;
-  }
-
-  .ui-speed-btn:hover .ui-speed-label,
-  .ui-speed-btn:active .ui-speed-label,
-  .ui-speed-btn--active .ui-speed-label {
-    font-size: 10px;
-    color: #facb32;
-  }
-
-  .ui-bet-block {
-    position: absolute;
-    right: clamp(15px, 2.2vw, 20px);
-    bottom: clamp(12px, 3.75vh, 15px);
-    gap: 5px;
-    padding: 0;
-  }
-
-  .ui-bet-label {
-    font-size: 12px;
-    font-weight: 800;
-  }
-
-  .ui-bet-amount {
-    font-size: 12px;
-    font-weight: 900;
-    min-width: 50px;
-  }
-
-  .ui-bet-adj {
-    width: 31.5px;
-    height: 33px;
-  }
-
-  .ui-bet-icon {
-    width: 13px;
-    height: 13px;
-  }
-
-  .ui-spin-btn-icon,
-  .ui-autospin-btn-icon,
-  .ui-speed-icon,
-  .ui-bet-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-
-  .ui-spin-btn-icon svg,
-  .ui-spin-btn-icon img {
-    width: 80px !important;
-    height: 80px !important;
-    max-width: 80px;
-    max-height: 80px;
-    display: block;
-  }
-
-  .ui-autospin-btn-icon svg,
-  .ui-autospin-btn-icon img {
-    width: 40px !important;
-    height: 40px !important;
-    max-width: 40px;
-    max-height: 40px;
-    display: block;
-  }
-
-  .ui-speed-icon svg,
-  .ui-speed-icon img {
-    width: 20px !important;
-    height: 20px !important;
-    max-width: 20px;
-    max-height: 20px;
-    display: block;
-  }
-
-  .ui-bet-icon svg,
-  .ui-bet-icon img {
-    width: 13px !important;
-    height: 13px !important;
-    max-width: 13px;
-    max-height: 13px;
-    display: block;
-  }
-}
 
 
 .balance-bet-modal-layer {
