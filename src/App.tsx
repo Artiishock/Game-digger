@@ -14,7 +14,7 @@ import { gameAudio } from "./audio/GameAudio";
 import { useWindowSize } from "./hooks/useWindowSize";
 import { gameEngine } from "./game/GameEngine";
 import { addReplayRound } from "./ui/menus/InfoAndReplay";
-import { toDisplay } from "./rgs/client";
+import { toDisplay, isReplayMode } from "./rgs/client";
 import { preloadStartupAssets } from "./game/gameAssets";
 import "./ui/ui.css";
 
@@ -32,7 +32,7 @@ export const App: React.FC = () => {
   const settings = useGameStore(s => s.settings, shallow)
   const prevPhase = useRef<string>('')
   const [assetsReady, setAssetsReady] = useState(false)
-  const [gameStarted, setGameStarted] = useState(false)
+  const [gameStarted, setGameStarted] = useState(() => isReplayMode())
 
   // ── Boot ─────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -175,7 +175,7 @@ ${d.toLocaleTimeString("en-GB", {
       <Hud />
 
       {/* ── DIG button + Autoplay button ── */}
-      <DigButton />
+      {!isReplayMode() && <DigButton />}
 
       {/* ── Top-right controls ── */}
       <TopBar />

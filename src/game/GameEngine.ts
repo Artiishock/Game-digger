@@ -58,6 +58,12 @@ class GameEngine {
 
       gameAudio.init()
 
+      // Stake Bet Replay: game opened with ?betID=xxx → play round back without betting.
+      if (RGS.isReplayMode() && auth.round && auth.round.events.length > 0) {
+        this.startReplay(auth.round.events, 0, auth.round.roundID)
+        return
+      }
+
       // Если у игрока остался незакрытый раунд — закрываем его молча,
       // чтобы Stake не блокировал следующий /play с "player has active bet".
       if (auth.round?.isActive) {
@@ -97,14 +103,14 @@ class GameEngine {
 
   // ─── Single round ──────────────────────────────────────────────────────────
 
-  startReplay(events: RGS.RoundEvent[], worldSeed: number): void {
+  startReplay(events: RGS.RoundEvent[], worldSeed: number, roundID?: string): void {
     const store = useGameStore.getState()
     if (store.phase === 'BETTING' || store.phase === 'RUNNING') return
     store.setMenuOpen(false)
     store.setWorldSeed(worldSeed)
     store.setReplayMode(true)
     store.resetStats()
-    store.setEvents(events, store.roundID)
+    store.setEvents(events, roundID ?? store.roundID)
     this._setPhase(store, 'RUNNING')
   }
 

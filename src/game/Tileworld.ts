@@ -11,10 +11,10 @@ const CPW = CHUNK_W * TILE
 const CPH = CHUNK_H * TILE
 
 /** Буфер вокруг камеры при расчёте чанков (px) — меньше множитель → меньше активных чанков / нагрузка на Mac. */
-export const TILEWORLD_CHUNK_VIEW_BUF_PX = CPW * 2.0
+export const TILEWORLD_CHUNK_VIEW_BUF_PX = CPW * 1.0
 
 /** Запас чанков вокруг окна камеры — чанк удаляется только за пределами `colMin±cull` / `rowMin±cull`. */
-export const TILEWORLD_CHUNK_CULL_MARGIN = 4
+export const TILEWORLD_CHUNK_CULL_MARGIN = 2
 
 /** Текущий размер viewport для чанков из `GameConfig.viewportChunks`. */
 export function tileWorldChunkViewportFromConfig(): { w: number; h: number } {

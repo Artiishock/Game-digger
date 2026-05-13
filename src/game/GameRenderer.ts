@@ -1222,7 +1222,7 @@ class ObjectSpawner {
 
 // ─── Particles ────────────────────────────────────────────────────────────────
 
-interface Particle{gfx:PIXI.Graphics;vx:number;vy:number;life:number}
+interface Particle{gfx:PIXI.Sprite;vx:number;vy:number;life:number}
 interface FloatText{txt:PIXI.Text;vy:number;life:number}
 
 // ─── Деревья (слой _sceneryLayer): настройка размера и позиции ─────────────
@@ -1298,6 +1298,7 @@ export class GameRenderer {
   private _cloudCount = 6
   private _lastWorldMaskGrassTop = -999
   private _lastWorldMaskW = 0
+  private _particleTexture: PIXI.Texture = PIXI.Texture.EMPTY
   private _treeRunDx: [number, number, number] = [...TREE_X_RUN_DX]
   private spawner:ObjectSpawner|null=null
   private tunnelActive = false
@@ -1465,6 +1466,14 @@ export class GameRenderer {
       app=new PIXI.Application({...base,antialias:false,forceCanvas:true})
     }
     this.app=app
+
+    // ─── Общая текстура для частиц (белый круг) — все частицы батчатся в 1 draw-call ──
+    {
+      const pg = new PIXI.Graphics()
+      pg.beginFill(0xffffff).drawCircle(8, 8, 8).endFill()
+      this._particleTexture = app.renderer.generateTexture(pg, { resolution: 1 })
+      pg.destroy()
+    }
 
     // ─── PixiJS Devtools setup ──────────────────────────────────────────────
     // All three methods combined for maximum compatibility:
@@ -3874,11 +3883,12 @@ export class GameRenderer {
     const useN = Math.min(Math.max(0, n), room)
     if (useN <= 0) return
     for(let i=0;i<useN;i++){
-      const g=new PIXI.Graphics()
-      g.beginFill(col);g.drawCircle(0,0,Math.random()*5+2);g.endFill()
-      g.x=wx;g.y=wy;this.objectsLayer.addChild(g)  // ← частицы тоже в objectsLayer
+      const r=(Math.random()*5+2)*2
+      const spr=new PIXI.Sprite(this._particleTexture)
+      spr.tint=col;spr.width=r;spr.height=r;spr.anchor.set(0.5)
+      spr.x=wx;spr.y=wy;this.objectsLayer.addChild(spr)
       const a=Math.random()*Math.PI*2,s=Math.random()*100+60
-      this.particles.push({gfx:g,vx:Math.cos(a)*s,vy:Math.sin(a)*s-80,life:1})
+      this.particles.push({gfx:spr,vx:Math.cos(a)*s,vy:Math.sin(a)*s-80,life:1})
     }
   }
 
@@ -3912,10 +3922,10 @@ export class GameRenderer {
     perf.end('spine', _tsp)
 
     this.particles=this.particles.filter(p=>{
-      if ((p.gfx as { destroyed?: boolean }).destroyed) return false
+      if (p.gfx.destroyed) return false
       p.life-=dt*1.8
       if(p.life<=0){
-        if(!(p.gfx as { destroyed?: boolean }).destroyed){
+        if(!p.gfx.destroyed){
           this.objectsLayer.removeChild(p.gfx)
           p.gfx.destroy()
         }
@@ -4087,6 +4097,7 @@ export class GameRenderer {
     this.liveWinBadge.removeFromParent()
     this.miner.destroy()
     this.liveWinBadge.destroy({ children: true })
+    if (!this._particleTexture.destroyed) this._particleTexture.destroy(true)
     this.app.destroy(false,{children:true,texture:true})
   }
 }

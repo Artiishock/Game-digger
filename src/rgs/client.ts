@@ -45,6 +45,7 @@ export interface UrlParams {
   lang:      string
   device:    'mobile' | 'desktop'
   rgsUrl:    string
+  betID:     string | null
 }
 
 export function getUrlParams(): UrlParams {
@@ -55,12 +56,19 @@ export function getUrlParams(): UrlParams {
     lang:      rawLang.split('-')[0].toLowerCase(),
     device:    (p.get('device')   ?? 'desktop') as 'mobile' | 'desktop',
     rgsUrl:    p.get('rgs_url')   ?? '',
+    betID:     p.get('betID') ?? p.get('roundID') ?? null,
   }
 }
 
 /** True when no rgs_url is present → run in FUN/demo mode */
 export function isDemo(): boolean {
   return !getUrlParams().rgsUrl
+}
+
+/** True when Stake opens the game for bet replay (?betID=... present) */
+export function isReplayMode(): boolean {
+  const { betID, rgsUrl } = getUrlParams()
+  return betID !== null && rgsUrl !== ''
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -204,8 +212,10 @@ async function post<T>(path: string, body: Record<string, unknown>): Promise<T> 
 // ─── API calls ────────────────────────────────────────────────────────────────
 
 export async function authenticate(): Promise<AuthResponse> {
-  const { sessionID } = getUrlParams()
-  const raw = await post<any>('/wallet/authenticate', { sessionID })
+  const { sessionID, betID } = getUrlParams()
+  const body: Record<string, unknown> = { sessionID }
+  if (betID) body.betID = betID
+  const raw = await post<any>('/wallet/authenticate', body)
   const out: AuthResponse = {
     balance: raw?.balance ?? { amount: 0, currency: 'USD' },
     config:  raw?.config  ?? {

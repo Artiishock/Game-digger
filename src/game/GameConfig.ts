@@ -308,7 +308,7 @@ export const GameConfig = {
      * 1.0 = рендер в логических пикселях, нет Retina-масштаба → ~56% меньше пикселей на Mac.
      * На старых MacBook Air / Intel Mac это критичная экономия GPU.
      */
-    maxDevicePixelRatio: 1.0,
+    maxDevicePixelRatio: 1.25,
 
     /** Сколько чанков из буферной очереди собирать за один кадр (меньше — ровнее FPS, дольше «догруз»). */
     tileWorldChunkBuildsPerFrame: 1,
