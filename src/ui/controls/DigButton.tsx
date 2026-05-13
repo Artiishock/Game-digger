@@ -82,7 +82,12 @@ export const DigButton: React.FC = () => {
   useEffect(() => {
     if (!iconMarkup || !iconRef.current) return;
     if (!spinPushed) return;
-    const clickArea = iconRef.current.querySelector("#clickArea");
+    const span = iconRef.current;
+    // Guard: if push SVG isn't in DOM yet, wait for iconMarkup to update
+    if (!span.querySelector("#clickArea")) return;
+    // Re-inject to reset SMIL fill="freeze" state so animation replays cleanly
+    span.innerHTML = iconMarkup;
+    const clickArea = span.querySelector("#clickArea");
     if (!clickArea) return;
     clickArea.dispatchEvent(
       new MouseEvent("click", { bubbles: false, cancelable: true })
