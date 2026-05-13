@@ -83,15 +83,22 @@ export const DigButton: React.FC = () => {
     if (!iconMarkup || !iconRef.current) return;
     if (!spinPushed) return;
     const span = iconRef.current;
-    // Guard: if push SVG isn't in DOM yet, wait for iconMarkup to update
     if (!span.querySelector("#clickArea")) return;
-    // Re-inject to reset SMIL fill="freeze" state so animation replays cleanly
+    // Re-inject to reset frozen SMIL fill="freeze" state
     span.innerHTML = iconMarkup;
-    const clickArea = span.querySelector("#clickArea");
-    if (!clickArea) return;
-    clickArea.dispatchEvent(
-      new MouseEvent("click", { bubbles: false, cancelable: true })
-    );
+    // rAF: give WebKit one paint frame to initialize new SMIL timelines
+    const raf = requestAnimationFrame(() => {
+      const animations = span.querySelectorAll<SVGAnimationElement>(
+        "animate, animateTransform, set"
+      );
+      animations.forEach((el) => {
+        if (typeof el.beginElementAt !== "function") return;
+        const beginAttr = el.getAttribute("begin") ?? "";
+        const offset = parseFloat(beginAttr.match(/\+(\d+(?:\.\d+)?)s/)?.[1] ?? "0");
+        el.beginElementAt(offset);
+      });
+    });
+    return () => cancelAnimationFrame(raf);
   }, [iconMarkup, spinPushed]);
 
   const runSpinAction = async () => {
