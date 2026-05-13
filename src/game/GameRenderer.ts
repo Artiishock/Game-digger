@@ -1296,6 +1296,8 @@ export class GameRenderer {
   private _cloudPrevCamX: number | null = null
   private _cloudSpawnTimer = 0
   private _cloudCount = 6
+  private _lastWorldMaskGrassTop = -999
+  private _lastWorldMaskW = 0
   private _treeRunDx: [number, number, number] = [...TREE_X_RUN_DX]
   private spawner:ObjectSpawner|null=null
   private tunnelActive = false
@@ -1452,6 +1454,7 @@ export class GameRenderer {
     const base:PIXI.IApplicationOptions={
       view:canvas,width:w,height:h,backgroundColor:C.bg,
       antialias:aa,resolution:dpr,autoDensity:true,hello:false,
+      powerPreference:'high-performance',
     } as any
     let app:PIXI.Application
     try{
@@ -1701,7 +1704,7 @@ export class GameRenderer {
   }
 
   private _buildSky(){
-    this._cloudCount = 18
+    this._cloudCount = 10
     for (let i = this._skyCloudLayer.children.length - 1; i >= 0; i--) {
       const ch = this._skyCloudLayer.removeChildAt(i)
       ch.destroy({ children: true })
@@ -1730,7 +1733,7 @@ export class GameRenderer {
     const cloudKeys = ['cloud1','cloud2','cloud3','cloud4','cloud5','cloud6'] as const
     const topAtBuild = Math.max(0, Math.min(this.H, -this.camY))
     const spreadW = Math.max(this.W, 900)
-    for (let i = 0; i < 18; i++) {
+    for (let i = 0; i < 10; i++) {
       const ct = this._textures.get(cloudKeys[i % 6]!)
       if (!ct) continue
       const c = new PIXI.Sprite(ct)
@@ -2001,7 +2004,7 @@ export class GameRenderer {
     }
     this._syncForestToCamera()
 
-    if (this._cloudCount < 18) {
+    if (this._cloudCount < 10) {
       this._cloudSpawnTimer -= dt
       if (this._cloudSpawnTimer <= 0) {
         this._spawnCloud(top)
@@ -4023,6 +4026,9 @@ export class GameRenderer {
     // Grass row=0 верхний край = world y=0, на экране = (0 - camY) = -camY.
     // Маска = прямоугольник от 0 до screenGrassTop.
     const screenGrassTop = Math.max(0, Math.min(h, -this.camY))
+    if (Math.abs(screenGrassTop - this._lastWorldMaskGrassTop) < 0.5 && w === this._lastWorldMaskW) return
+    this._lastWorldMaskGrassTop = screenGrassTop
+    this._lastWorldMaskW = w
     this._worldMask.clear()
     this._worldMask.beginFill(0xffffff)
     this._worldMask.drawRect(0, 0, w, screenGrassTop)

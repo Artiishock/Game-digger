@@ -31,6 +31,8 @@ export class LavaSimulation {
   private _destroyed = false
 
   private _pools: StaticPool[] = []
+  private _lastRenderCamX = Infinity
+  private _lastRenderCamY = Infinity
 
   constructor() {
     this.container = new PIXI.Container()
@@ -127,6 +129,8 @@ export class LavaSimulation {
     const pool: StaticPool = { cx: rect.cx, cy: rect.cy, hw: rect.hw, hh: rect.hh, cr: cr0 }
     this._addCaveMaskRect(pool)
     this._pools.push(pool)
+    this._lastRenderCamX = Infinity
+    this._lastRenderCamY = Infinity
   }
 
   setCameraPos(camX: number, camY: number) {
@@ -153,9 +157,17 @@ export class LavaSimulation {
 
     this._texOffX += dt * 6
     this._texOffY += dt * 3.5
-    const _tr = perf.begin('lava.render', 1)
-    this._render()
-    perf.end('lava.render', _tr)
+
+    const movedX = Math.abs(this._camX - this._lastRenderCamX)
+    const movedY = Math.abs(this._camY - this._lastRenderCamY)
+    if (movedX > CELL_PX * 2 || movedY > CELL_PX * 2) {
+      this._lastRenderCamX = this._camX
+      this._lastRenderCamY = this._camY
+      const _tr = perf.begin('lava.render', 1)
+      this._render()
+      perf.end('lava.render', _tr)
+    }
+
     if (this._destroyed) return
     if (this._tilingSprite) {
       const tw = this._tilingSprite.width
@@ -249,6 +261,8 @@ export class LavaSimulation {
     this._texMaskGfx.clear()
     this._texOffX = 0
     this._texOffY = 0
+    this._lastRenderCamX = Infinity
+    this._lastRenderCamY = Infinity
     this.container.visible = false
   }
 

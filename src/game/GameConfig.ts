@@ -300,26 +300,27 @@ export const GameConfig = {
    */
   performance: {
     /** Главный экран (idle): верхний предел FPS тикера (0 = без лимита). */
-    idleMenuMaxFps: 30,
+    idleMenuMaxFps: 24,
     /** Остановка `app.ticker` при `document.visibilityState === 'hidden'`. */
     pauseTickerWhenPageHidden: true,
     /**
      * Потолок `devicePixelRatio` для внутреннего разрешения Pixi (`resolution` / backing store).
-     * На Retina‑MacBook при 2.0 пикселей в 4× больше, чем при DPR 1 на многих Windows‑дисплеях.
+     * 1.0 = рендер в логических пикселях, нет Retina-масштаба → ~56% меньше пикселей на Mac.
+     * На старых MacBook Air / Intel Mac это критичная экономия GPU.
      */
-    maxDevicePixelRatio: 1.25,
+    maxDevicePixelRatio: 1.0,
 
     /** Сколько чанков из буферной очереди собирать за один кадр (меньше — ровнее FPS, дольше «догруз»). */
-    tileWorldChunkBuildsPerFrame: 2,
+    tileWorldChunkBuildsPerFrame: 1,
 
     /** Верхний предел одновременных круглых частиц `_burst` (остальные отбрасываются). */
-    particleMax: 320,
+    particleMax: 120,
     /** Число частиц при сборе пропа (не HOME). */
-    burstCollectParticles: 8,
-    burstHomeParticles: 20,
-    burstLavaHitParticles: 12,
-    burstGoldBreakParticles: 2,
-    burstGoldCollectParticles: 8,
+    burstCollectParticles: 5,
+    burstHomeParticles: 12,
+    burstLavaHitParticles: 6,
+    burstGoldBreakParticles: 1,
+    burstGoldCollectParticles: 4,
     /**
      * WebGL multisampling (antialias). На встроенных GPU (MacBook Air, старые Intel) даёт заметную цену кадра;
      * на дискретных Windows часто почти бесплатно — при необходимости поставьте true.
