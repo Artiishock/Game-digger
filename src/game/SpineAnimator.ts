@@ -10,8 +10,8 @@
  */
 
 import * as PIXI from "pixi.js";
-import { Spine, TextureAtlas } from "pixi-spine";
-import { SkeletonJson, AtlasAttachmentLoader } from "@pixi-spine/runtime-4.1";
+import { Assets } from "pixi.js";
+import { Spine, TextureAtlas, SpineTexture, SkeletonJson, AtlasAttachmentLoader } from "@esotericsoftware/spine-pixi-v8";
 import type { EventType } from "../rgs/client";
 import { TILE } from "./Tileworld";
 import { GameConfig } from "./GameConfig";
@@ -1851,18 +1851,10 @@ export class SpineAnimator {
           if (!r.ok) throw new Error(`${jsonUrl} (${r.status})`);
           return r.json();
         }),
-        PIXI.Texture.fromURL(pngUrl),
+        Assets.load<PIXI.Texture>(pngUrl),
       ]);
-      const atlas = new TextureAtlas(
-        atlasText,
-        (_p: string, cb: (t: PIXI.BaseTexture) => void) =>
-          cb(texture.baseTexture),
-      );
-      if (
-        typeof spineJson.skeleton?.spine === "string" &&
-        spineJson.skeleton.spine.startsWith("4.2")
-      )
-        spineJson.skeleton.spine = "4.1.24";
+      const atlas = new TextureAtlas(atlasText);
+      for (const page of atlas.pages) page.setTexture(SpineTexture.from(texture.source));
       const skelJson = new SkeletonJson(new AtlasAttachmentLoader(atlas));
       skelJson.scale = 1;
       return skelJson.readSkeletonData(spineJson);
@@ -1901,17 +1893,10 @@ export class SpineAnimator {
           if (!r.ok) throw new Error(`${jsonUrl} (${r.status})`);
           return r.json();
         }),
-        PIXI.Texture.fromURL(pngUrl),
+        Assets.load<PIXI.Texture>(pngUrl),
       ]);
-      const atlas = new TextureAtlas(
-        atlasText,
-        (_p: string, cb: (t: PIXI.BaseTexture) => void) => cb(texture.baseTexture),
-      );
-      if (
-        typeof spineJson.skeleton?.spine === "string" &&
-        spineJson.skeleton.spine.startsWith("4.2")
-      )
-        spineJson.skeleton.spine = "4.1.24";
+      const atlas = new TextureAtlas(atlasText);
+      for (const page of atlas.pages) page.setTexture(SpineTexture.from(texture.source));
       const skelJson = new SkeletonJson(new AtlasAttachmentLoader(atlas));
       skelJson.scale = 1;
       return skelJson.readSkeletonData(spineJson);
@@ -1942,22 +1927,11 @@ export class SpineAnimator {
           if (!r.ok) throw new Error(`${jsonUrl} (${r.status})`);
           return r.json();
         }),
-        PIXI.Texture.fromURL(pngUrl),
+        Assets.load<PIXI.Texture>(pngUrl),
       ]);
 
-      const atlas = new TextureAtlas(
-        atlasText,
-        (_p: string, cb: (t: PIXI.BaseTexture) => void) =>
-          cb(texture.baseTexture),
-      );
-
-      if (
-        typeof spineJson.skeleton?.spine === "string" &&
-        spineJson.skeleton.spine.startsWith("4.2")
-      ) {
-        spineJson.skeleton.spine = "4.1.24";
-      }
-
+      const atlas = new TextureAtlas(atlasText);
+      for (const page of atlas.pages) page.setTexture(SpineTexture.from(texture.source));
       const skelJson = new SkeletonJson(new AtlasAttachmentLoader(atlas));
       skelJson.scale = 1;
       return skelJson.readSkeletonData(spineJson);
@@ -2070,7 +2044,7 @@ export class SpineAnimator {
     try {
       const cur = (inst.state as any).tracks?.[0];
       if (cur?.animation?.name === animName) return;
-      if (inst.spineData.findAnimation(animName)) {
+      if (inst.skeleton.data.findAnimation(animName)) {
         inst.state.setAnimation(0, animName, loop);
         this._refreshNullSlots(inst, animName);
       }
@@ -2090,7 +2064,7 @@ export class SpineAnimator {
     try {
       const cur = (inst.state as any).tracks?.[track];
       if (cur?.animation?.name === animName) return;
-      if (inst.spineData.findAnimation(animName)) {
+      if (inst.skeleton.data.findAnimation(animName)) {
         inst.state.setAnimation(track, animName, loop);
       }
     } catch {
@@ -2105,7 +2079,7 @@ export class SpineAnimator {
   ): void {
     if (!inst || (inst as any).destroyed) return;
     try {
-      const anim = inst.spineData.findAnimation(animName);
+      const anim = inst.skeleton.data.findAnimation(animName);
       if (!anim) return;
       const animDuration = anim.duration;
       const timeScale =
@@ -2235,7 +2209,7 @@ export class SpineAnimator {
       if (sideCtrl && backRotate)
         (backRotate as any).scaleY = (sideCtrl as any).scaleY;
 
-      skel.updateWorldTransform();
+      (skel as any).updateWorldTransform();
 
       // Управление attachment-ами
       const slotFront = skel.findSlot("coin_front");
@@ -2247,6 +2221,7 @@ export class SpineAnimator {
         if (slotFront) (slotFront as any).attachment = null;
         if (slotBack) (slotBack as any).attachment = null;
         const skin = skel.data.defaultSkin;
+        if (!skin) return;
         const idx = skel.data.findSlot("side_left")?.index ?? -1;
         const att = idx >= 0 ? skin.getAttachment(idx, "coin_side") : null;
         if (slotL) (slotL as any).attachment = att ?? null;
@@ -2308,7 +2283,7 @@ export class SpineAnimator {
   ): Spine | null {
     try {
       const spine = new Spine(skelData);
-      if (spine.spineData.findAnimation(animName)) {
+      if (spine.skeleton.data.findAnimation(animName)) {
         spine.state.setAnimation(0, animName, true);
       }
       spine.scale.set(scale);
@@ -2326,7 +2301,7 @@ export class SpineAnimator {
     if (!this._skeletonData) return null;
     try {
       const spine = new Spine(this._skeletonData);
-      if (spine.spineData.findAnimation(animName)) {
+      if (spine.skeleton.data.findAnimation(animName)) {
         spine.state.setAnimation(0, animName, true);
       }
       spine.scale.set(scale);

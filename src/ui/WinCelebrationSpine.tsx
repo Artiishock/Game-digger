@@ -1,8 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
-import '@pixi/ticker'
 import * as PIXI from 'pixi.js'
-import { Spine, TextureAtlas } from 'pixi-spine'
-import { SkeletonJson, AtlasAttachmentLoader } from '@pixi-spine/runtime-4.1'
+import { Assets } from 'pixi.js'
+import { Spine, TextureAtlas, SpineTexture, SkeletonJson, AtlasAttachmentLoader } from '@esotericsoftware/spine-pixi-v8'
 import type { WinCelebrateKind } from './winCelebration'
 import { GameConfig, effectiveDevicePixelRatio } from '../game/GameConfig'
 
@@ -98,41 +97,27 @@ async function loadWinCelebrationSpine(kind: WinCelebrateKind): Promise<Spine> {
   const urls = pages.map(p => resolvePublicUrl(`${basePath}${p}`))
   const textures = await Promise.all(
     urls.map(u =>
-      PIXI.Texture.fromURL(u).catch((e: unknown) => {
+      Assets.load<PIXI.Texture>(u).catch((e: unknown) => {
         console.warn('[WinCelebrationSpine] PNG load failed:', u, e)
         throw e
       }),
     ),
   )
-  const pageToBase = new Map(
-    pages.map((p, i) => {
-      const bt = textures[i]!.baseTexture
-      /* Атлас экспорта с pma:true — иначе спрайты могут выглядеть пустыми/неправильного бленда */
-      bt.alphaMode = PIXI.ALPHA_MODES.PMA
-      return [atlasPageResolveKey(p), bt]
-    }),
+  const pageToTex = new Map(
+    pages.map((p, i) => [atlasPageResolveKey(p), textures[i]!]),
   )
 
-  /**
-   * Только синхронная выдача BaseTexture в textureLoader — тогда весь атлас строится в одном стеке
-   * (см. @pixi-spine/base TextureAtlas.load). Асинхронный load() + 3-й callback давали гонки и
-   * callback(null)/пустой regions при сбое пути к странице.
-   */
-  let atlas: TextureAtlas
-  try {
-    atlas = new TextureAtlas(atlasText, (path, load) => {
-      const key = atlasPageResolveKey(path)
-      const bt = pageToBase.get(key)
-      if (!bt) {
-        throw new Error(
-          `[WinCelebrationSpine] атлас ссылается на "${path}" (key "${key}"), в предзагрузке есть: ${[...pageToBase.keys()].join(', ')}`,
-        )
-      }
-      load(bt)
-    })
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e)
-    throw new Error(`[WinCelebrationSpine] TextureAtlas: ${msg}`)
+  const atlas = new TextureAtlas(atlasText)
+  for (const page of atlas.pages) {
+    const key = atlasPageResolveKey(page.name)
+    const tex = pageToTex.get(key)
+    if (!tex) {
+      throw new Error(
+        `[WinCelebrationSpine] атлас ссылается на "${page.name}" (key "${key}"), в предзагрузке есть: ${[...pageToTex.keys()].join(', ')}`,
+      )
+    }
+    if (page.pma) tex.source.alphaMode = 'premultiplied-alpha'
+    page.setTexture(SpineTexture.from(tex.source))
   }
 
   if (atlas.regions.length === 0) {
@@ -141,19 +126,9 @@ async function loadWinCelebrationSpine(kind: WinCelebrateKind): Promise<Spine> {
     )
   }
 
-  const skelExport = spineJson as {
-    skeleton?: { spine?: string }
-  } & Record<string, unknown>
-  if (
-    typeof skelExport.skeleton?.spine === 'string' &&
-    skelExport.skeleton.spine.startsWith('4.2')
-  ) {
-    skelExport.skeleton.spine = '4.1.24'
-  }
-
   const skelJson = new SkeletonJson(new AtlasAttachmentLoader(atlas))
   skelJson.scale = 1
-  const data = skelJson.readSkeletonData(skelExport as never) as ConstructorParameters<typeof Spine>[0]
+  const data = skelJson.readSkeletonData(spineJson as never)
   const spine = new Spine(data)
   const names = data.animations.map(a => a.name)
   const anim = names.includes('animation') ? 'animation' : names[0]
@@ -199,12 +174,12 @@ const KIND_Y_OFFSET: Record<WinCelebrateKind, number> = {
 function layoutSpine(spine: Spine, w: number, h: number, pad = 0.8, yOffset = 0): void {
   spine.update(0)
   syncSlotContainerAlpha(spine)
-  let b = spine.getBounds()
+  let b: { x: number; y: number; width: number; height: number } = spine.getBounds()
   if (!Number.isFinite(b.width) || b.width < 2 || !Number.isFinite(b.height) || b.height < 2) {
     const sd = spine.skeleton.data as { x?: number; y?: number; width?: number; height?: number }
     const rw = sd.width && sd.width > 0 ? sd.width : 1200
     const rh = sd.height && sd.height > 0 ? sd.height : 1500
-    b = new PIXI.Rectangle(sd.x ?? 0, sd.y ?? 0, rw, rh)
+    b = { x: sd.x ?? 0, y: sd.y ?? 0, width: rw, height: rh }
   }
   const sx = (w * pad) / Math.max(b.width, 1e-3)
   const sy = (h * pad) / Math.max(b.height, 1e-3)
@@ -235,15 +210,27 @@ export const WinCelebrationSpine: React.FC<Props> = ({ kind, roundId }) => {
     const dispose = () => {
       ro?.disconnect()
       ro = null
-      if (app && tickFn) app.ticker.remove(tickFn)
+      // Stop ticker + renderer before touching the scene graph so no RAF fires
+      // while we're mid-teardown (would crash on spine.renderGroup.ids === null).
+      if (app) {
+        app.ticker.stop()
+        if (tickFn) app.ticker.remove(tickFn)
+      }
       tickFn = null
       if (spine) {
+        if (spine.parent) spine.parent.removeChild(spine)
         spine.destroy({ children: true })
         spine = null
       }
       if (app) {
         try {
-          app.destroy(true, { children: true })
+          // Remove canvas from DOM manually — do NOT pass true to app.destroy().
+          // app.destroy(true, ...) calls GlobalResourceRegistry.release() which
+          // nukes the SHARED PixiJS batch pool, corrupting the main game renderer's
+          // batches and causing a null.ids crash on every subsequent render frame.
+          const canvas = app.canvas as HTMLCanvasElement
+          if (canvas && canvas.parentNode) canvas.parentNode.removeChild(canvas)
+          app.destroy(false, { children: true })
         } catch {
           /* ignore */
         }
@@ -267,8 +254,10 @@ export const WinCelebrationSpine: React.FC<Props> = ({ kind, roundId }) => {
         const sa = spine as Spine & { autoUpdate?: boolean }
         sa.autoUpdate = false
 
+        // PixiJS v8: renderer инициализируется async — используем await app.init()
+        app = new PIXI.Application()
         try {
-          app = new PIXI.Application({
+          await app.init({
             width: window.innerWidth,
             height: window.innerHeight,
             backgroundAlpha: 0,
@@ -276,16 +265,16 @@ export const WinCelebrationSpine: React.FC<Props> = ({ kind, roundId }) => {
             resolution: effectiveDevicePixelRatio(),
             autoDensity: true,
             hello: false,
-          } as PIXI.IApplicationOptions)
+          } as any)
         } catch {
-          app = new PIXI.Application({
+          app = new PIXI.Application()
+          await app.init({
             width: window.innerWidth,
             height: window.innerHeight,
             backgroundAlpha: 0,
             antialias: false,
-            forceCanvas: true,
             hello: false,
-          } as PIXI.IApplicationOptions)
+          } as any)
         }
 
         if (!alive) {
@@ -293,8 +282,7 @@ export const WinCelebrationSpine: React.FC<Props> = ({ kind, roundId }) => {
           return
         }
 
-        const canvas =
-          (app as unknown as { canvas?: HTMLCanvasElement }).canvas ?? (app.view as HTMLCanvasElement)
+        const canvas = app.canvas as HTMLCanvasElement
         canvas.style.width = '100vw'
         canvas.style.height = '100vh'
         canvas.style.display = 'block'

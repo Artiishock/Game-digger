@@ -25,13 +25,12 @@ export const GameCanvas: React.FC<Props> = ({ width, height }) => {
     let renderer: GameRenderer | null = null
     const rafId = requestAnimationFrame(() => {
       if (!canvasRef.current) return
-      try {
-        renderer = new GameRenderer(canvas, width, height)
-        rendererRef.current = renderer
-        gameEngine.setRendererInstantFinish(() => renderer!.instantFinishRoundFromRoad())
-      } catch (err) {
+      renderer = new GameRenderer(canvas, width, height)
+      rendererRef.current = renderer
+      gameEngine.setRendererInstantFinish(() => renderer!.instantFinishRoundFromRoad())
+      renderer.ready.catch(err => {
         console.error('[GameCanvas] renderer init failed:', err)
-      }
+      })
     })
 
     return () => {

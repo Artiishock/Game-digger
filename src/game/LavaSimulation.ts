@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js'
+import { Assets } from 'pixi.js'
 import { GameAssets } from './gameAssets'
 import { GameConfig } from './GameConfig'
 import { perf } from '../dev/PerfProfiler'
@@ -51,11 +52,11 @@ export class LavaSimulation {
     const tw = Math.max(1024, GameConfig.lava.tilingWidthPx)
     const th = Math.max(1024, GameConfig.lava.tilingHeightPx)
     this._tilingSprite = new PIXI.TilingSprite(proceduralTex, tw, th)
-    this._tilingSprite.blendMode = PIXI.BLEND_MODES.NORMAL
+    this._tilingSprite.blendMode = 'normal'
     this._tilingSprite.alpha = 0.92
     this._texLayer.addChild(this._tilingSprite)
-    PIXI.Texture.fromURL(GameAssets.lavaTex)
-      .then(tex => { if (this._tilingSprite) this._tilingSprite.texture = tex })
+    Assets.load<PIXI.Texture>(GameAssets.lavaTex)
+      .then((tex: PIXI.Texture) => { if (this._tilingSprite) this._tilingSprite.texture = tex })
       .catch(() => {})
   }
 
@@ -99,8 +100,8 @@ export class LavaSimulation {
     const x = rect.cx - rect.hw
     const y = rect.cy - rect.hh
     const cr = Math.max(0, rect.cr)
-    if (cr > 0) (g as any).beginFill(0xffffff).drawRoundedRect(x, y, 2 * rect.hw, 2 * rect.hh, cr).endFill()
-    else g.beginFill(0xffffff).drawRect(x, y, 2 * rect.hw, 2 * rect.hh).endFill()
+    if (cr > 0) { g.roundRect(x, y, 2 * rect.hw, 2 * rect.hh, cr); g.fill({ color: 0xffffff }) }
+    else { g.rect(x, y, 2 * rect.hw, 2 * rect.hh); g.fill({ color: 0xffffff }) }
   }
 
   private _pointInRoundedRect(
@@ -194,17 +195,16 @@ export class LavaSimulation {
     const vy0 = this._camY - padPx
     const vy1 = this._camY + this._viewH + padPx
 
-    g.beginFill(0xffffff, 1)
     for (const r of this._pools) {
       const x = r.cx - r.hw
       const y = r.cy - r.hh
       const w = 2 * r.hw
       const h = 2 * r.hh
       if (x + w < vx0 || x > vx1 || y + h < vy0 || y > vy1) continue
-      if (r.cr > 0) (g as any).drawRoundedRect(x, y, w, h, r.cr)
-      else g.drawRect(x, y, w, h)
+      if (r.cr > 0) g.roundRect(x, y, w, h, r.cr)
+      else g.rect(x, y, w, h)
     }
-    g.endFill()
+    g.fill({ color: 0xffffff })
   }
 
   getPerfSnapshot(): { lavaCells: number; staticLavaPools: number } {
@@ -269,6 +269,9 @@ export class LavaSimulation {
   destroy() {
     if (this._destroyed) return
     this._destroyed = true
+    // Clear masks before destroy to avoid PixiJS v8 AlphaMaskPipe stale-BindGroup crash.
+    this._texLayer.mask = null
+    this.container.mask = null
     this.container.destroy({ children: true })
     this._tilingSprite = null
     this._pools.length = 0

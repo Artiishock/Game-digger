@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js'
+import { Assets } from 'pixi.js'
 import { GameConfig } from './GameConfig'
 import { LavaSimulation } from './LavaSimulation'
 import { GameAssets } from './gameAssets'
@@ -493,6 +494,10 @@ export class TileWorld {
   private _buildQueue: Array<{col: number; row: number}> = []
   private _buildQueueKeys = new Set<string>()
 
+  /** Пул RenderTexture для масок чанков — вместо destroy(true), чтобы не ломать BindGroup PixiJS v8. */
+  private _maskRTPool: PIXI.RenderTexture[] = []
+  private _grassMaskRTPool: PIXI.RenderTexture[] = []
+
   private _pendingCaves: CavePath[] = []
   private _lastCavePath: CavePath | null = null
   private _cavesByPosition: Map<string, CavePath> = new Map()
@@ -531,22 +536,22 @@ export class TileWorld {
   static groundTex: PIXI.Texture | null = null
   static earthTex:  [PIXI.Texture | null, PIXI.Texture | null, PIXI.Texture | null] = [null, null, null]
 
-  private _bakeToRenderTexture(displayObject: PIXI.DisplayObject, w: number, h: number): PIXI.RenderTexture | null {
+  private _bakeToRenderTexture(displayObject: PIXI.Container, w: number, h: number): PIXI.RenderTexture | null {
     const r = this.renderer
     if (!r) return null
     const rt = PIXI.RenderTexture.create({ width: w, height: h })
-    r.render(displayObject, { renderTexture: rt, clear: true })
+    r.render({ container: displayObject, target: rt, clear: true })
     return rt
   }
 
   static loadGrassTex(): Promise<void> {
     const p1 = TileWorld.grassTex
       ? Promise.resolve()
-      : PIXI.Texture.fromURL(GameAssets.grass).then(t => { TileWorld.grassTex = t }).catch(() => { TileWorld.grassTex = null })
+      : Assets.load<PIXI.Texture>(GameAssets.grass).then((t: PIXI.Texture) => { TileWorld.grassTex = t }).catch(() => { TileWorld.grassTex = null })
     const pEarth = Promise.all([
-      PIXI.Texture.fromURL(GameAssets.earth1).then(t => { TileWorld.earthTex[0] = t }).catch(() => { TileWorld.earthTex[0] = null }),
-      PIXI.Texture.fromURL(GameAssets.earth2).then(t => { TileWorld.earthTex[1] = t }).catch(() => { TileWorld.earthTex[1] = null }),
-      PIXI.Texture.fromURL(GameAssets.earth3).then(t => { TileWorld.earthTex[2] = t }).catch(() => { TileWorld.earthTex[2] = null }),
+      Assets.load<PIXI.Texture>(GameAssets.earth1).then((t: PIXI.Texture) => { TileWorld.earthTex[0] = t }).catch(() => { TileWorld.earthTex[0] = null }),
+      Assets.load<PIXI.Texture>(GameAssets.earth2).then((t: PIXI.Texture) => { TileWorld.earthTex[1] = t }).catch(() => { TileWorld.earthTex[1] = null }),
+      Assets.load<PIXI.Texture>(GameAssets.earth3).then((t: PIXI.Texture) => { TileWorld.earthTex[2] = t }).catch(() => { TileWorld.earthTex[2] = null }),
     ])
     return Promise.all([p1, pEarth]).then(() => {})
   }
@@ -713,8 +718,8 @@ export class TileWorld {
         }
       }
       const rt = PIXI.RenderTexture.create({ width: CPW, height: CPH })
-      this.renderer.render(tmpLayer, { renderTexture: rt, clear: true })
-      tmpLayer.destroy({ children: true, texture: false, baseTexture: false })
+      this.renderer.render({ container: tmpLayer, target: rt, clear: true })
+      tmpLayer.destroy({ children: true })
 
       const spr = new PIXI.Sprite(rt)
       spr.x = pc * CPW; spr.y = pr * CPH
@@ -756,7 +761,7 @@ export class TileWorld {
         const poly = tunnelEllipsePolyRotatedLocal(lx, ly, rx, ry, ux, uy, steps)
         this.brush.clear()
         this.brush.beginFill(0x000000).drawPolygon(poly).endFill()
-        this.renderer.render(this.brush, { renderTexture: (chunk as any).maskRT, clear: false })
+        this.renderer.render({ container: this.brush, target: (chunk as any).maskRT, clear: false })
 
         // Per-chunk lava mask is disabled (lava is rendered via LavaSimulation).
         const grassMaskRT = (chunk as any).grassMaskRT as PIXI.RenderTexture | undefined
@@ -768,7 +773,7 @@ export class TileWorld {
             polyG.push(poly[i]!, poly[i + 1]! + GRASS_MASK_HEADROOM)
           }
           this._scratchGb.beginFill(0x000000).drawPolygon(polyG).endFill()
-          this.renderer.render(this._scratchGb, { renderTexture: grassMaskRT, clear: false })
+          this.renderer.render({ container: this._scratchGb, target: grassMaskRT, clear: false })
         }
 
         if (lineFrom) {
@@ -776,13 +781,13 @@ export class TileWorld {
           this.line.clear()
           this.line.lineStyle(lineW, 0x000000)
           this.line.moveTo(plx, ply).lineTo(lx, ly)
-          this.renderer.render(this.line, { renderTexture: (chunk as any).maskRT, clear: false })
+          this.renderer.render({ container: this.line, target: (chunk as any).maskRT, clear: false })
 
           if (grassMaskRT && carveGrass) {
             this._scratchGl.clear()
             this._scratchGl.lineStyle(lineW, 0x000000)
             this._scratchGl.moveTo(plx, ply + GRASS_MASK_HEADROOM).lineTo(lx, ly + GRASS_MASK_HEADROOM)
-            this.renderer.render(this._scratchGl, { renderTexture: grassMaskRT, clear: false })
+            this.renderer.render({ container: this._scratchGl, target: grassMaskRT, clear: false })
           }
         }
       }
@@ -900,14 +905,14 @@ export class TileWorld {
       const grassMaskRT = (chunk as any).grassMaskRT as PIXI.RenderTexture | undefined
       if (!maskRT) continue
       this._scratchDb.clear().beginFill(0xffffff).drawRect(0, 0, maskRT.width, maskRT.height).endFill()
-      this.renderer.render(this._scratchDb, { renderTexture: maskRT, clear: true })
+      this.renderer.render({ container: this._scratchDb, target: maskRT, clear: true })
       if (grassMaskRT) {
         this._scratchDb.clear().beginFill(0xffffff).drawRect(0, 0, grassMaskRT.width, grassMaskRT.height).endFill()
-        this.renderer.render(this._scratchDb, { renderTexture: grassMaskRT, clear: true })
+        this.renderer.render({ container: this._scratchDb, target: grassMaskRT, clear: true })
       }
       if (lavaRT) {
         this._scratchDb.clear().beginFill(0x000000).drawRect(0, 0, lavaRT.width, lavaRT.height).endFill()
-        this.renderer.render(this._scratchDb, { renderTexture: lavaRT, clear: true })
+        this.renderer.render({ container: this._scratchDb, target: lavaRT, clear: true })
       }
     }
   }
@@ -1095,11 +1100,19 @@ export class TileWorld {
       if (chunk.col < colMin-cull || chunk.col > colMax+cull ||
           chunk.row < rowMin-cull || chunk.row > rowMax+cull) {
         this._forgetEarthVariantsForChunk(chunk.col, chunk.row)
+        // Clear masks BEFORE removeChild so _renderGroup is still valid and PixiJS v8 can
+        // properly tear down the AlphaMask instruction from the render pipeline.
+        for (const child of chunk.gfx.children) {
+          if ((child as PIXI.Container).mask) (child as PIXI.Container).mask = null
+        }
         this.chunkContainer.removeChild(chunk.gfx)
+        // Pool mask RTs instead of destroy(true) — avoids PixiJS v8 stale-BindGroup crash.
+        const evictMaskRT = (chunk as any).maskRT as PIXI.RenderTexture | undefined
+        const evictGrassRT = (chunk as any).grassMaskRT as PIXI.RenderTexture | undefined
+        if (evictMaskRT) this._maskRTPool.push(evictMaskRT)
+        if (evictGrassRT) this._grassMaskRTPool.push(evictGrassRT)
         chunk.gfx.destroy({children:true})
-        ;(chunk as any).maskRT?.destroy(true)
         ;(chunk as any).lavaRT?.destroy(true)
-        ;(chunk as any).grassMaskRT?.destroy(true)
         ;(chunk as any).earthRT?.destroy(true)
         this.chunks.delete(key)
       }
@@ -1164,7 +1177,7 @@ export class TileWorld {
           spr.x = 0
           spr.y = 0
           content.addChild(spr)
-          earthLayer.destroy({ children: true, texture: false, baseTexture: false })
+          earthLayer.destroy({ children: true })
         } else {
           content.addChild(earthLayer)
         }
@@ -1196,7 +1209,7 @@ export class TileWorld {
       topGrassSpr = spr
     }
 
-    const maskRT  = PIXI.RenderTexture.create({width:CPW, height:CPH})
+    const maskRT  = this._maskRTPool.pop() ?? PIXI.RenderTexture.create({width:CPW, height:CPH})
     const maskSpr = new PIXI.Sprite(maskRT)
     maskSpr.name = 'maskSpr'
     maskSpr.renderable = false
@@ -1207,7 +1220,7 @@ export class TileWorld {
     let grassMaskRT: PIXI.RenderTexture | null = null
     let grassMaskSpr: PIXI.Sprite | null = null
     if (topGrassSpr) {
-      grassMaskRT = PIXI.RenderTexture.create({width: CPW, height: CPH + GRASS_MASK_HEADROOM})
+      grassMaskRT = this._grassMaskRTPool.pop() ?? PIXI.RenderTexture.create({width: CPW, height: CPH + GRASS_MASK_HEADROOM})
       grassMaskSpr = new PIXI.Sprite(grassMaskRT)
       grassMaskSpr.name = 'grassMaskSpr'
       grassMaskSpr.y = -GRASS_MASK_HEADROOM
@@ -1217,10 +1230,10 @@ export class TileWorld {
     if (this.renderer) {
       // Perf: reuse scratch Graphics instead of allocating new ones per chunk.
       this._scratchDb.clear().beginFill(0xffffff).drawRect(0, 0, CPW, CPH).endFill()
-      this.renderer.render(this._scratchDb, {renderTexture:maskRT, clear:true})
+      this.renderer.render({ container: this._scratchDb, target: maskRT, clear: true })
       if (grassMaskRT) {
         this._scratchWb.clear().beginFill(0xffffff).drawRect(0, 0, CPW, CPH + GRASS_MASK_HEADROOM).endFill()
-        this.renderer.render(this._scratchWb, {renderTexture:grassMaskRT, clear:true})
+        this.renderer.render({ container: this._scratchWb, target: grassMaskRT, clear: true })
       }
     }
 
@@ -1296,7 +1309,7 @@ export class TileWorld {
 
     if (!hasContent) return
 
-    this.renderer.render(g, { renderTexture: maskRT, clear: false })
+    this.renderer.render({ container: g, target: maskRT, clear: false })
 
     if (lavaRT && lavaContainer) {
       const gWhite = new PIXI.Graphics()
@@ -1321,7 +1334,7 @@ export class TileWorld {
           drawCapsule(gWhite, lax, lay, a.r, lbx, lby, b.r, 0xffffff)
         }
       }
-      this.renderer.render(gWhite, { renderTexture: lavaRT, clear: false })
+      this.renderer.render({ container: gWhite, target: lavaRT, clear: false })
       gWhite.destroy()
     }
   }
@@ -1343,13 +1356,22 @@ export class TileWorld {
     this._buildQueueKeys.clear()
     for(const c of this.chunks.values()){
       this._forgetEarthVariantsForChunk(c.col, c.row)
+      for (const child of c.gfx.children) {
+        if ((child as PIXI.Container).mask) (child as PIXI.Container).mask = null
+      }
+      const dMaskRT = (c as any).maskRT as PIXI.RenderTexture | undefined
+      const dGrassRT = (c as any).grassMaskRT as PIXI.RenderTexture | undefined
+      if (dMaskRT) this._maskRTPool.push(dMaskRT)
+      if (dGrassRT) this._grassMaskRTPool.push(dGrassRT)
       c.gfx.destroy({children:true})
-      ;(c as any).maskRT?.destroy(true)
       ;(c as any).lavaRT?.destroy(true)
-      ;(c as any).grassMaskRT?.destroy(true)
       ;(c as any).earthRT?.destroy(true)
     }
     this.chunks.clear()
+    for (const rt of this._maskRTPool) rt.destroy(true)
+    this._maskRTPool.length = 0
+    for (const rt of this._grassMaskRTPool) rt.destroy(true)
+    this._grassMaskRTPool.length = 0
     this._earthVariant.clear()
     this._pendingCaves.length = 0
     this._decorLavaCaveCount = 0

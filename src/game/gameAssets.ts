@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js'
+import { Assets } from 'pixi.js'
 import { SpineAnimator } from './SpineAnimator'
 
 /**
@@ -44,7 +45,7 @@ export function preloadStartupAssets(): Promise<void> {
     const textureUrls = Object.values(GameAssets)
     const textureLoads = textureUrls.map(async (url) => {
       try {
-        await PIXI.Texture.fromURL(url)
+        await Assets.load<PIXI.Texture>(url)
       } catch {
         console.warn(`[preload] failed texture: ${url}`)
       }
