@@ -91,7 +91,7 @@
   color: rgba(255, 255, 255, 0.3);
   font-size: 24px;
   background: rgba(255, 255, 255, 0.03);
-  z-index: 60;
+  z-index: 20;
   pointer-events: none;
 }
 .ui-logo-zone img {
@@ -118,7 +118,7 @@
   );
   width: 410px;
   height: 50px;
-  z-index: 60;
+  z-index: 20;
   pointer-events: none;
   white-space: nowrap;
   gap: 8px;
@@ -160,7 +160,7 @@
   display: flex;
   flex-direction: column;
   gap: 30px;
-  z-index: 70;
+  z-index: 10;
 }
 
 .ui-icon-btns {
@@ -503,7 +503,7 @@
   position: absolute;
   right: 0;
   bottom: 40%;
-  z-index: 120;
+  z-index: 10;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -5487,8 +5487,19 @@
   display: contents;
 }
 
-@media (max-width: 900px), (hover: none), (pointer: coarse) {
+@media (max-width: 1000px), (hover: none), (pointer: coarse) {
   .balance-bet-modal-layer {
+    --balance-bet-modal-edge: clamp(8px, calc(2.667px + 1.481vw), 16px);
+    --balance-bet-modal-width: clamp(340px, calc(210px + 36.111vw), 535px);
+    --balance-bet-modal-min-height: clamp(230px, calc(176.667px + 14.815vw), 310px);
+    --balance-bet-modal-padding: clamp(8px, calc(6.667px + 0.37vw), 10px);
+    --balance-bet-modal-gap: clamp(6px, calc(4.667px + 0.37vw), 8px);
+    --balance-bet-modal-radius: clamp(10px, calc(8.667px + 0.37vw), 12px);
+    --balance-bet-modal-title-size: clamp(20px, calc(16.667px + 0.926vw), 25px);
+    --balance-bet-modal-close-size: clamp(26px, calc(22px + 1.111vw), 32px);
+    --balance-bet-modal-cell-height: clamp(40px, calc(33.333px + 1.852vw), 50px);
+    --balance-bet-modal-cell-size: clamp(20px, calc(17.333px + 0.741vw), 24px);
+
     position: fixed;
     inset: 0;
     z-index: 260;
@@ -5497,7 +5508,7 @@
     align-items: center;
     justify-content: center;
 
-    padding: 16px;
+    padding: var(--balance-bet-modal-edge);
     box-sizing: border-box;
 
     background:
@@ -5515,17 +5526,34 @@
     bottom: auto;
     transform: none;
 
-    width: min(535px, calc(100vw - 32px));
-    min-height: 310px;
+    width: min(var(--balance-bet-modal-width), calc(100vw - (var(--balance-bet-modal-edge) * 2)));
+    min-height: var(--balance-bet-modal-min-height);
     height: auto;
+    padding: var(--balance-bet-modal-padding);
+    border-radius: var(--balance-bet-modal-radius);
+    gap: var(--balance-bet-modal-gap);
 
-    max-height: calc(100dvh - 32px);
+    max-height: calc(100dvh - (var(--balance-bet-modal-edge) * 2));
     overflow-y: auto;
   }
 
+  .balance-bet-modal__header {
+    padding-left: clamp(6px, calc(3.333px + 0.741vw), 10px);
+  }
+
+  .balance-bet-modal__title {
+    font-size: var(--balance-bet-modal-title-size);
+  }
+
+  .balance-bet-modal__close,
+  .balance-bet-modal__close img {
+    width: var(--balance-bet-modal-close-size);
+    height: var(--balance-bet-modal-close-size);
+  }
 
   .balance-bet-modal__cell {
-    min-height: 50px;
+    min-height: var(--balance-bet-modal-cell-height);
+    font-size: var(--balance-bet-modal-cell-size);
   }
 
 
@@ -5538,11 +5566,7 @@
   }
 }
 
-@media (max-width: 430px) {
-  .balance-bet-modal {
-    width: min(535px, calc(100vw - 24px));
-  }
-
+@media (max-width: 600px) {
   .balance-bet-modal__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
