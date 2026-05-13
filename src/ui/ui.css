@@ -1,4 +1,4 @@
-/* ═══════════════════════════════════════════════════════
+﻿/* ═══════════════════════════════════════════════════════
    Deep Rush — единый UI stylesheet
    ═══════════════════════════════════════════════════════ */
 
@@ -1954,29 +1954,40 @@
 }
 
 /* ═══════════════════════════════════════════════════════
-   AUTOPLAY MODAL ADAPTIVE — tablet portrait
-   Control point: 744x1150
+   AUTOPLAY MODAL ADAPTIVE — portrait transition
+   Smoothly scales from tablet values at 900px width
+   to the compact mobile values at 533px width.
    ═══════════════════════════════════════════════════════ */
 
-@media (min-width: 533px) and (max-width: 900px) and (orientation: portrait) {
+@media (max-aspect-ratio: 1/1) {
   .ui-overlay:has(.ui-modal--sm) {
     align-items: center;
     justify-content: center;
   }
 
   .ui-overlay:has(.ui-modal--sm) .ui-ap-close {
-    top: clamp(28px, 5.4vw, 40px);
-    right: clamp(28px, 5.4vw, 40px);
+    top: clamp(20px, calc(-0.62px + 3.87vw), 40px);
+    right: clamp(20px, calc(-0.62px + 3.87vw), 40px);
 
-    width: 48px;
-    height: 48px;
-    background-size: 48px 48px;
+    width: clamp(20px, calc(-8.87px + 5.42vw), 48px);
+    height: clamp(20px, calc(-8.87px + 5.42vw), 48px);
+    background-size:
+      clamp(20px, calc(-8.87px + 5.42vw), 48px)
+      clamp(20px, calc(-8.87px + 5.42vw), 48px);
   }
 
   .ui-overlay:has(.ui-modal--sm) .ui-modal--sm {
-    width: min(540px, calc(100vw - 80px));
-    min-height: min(620px, calc(100vh - 140px));
-    padding: 45px;
+    width: min(
+      clamp(340px, calc(133.81px + 38.68vw), 540px),
+      calc(100vw - clamp(30px, calc(102.64px - 8.07vw), 80px))
+    );
+    min-height: min(
+      clamp(450px, calc(274.74px + 32.88vw), 620px),
+      calc(100vh - clamp(120px, calc(149.05px - 3.23vw), 140px))
+    );
+    padding:
+      clamp(20px, calc(-5.77px + 4.84vw), 45px)
+      45px;
 
     display: grid;
     grid-template-columns: max-content;
@@ -2000,32 +2011,153 @@
     grid-column: 1;
     grid-row: 2;
   }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-section-label {
+    margin-bottom: clamp(13px, calc(3.72px + 1.74vw), 22px);
+    font-size: clamp(14px, calc(2.66px + 2.13vw), 25px);
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-stop-conditions {
+    gap: clamp(8px, calc(0.78px + 1.35vw), 15px);
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-check-row,
+  .ui-overlay:has(.ui-modal--sm) .ui-input-row {
+    min-height: clamp(21px, calc(11.72px + 1.74vw), 30px);
+    font-size: clamp(14px, calc(7.81px + 1.16vw), 20px);
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-check-row {
+    grid-template-columns:
+      clamp(21px, calc(9.66px + 2.13vw), 32px)
+      clamp(118px, calc(-28.39px + 27.47vw), 260px);
+    gap: clamp(7px, calc(1.85px + 0.97vw), 12px);
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-input-row {
+    grid-template-columns:
+      clamp(21px, calc(9.66px + 2.13vw), 32px)
+      clamp(118px, calc(-28.39px + 27.47vw), 260px)
+      clamp(76px, calc(45.07px + 5.8vw), 106px);
+    gap: clamp(7px, calc(1.85px + 0.97vw), 12px);
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-input-row-label {
+    white-space: normal;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-check-row span,
+  .ui-overlay:has(.ui-modal--sm) .ui-input-row-label {
+    line-height: 115%;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-checkbox {
+    width: clamp(21px, calc(9.66px + 2.13vw), 32px);
+    height: clamp(21px, calc(9.66px + 2.13vw), 32px);
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-checkbox-tick {
+    width: clamp(11px, calc(3.78px + 1.35vw), 18px);
+    height: clamp(6px, calc(1.88px + 0.77vw), 10px);
+    border-left-width: clamp(2.5px, calc(0.95px + 0.29vw), 4px);
+    border-bottom-width: clamp(2.5px, calc(0.95px + 0.29vw), 4px);
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-input-row-field-wrap {
+    width: clamp(76px, calc(45.07px + 5.8vw), 106px);
+    height: clamp(22px, calc(13.75px + 1.55vw), 30px);
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-input-row-field {
+    padding: 0 clamp(7px, calc(3.91px + 0.58vw), 10px);
+    font-size: clamp(11px, calc(6.88px + 0.77vw), 15px);
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-pills {
+    grid-template-columns: repeat(3, clamp(76px, calc(43.01px + 6.19vw), 108px));
+    gap: clamp(10px, calc(5.88px + 0.77vw), 14px) 5px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-pill {
+    width: clamp(76px, calc(43.01px + 6.19vw), 108px);
+    height: clamp(22px, calc(13.75px + 1.55vw), 30px);
+    gap: clamp(12px, calc(5.81px + 1.16vw), 18px);
+    font-size: clamp(13px, calc(5.78px + 1.35vw), 20px);
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-pill::after {
+    width: clamp(10px, calc(5.88px + 0.77vw), 14px);
+    height: clamp(10px, calc(5.88px + 0.77vw), 14px);
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-custom {
+    margin-top: clamp(15px, calc(1.6px + 2.51vw), 28px);
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-custom-label {
+    margin-bottom: clamp(8px, calc(5.94px + 0.39vw), 10px);
+    font-size: clamp(14px, calc(7.81px + 1.16vw), 20px);
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-input {
+    width: clamp(76px, calc(45.07px + 5.8vw), 106px);
+    height: clamp(22px, calc(13.75px + 1.55vw), 30px);
+    font-size: clamp(11px, calc(7.91px + 0.58vw), 14px);
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-start-btn {
+    width: clamp(24px, calc(12.66px + 2.13vw), 35px);
+    height: clamp(21px, calc(11.72px + 1.74vw), 30px);
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-start-btn::after {
+    width: clamp(10px, calc(5.88px + 0.77vw), 14px);
+    height: clamp(10px, calc(5.88px + 0.77vw), 14px);
+  }
+
+  .ui-input-row .ui-num-keyboard {
+    left: clamp(-30%, calc(-112.48% + 15.47vw), 50%);
+  }
+
+  .ui-ap-custom .ui-num-keyboard {
+    left: clamp(50%, calc(212.48% - 15.47vw), 130%);
+  }
 }
 
+
+
 /* ═══════════════════════════════════════════════════════
-   AUTOPLAY MODAL ADAPTIVE — tablet landscape
-   Control point: 1150x744
+   AUTOPLAY MODAL ADAPTIVE — width greater than height
+   Smoothly scales from desktop values at 744px height
+   to the compact 900x400 control values.
    ═══════════════════════════════════════════════════════ */
 
-@media (min-width: 901px) and (max-width: 1300px) and (max-height: 820px) and (orientation: landscape) {
+@media (min-aspect-ratio: 1/1) {
   .ui-overlay:has(.ui-modal--sm) {
     align-items: center;
     justify-content: center;
   }
 
   .ui-overlay:has(.ui-modal--sm) .ui-ap-close {
-    top: clamp(28px, 3.48vw, 40px);
-    right: clamp(28px, 3.48vw, 40px);
-
-    width: 48px;
-    height: 48px;
-    background-size: 48px 48px;
+    top: clamp(12px, calc(-7.58px + 6.4vh), 40px);
+    right: clamp(12px, calc(-7.58px + 6.4vh), 40px);
+    width: clamp(24px, calc(7.72px + 4.07vh), 38px);
+    height: clamp(24px, calc(7.72px + 4.07vh), 38px);
+    background-size:
+      clamp(24px, calc(7.72px + 4.07vh), 38px)
+      clamp(24px, calc(7.72px + 4.07vh), 38px);
   }
 
   .ui-overlay:has(.ui-modal--sm) .ui-modal--sm {
-    width: min(950px, calc(100vw - 80px));
-    min-height: min(350px, calc(100vh - 140px));
-    padding: 65px 45px;
+    width: min(
+      clamp(650px, calc(330.23px + 79.94vh), 925px),
+      calc(100vw - clamp(24px, calc(145.12px - 16.28vh), 80px))
+    );
+    min-height: min(
+      clamp(250px, calc(-81.4px + 82.85vh), 535px),
+      calc(100vh - clamp(24px, calc(123.49px - 13.37vh), 70px))
+    );
+    padding: clamp(32px, calc(-93.58px + 31.4vh), 140px) 45px;
 
     display: grid;
     grid-template-columns: max-content max-content;
@@ -2045,65 +2177,35 @@
     grid-column: 2;
     grid-row: 1;
   }
-}
-
-/* ═══════════════════════════════════════════════════════
-   AUTOPLAY MODAL ADAPTIVE — mobile landscape
-   Control point: 900x400
-   ═══════════════════════════════════════════════════════ */
-
-@media (max-width: 900px) and (max-height: 500px) and (orientation: landscape) {
-  .ui-overlay:has(.ui-modal--sm) {
-    align-items: center;
-    justify-content: center;
-  }
-
-  .ui-overlay:has(.ui-modal--sm) .ui-ap-close {
-    top: clamp(12px, 3vw, 18px);
-    right: clamp(12px, 3vw, 18px);
-
-    width: 24px;
-    height: 24px;
-    background-size: 24px 24px;
-  }
-
-  .ui-overlay:has(.ui-modal--sm) .ui-modal--sm {
-    width: min(650px, calc(100vw - 80px));
-    min-height: min(250px, calc(100vh - 70px));
-    padding: 32px 45px;
-
-    display: grid;
-    grid-template-columns: max-content max-content;
-    column-gap: 35px;
-    align-items: start;
-    justify-content: center;
-
-    box-sizing: border-box;
-  }
 
   .ui-overlay:has(.ui-modal--sm) .ui-ap-section-label {
-    margin-bottom: 15px;
-    font-size: 16px;
+    margin-bottom: clamp(15px, calc(6.86px + 2.03vh), 22px);
+    font-size: clamp(16px, calc(5.53px + 2.62vh), 25px);
   }
 
   .ui-overlay:has(.ui-modal--sm) .ui-stop-conditions {
-    gap: 10px;
+    gap: clamp(10px, calc(4.19px + 1.45vh), 15px);
   }
 
   .ui-overlay:has(.ui-modal--sm) .ui-check-row,
   .ui-overlay:has(.ui-modal--sm) .ui-input-row {
-    min-height: 24px;
-    font-size: 16px;
+    min-height: clamp(24px, calc(17.02px + 1.74vh), 30px);
+    font-size: clamp(16px, calc(11.35px + 1.16vh), 20px);
   }
 
   .ui-overlay:has(.ui-modal--sm) .ui-check-row {
-    grid-template-columns: 24px 132px;
-    gap: 9px;
+    grid-template-columns:
+      clamp(24px, calc(14.7px + 2.33vh), 32px)
+      clamp(132px, calc(-16.84px + 37.21vh), 260px);
+    gap: clamp(9px, calc(5.51px + 0.87vh), 12px);
   }
 
   .ui-overlay:has(.ui-modal--sm) .ui-input-row {
-    grid-template-columns: 24px 132px 85px;
-    gap: 9px;
+    grid-template-columns:
+      clamp(24px, calc(14.7px + 2.33vh), 32px)
+      clamp(132px, calc(-16.84px + 37.21vh), 260px)
+      clamp(85px, calc(60.58px + 6.1vh), 106px);
+    gap: clamp(9px, calc(5.51px + 0.87vh), 12px);
   }
 
   .ui-overlay:has(.ui-modal--sm) .ui-input-row-label {
@@ -2116,228 +2218,82 @@
   }
 
   .ui-overlay:has(.ui-modal--sm) .ui-checkbox {
-    width: 24px;
-    height: 24px;
+    width: clamp(24px, calc(14.7px + 2.33vh), 32px);
+    height: clamp(24px, calc(14.7px + 2.33vh), 32px);
   }
 
   .ui-overlay:has(.ui-modal--sm) .ui-checkbox-tick {
-    width: 13px;
-    height: 7px;
-    border-left-width: 3px;
-    border-bottom-width: 3px;
+    width: clamp(13px, calc(7.19px + 1.45vh), 18px);
+    height: clamp(7px, calc(3.51px + 0.87vh), 10px);
+    border-left-width: clamp(3px, calc(1.84px + 0.29vh), 4px);
+    border-bottom-width: clamp(3px, calc(1.84px + 0.29vh), 4px);
   }
 
   .ui-overlay:has(.ui-modal--sm) .ui-input-row-field-wrap {
-    width: 85px;
-    height: 25px;
+    width: clamp(85px, calc(60.58px + 6.1vh), 106px);
+    height: clamp(25px, calc(19.19px + 1.45vh), 30px);
   }
 
   .ui-overlay:has(.ui-modal--sm) .ui-input-row-field {
-    padding: 0 8px;
-    font-size: 12px;
+    padding: 0 clamp(8px, calc(5.67px + 0.58vh), 10px);
+    font-size: clamp(12px, calc(8.51px + 0.87vh), 15px);
   }
 
   .ui-overlay:has(.ui-modal--sm) .ui-pills {
-    grid-template-columns: repeat(3, 85px);
-    gap: 12px 5px;
+    grid-template-columns: repeat(3, clamp(85px, calc(58.26px + 6.69vh), 108px));
+    gap: clamp(12px, calc(9.67px + 0.58vh), 14px) 5px;
   }
 
   .ui-overlay:has(.ui-modal--sm) .ui-pill {
-    width: 85px;
-    height: 25px;
-    gap: 14px;
-    font-size: 15px;
+    width: clamp(85px, calc(58.26px + 6.69vh), 108px);
+    height: clamp(25px, calc(19.19px + 1.45vh), 30px);
+    gap: clamp(14px, calc(9.35px + 1.16vh), 18px);
+    font-size: clamp(15px, calc(9.19px + 1.45vh), 20px);
   }
 
   .ui-overlay:has(.ui-modal--sm) .ui-pill::after {
-    width: 11px;
-    height: 11px;
+    width: clamp(11px, calc(7.51px + 0.87vh), 14px);
+    height: clamp(11px, calc(7.51px + 0.87vh), 14px);
   }
 
   .ui-overlay:has(.ui-modal--sm) .ui-ap-custom {
-    margin-top: 18px;
+    margin-top: clamp(18px, calc(6.37px + 2.91vh), 28px);
   }
 
   .ui-overlay:has(.ui-modal--sm) .ui-ap-custom-label {
-    margin-bottom: 9px;
-    font-size: 16px;
+    margin-bottom: clamp(9px, calc(7.84px + 0.29vh), 10px);
+    font-size: clamp(16px, calc(11.35px + 1.16vh), 20px);
   }
 
   .ui-overlay:has(.ui-modal--sm) .ui-ap-input {
-    width: 85px;
-    height: 25px;
-    font-size: 12px;
+    width: clamp(85px, calc(60.58px + 6.1vh), 106px);
+    height: clamp(25px, calc(19.19px + 1.45vh), 30px);
+    font-size: clamp(12px, calc(9.67px + 0.58vh), 14px);
   }
 
   .ui-overlay:has(.ui-modal--sm) .ui-ap-start-btn {
-    width: 27px;
-    height: 24px;
+    width: clamp(27px, calc(17.7px + 2.33vh), 35px);
+    height: clamp(24px, calc(17.02px + 1.74vh), 30px);
   }
 
   .ui-overlay:has(.ui-modal--sm) .ui-ap-start-btn::after {
-    width: 11px;
-    height: 11px;
+    width: clamp(11px, calc(7.51px + 0.87vh), 14px);
+    height: clamp(11px, calc(7.51px + 0.87vh), 14px);
   }
 
   .ui-num-keyboard {
-    left: -10%;
+    left: clamp(-8.5px, calc(-80.02px + 17.88vh), 53px);
   }
 }
 
-/* ═══════════════════════════════════════════════════════
-   AUTOPLAY MODAL ADAPTIVE — mobile portrait
-   Control point: 400x900
-   ═══════════════════════════════════════════════════════ */
-
-@media (max-width: 532px) and (orientation: portrait) {
-  .ui-overlay:has(.ui-modal--sm) {
-    align-items: center;
-    justify-content: center;
-  }
-
-  .ui-overlay:has(.ui-modal--sm) .ui-ap-close {
-    top: clamp(20px, 6vw, 24px);
-    right: clamp(20px, 6vw, 24px);
-
-    width: 24px;
-    height: 24px;
-    background-size: 24px 24px;
-  }
-
-  .ui-overlay:has(.ui-modal--sm) .ui-modal--sm {
-    width: min(370px, calc(100vw - 30px));
-    min-height: min(480px, calc(100vh - 120px));
-    padding: 25px 45px;
-
-    display: grid;
-    grid-template-columns: max-content;
-    grid-template-rows: max-content max-content;
-    row-gap: 60px;
-    column-gap: 0;
-
-    align-content: start;
-    align-items: start;
-    justify-content: start;
-
-    box-sizing: border-box;
-  }
-
-  .ui-overlay:has(.ui-modal--sm) .ui-ap-section--stop {
-    grid-column: 1;
-    grid-row: 1;
-  }
-
-  .ui-overlay:has(.ui-modal--sm) .ui-ap-section--autoplay {
-    grid-column: 1;
-    grid-row: 2;
-  }
-
-  .ui-overlay:has(.ui-modal--sm) .ui-ap-section-label {
-    margin-bottom: 15px;
-    font-size: 16px;
-  }
-
-  .ui-overlay:has(.ui-modal--sm) .ui-stop-conditions {
-    gap: 10px;
-  }
-
-  .ui-overlay:has(.ui-modal--sm) .ui-check-row,
-  .ui-overlay:has(.ui-modal--sm) .ui-input-row {
-    min-height: 24px;
-    font-size: 16px;
-  }
-
-  .ui-overlay:has(.ui-modal--sm) .ui-check-row {
-    grid-template-columns: 24px 132px;
-    gap: 9px;
-  }
-
-  .ui-overlay:has(.ui-modal--sm) .ui-input-row {
-    grid-template-columns: 24px 132px 85px;
-    gap: 9px;
-  }
-
-  .ui-overlay:has(.ui-modal--sm) .ui-input-row-label {
-    white-space: normal;
-  }
-
-  .ui-overlay:has(.ui-modal--sm) .ui-check-row span,
-  .ui-overlay:has(.ui-modal--sm) .ui-input-row-label {
-    line-height: 115%;
-  }
-
-  .ui-overlay:has(.ui-modal--sm) .ui-checkbox {
-    width: 24px;
-    height: 24px;
-  }
-
-  .ui-overlay:has(.ui-modal--sm) .ui-checkbox-tick {
-    width: 13px;
-    height: 7px;
-    border-left-width: 3px;
-    border-bottom-width: 3px;
-  }
-
-  .ui-overlay:has(.ui-modal--sm) .ui-input-row-field-wrap {
-    width: 85px;
-    height: 25px;
-  }
-
-  .ui-overlay:has(.ui-modal--sm) .ui-input-row-field {
-    padding: 0 8px;
-    font-size: 12px;
-  }
-
-  .ui-overlay:has(.ui-modal--sm) .ui-pills {
-    grid-template-columns: repeat(3, 85px);
-    gap: 12px 5px;
-  }
-
-  .ui-overlay:has(.ui-modal--sm) .ui-pill {
-    width: 85px;
-    height: 25px;
-    gap: 14px;
-    font-size: 15px;
-  }
-
-  .ui-overlay:has(.ui-modal--sm) .ui-pill::after {
-    width: 11px;
-    height: 11px;
-  }
-
-  .ui-overlay:has(.ui-modal--sm) .ui-ap-custom {
-    margin-top: 18px;
-  }
-
-  .ui-overlay:has(.ui-modal--sm) .ui-ap-custom-label {
-    margin-bottom: 9px;
-    font-size: 16px;
-  }
-
-  .ui-overlay:has(.ui-modal--sm) .ui-ap-input {
-    width: 85px;
-    height: 25px;
-    font-size: 12px;
-  }
-
-  .ui-overlay:has(.ui-modal--sm) .ui-ap-start-btn {
-    width: 27px;
-    height: 24px;
-  }
-
-  .ui-overlay:has(.ui-modal--sm) .ui-ap-start-btn::after {
-    width: 11px;
-    height: 11px;
-  }
-
-  .ui-input-row .ui-num-keyboard {
-    left: -20%;
-  }
-
-  .ui-ap-custom .ui-num-keyboard {
-    left: 120%;
+@media (min-aspect-ratio: 1/1) and (max-height: 390px) {
+  .ui-num-keyboard {
+    top: auto;
+    bottom: calc(100% + 8px);
   }
 }
+
+
 
 /* ═══════════════════════════════════════════════════════
    RESULT OVERLAY
@@ -2789,39 +2745,7 @@
 .bet-modal__max-btn:hover {
   background: rgba(255, 184, 48, 0.28);
 }
-/* ═══════════════════════════════════════════════════════
-   MOBILE ADAPTIVE — ширина ≤ 532px (скрин-макет)
-   ═══════════════════════════════════════════════════════ */
 
-@media (max-width: 532px) {
-  /* ── Переменные для мобильного ────────────────────── */
-  :root {
-    --hud-h: 70px;
-  }
-
-  /* ── BET MODAL PANEL (popup) ─────────────────────── */
-  .bet-modal-panel {
-    width: 220px;
-    right: 0;
-  }
-
-  /* ── RESULT OVERLAY ──────────────────────────────── */
-  .ui-result-emoji {
-    font-size: 52px;
-  }
-
-  /* ── AUTOPLAY / BURGER MODAL ──────────────────────── */
-  .ui-menu-modal {
-    width: 96vw;
-    max-width: 96vw;
-  }
-
-  .ui-modal--sm {
-    width: 90vw;
-    max-width: 90vw;
-    padding: 20px;
-  }
-}
 
 /* ═══════════════════════════════════════════════════════
    SYSTEM SETTINGS PANEL
