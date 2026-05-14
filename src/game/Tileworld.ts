@@ -12,7 +12,7 @@ const CPW = CHUNK_W * TILE
 const CPH = CHUNK_H * TILE
 
 /** Буфер вокруг камеры при расчёте чанков (px) — меньше множитель → меньше активных чанков / нагрузка на Mac. */
-export const TILEWORLD_CHUNK_VIEW_BUF_PX = CPW * 0.5
+export const TILEWORLD_CHUNK_VIEW_BUF_PX = CPW * 0.75
 
 /** Запас чанков вокруг окна камеры — чанк удаляется только за пределами `colMin±cull` / `rowMin±cull`. */
 export const TILEWORLD_CHUNK_CULL_MARGIN = 1

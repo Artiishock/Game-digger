@@ -1618,8 +1618,9 @@ export class GameRenderer {
     if (this.camX === this._prevScrollCamX && this.camY === this._prevScrollCamY) return
     this._prevScrollCamX = this.camX
     this._prevScrollCamY = this.camY
-    const x = -this.camX
-    const y = -this.camY
+    const dpr = (this.app.renderer as PIXI.Renderer | undefined)?.resolution ?? 1
+    const x = -Math.round(this.camX * dpr) / dpr
+    const y = -Math.round(this.camY * dpr) / dpr
     this.worldBgLayer.position.set(x, y)
     this._sceneryLayer.position.set(x, y)
     this.worldChunkLayer.position.set(x, y)
