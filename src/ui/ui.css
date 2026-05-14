@@ -79,13 +79,14 @@
 
 .ui-logo-zone {
   position: absolute;
-  top: 40px;
+
   left: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 60;
   pointer-events: none;
+  width: clamp(120px, 40vmin, 300px);
 }
 .ui-logo-zone img {
   width: 70%;
