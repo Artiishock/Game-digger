@@ -174,9 +174,9 @@ export const GameConfig = {
     /** Уменьшение обеих осей для тёмного слоя маски */
     darkInsetPx: 5,
     /** Шаг субсэмплов вдоль сегмента: доля от min(rx,ry); больше — реже точки, дешевле CPU на Mac. */
-    segmentSpacingMul: 0.32,
+    segmentSpacingMul: 0.15,
     /** Вершин полигона овала (больше — глаже контур). Меньше — дешевле scratchAt. */
-    ellipsePolySteps: 24,
+    ellipsePolySteps: 48,
   },
 
   // ─── Лава ────────────────────────────────────────────────────────────────────
@@ -200,8 +200,8 @@ export const GameConfig = {
      * Размер TilingSprite лавы (логические px). Было 4096² — тяжело по памяти и fill-rate на Retina;
      * 2560 достаточно при типичном viewport, позиция в `LavaSimulation` центрируется под камеру.
      */
-    tilingWidthPx: 2560,
-    tilingHeightPx: 2560,
+    tilingWidthPx: 4096,
+    tilingHeightPx: 4096,
 
     /** Скорость вылета вверх с анимацией die (px/с, игровое время). */
     deathAscentSpeedPx: 500,
@@ -308,7 +308,7 @@ export const GameConfig = {
      * 1.0 = рендер в логических пикселях, нет Retina-масштаба → ~56% меньше пикселей на Mac.
      * На старых MacBook Air / Intel Mac это критичная экономия GPU.
      */
-    maxDevicePixelRatio: 1.25,
+    maxDevicePixelRatio: 2.0,
 
     /** Сколько чанков из буферной очереди собирать за один кадр (меньше — ровнее FPS, дольше «догруз»). */
     tileWorldChunkBuildsPerFrame: 1,
@@ -325,7 +325,7 @@ export const GameConfig = {
      * WebGL multisampling (antialias). На встроенных GPU (MacBook Air, старые Intel) даёт заметную цену кадра;
      * на дискретных Windows часто почти бесплатно — при необходимости поставьте true.
      */
-    webglAntialias: false,
+    webglAntialias: true,
   },
 
   // ─── Коллизии ────────────────────────────────────────────────────────────────

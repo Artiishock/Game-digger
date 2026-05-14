@@ -86,7 +86,7 @@
   justify-content: center;
   color: rgba(255, 255, 255, 0.3);
   font-size: 24px;
-  background: rgba(255, 255, 255, 0.03);
+  background: none !important;
   z-index: 20;
   pointer-events: none;
   width: clamp(120px, 40vmin, 300px);
@@ -97,6 +97,7 @@
   display: block;
   opacity: 1;
   transition: opacity 0.28s ease;
+  mix-blend-mode: multiply;
 }
 /* После START (раунд активен) — логотип в фоне */
 .ui-logo-zone--gameplay img {
@@ -636,10 +637,9 @@
   position: fixed;
   inset: 0;
   z-index: 200;
-  background: rgba(0, 0, 0, 0.82);
-  /* blur backdrop — дорого на встроенной графике macOS/Safari; усилили непрозрачность фона */
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 
   display: flex;
   align-items: center;
@@ -2798,7 +2798,7 @@
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr) 70px;
   align-items: center;
-  gap: 14px;
+  gap: 20px;
 }
 
 .sys-settings-slider-icon {

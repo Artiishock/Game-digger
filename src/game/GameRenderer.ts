@@ -1242,12 +1242,8 @@ const TREE_X_IDLE: readonly [number, number, number] = [-1000, 420, 820]
  * (лавовый idle слева) `Math.round((anchorX - 420)/step)` даёт лишний −1 и tree1 уезжает на −3880.
  */
 const TREE_IDLE_TRIPLET_CENTER_X = (TREE_X_IDLE[0] + TREE_X_IDLE[1] + TREE_X_IDLE[2]) / 3
-/** В раунде: смещения от charX для тех же трёх деревьев */
-const TREE_X_RUN_DX: readonly [number, number, number] = [-480, 180, 520]
 /** Шаг между соседними копиями одного дерева в idle (мир px), не от ширины канваса (= 1920×1.5). */
 const TREE_IDLE_COPY_STEP_PX = TILE * 24
-/** В раунде сохраняем мировые X деревьев только если они уже у героя (ресайз), не от прошлой idle-сетки — иначе автоспины «телепортируют» деревья. */
-const TREE_RUN_SAVE_POS_TOL_PX = TILE * 24
 
 // ─── GameRenderer ─────────────────────────────────────────────────────────────
 
@@ -1294,7 +1290,6 @@ export class GameRenderer {
   private _lastWorldMaskGrassTop = -999
   private _lastWorldMaskW = 0
   private _particleTexture: PIXI.Texture = PIXI.Texture.EMPTY
-  private _treeRunDx: [number, number, number] = [...TREE_X_RUN_DX]
   private spawner:ObjectSpawner|null=null
   private tunnelActive = false
   private W=0; private H=0
@@ -1762,96 +1757,7 @@ export class GameRenderer {
     }
   }
 
-  /**
-   * Позиции tree1–3 в мир/экранных координатах (фильтр консоли: `[TREES]`).
-   * В production отключите шум: `window.__DR_TREE_LOG = false`.
-   */
-  private _logTreeLayout(tag: string): void {
-    if (typeof window !== 'undefined' && (window as any).__DR_TREE_LOG === false) return
-    const st = useGameStore.getState()
-    const keys = ['tree1', 'tree2', 'tree3'] as const
-    const margin = 120
-    const x0 = this.camX - margin
-    const x1 = this.camX + this.W + margin
-    const anchorX = this.camX + this.W * 0.5
-    const idleM0 = this.running
-      ? null
-      : Math.round((anchorX - TREE_IDLE_TRIPLET_CENTER_X) / TREE_IDLE_COPY_STEP_PX)
-    const gp = this._badgeAnchorScratch
-    const trees = keys.map((name, i) => {
-      const spr = this._sceneryLayer.getChildByName(name) as PIXI.Sprite | null
-      const expectedWorldX =
-        idleM0 === null ? this.charX + this._treeRunDx[i]! : TREE_X_IDLE[i]! + idleM0 * TREE_IDLE_COPY_STEP_PX
-      if (!spr) {
-        return {
-          name,
-          worldX: null as number | null,
-          screenX: null as number | null,
-          expectedWorldX,
-          onScreenApprox: false,
-        }
-      }
-      const wx = spr.x
-      spr.getGlobalPosition(gp)
-      return {
-        name,
-        worldX: wx,
-        screenX: gp.x,
-        expectedWorldX,
-        onScreenApprox: wx >= x0 && wx <= x1,
-      }
-    })
-    GameLogger.treeLayout({
-      tag,
-      running: this.running,
-      idleActive: this.idleActive,
-      autoplay: st.autoplay.active,
-      charX: this.charX,
-      camX: this.camX,
-      viewW: this.W,
-      treeRunDx: this._treeRunDx,
-      trees,
-    })
-  }
-
-  /**
-   * Добавляет tree1–3 в RUNNING, если текстуры появились после `startRound` (без полного сброса слоя).
-   * См. `_loadTextures`: полный `_syncSurfaceScenery` во время раунда снимает деревья на кадр.
-   */
-  private _ensureRunningTreesFromTextures(): void {
-    if (!this.running) return
-    const keys = ['tree1', 'tree2', 'tree3'] as const
-    let added = false
-    for (let i = 0; i < 3; i++) {
-      const name = keys[i]!
-      if (this._sceneryLayer.getChildByName(name)) continue
-      const tex = this._textures.get(name)
-      if (!tex) continue
-      const s = new PIXI.Sprite(tex)
-      s.name = name
-      s.anchor.set(0.5, 1)
-      s.x = this.charX + this._treeRunDx[i]!
-      const targetH = TREE_HEIGHTS_PX[i]!
-      const lift0 = i === 0 ? targetH * TREE0_LIFT_FRAC_OF_HEIGHT : 0
-      s.y = TREE_ANCHOR_WORLD_Y + TREE_Y_OFFSET[i]! - lift0
-      s.scale.set(targetH / tex.height)
-      this._sceneryLayer.addChild(s)
-      added = true
-    }
-    if (added) this._syncForestToCamera()
-  }
-
   private _syncSurfaceScenery() {
-    const savedTreeX: [number | null, number | null, number | null] = [null, null, null]
-    if (this.running) {
-      for (let i = 0; i < 3; i++) {
-        const s = this._sceneryLayer.getChildByName(`tree${i + 1}`) as PIXI.Sprite | null
-        if (!s) continue
-        const expected = this.charX + this._treeRunDx[i]!
-        if (Math.abs(s.x - expected) < TREE_RUN_SAVE_POS_TOL_PX) savedTreeX[i] = s.x
-      }
-    }
-
     // Не трогаем TilingSprite «forest» — пересоздание даёт кадр без текстуры / мигание.
     for (let i = this._sceneryLayer.children.length - 1; i >= 0; i--) {
       const ch = this._sceneryLayer.children[i]!
@@ -1905,50 +1811,28 @@ export class GameRenderer {
 
     const keys = ['tree1', 'tree2', 'tree3'] as const
 
-    if (this.running) {
-      const xs = this._treeRunDx.map((dx, i) => {
-        const saved = savedTreeX[i]
-        if (saved !== null) return saved
-        return this.charX + dx
-      }) as [number, number, number]
-      for (let i = 0; i < 3; i++) {
-        const tex = this._textures.get(keys[i])
-        if (!tex) continue
+    // Idle: копии деревьев по X с фиксированным шагом; сдвигаем сетку к центру экрана, иначе после
+    // глубокого раунда (большой world X) все копии остаются слева от камеры — «пропадают».
+    const tileW = TREE_IDLE_COPY_STEP_PX
+    const anchorX = this.camX + this.W * 0.5
+    const m0 = Math.round((anchorX - TREE_IDLE_TRIPLET_CENTER_X) / tileW)
+    const COPIES = 6
+    for (let i = 0; i < 3; i++) {
+      const tex = this._textures.get(keys[i])
+      if (!tex) continue
+      const targetH = TREE_HEIGHTS_PX[i]!
+      const lift0 = i === 0 ? targetH * TREE0_LIFT_FRAC_OF_HEIGHT : 0
+      const baseX = TREE_X_IDLE[i]!
+      for (let k = -COPIES; k <= COPIES; k++) {
         const s = new PIXI.Sprite(tex)
-        s.name = keys[i]
+        if (k === 0) s.name = keys[i]
         s.anchor.set(0.5, 1)
-        s.x = xs[i]!
-        const targetH = TREE_HEIGHTS_PX[i]!
-        const lift0 = i === 0 ? targetH * TREE0_LIFT_FRAC_OF_HEIGHT : 0
+        s.x = baseX + (m0 + k) * tileW
         s.y = TREE_ANCHOR_WORLD_Y + TREE_Y_OFFSET[i]! - lift0
         s.scale.set(targetH / tex.height)
         this._sceneryLayer.addChild(s)
       }
-    } else {
-      // Idle: копии деревьев по X с фиксированным шагом; сдвигаем сетку к центру экрана, иначе после
-      // глубокого раунда (большой world X) все копии остаются слева от камеры — «пропадают».
-      const tileW = TREE_IDLE_COPY_STEP_PX
-      const anchorX = this.camX + this.W * 0.5
-      const m0 = Math.round((anchorX - TREE_IDLE_TRIPLET_CENTER_X) / tileW)
-      const COPIES = 6
-      for (let i = 0; i < 3; i++) {
-        const tex = this._textures.get(keys[i])
-        if (!tex) continue
-        const targetH = TREE_HEIGHTS_PX[i]!
-        const lift0 = i === 0 ? targetH * TREE0_LIFT_FRAC_OF_HEIGHT : 0
-        const baseX = TREE_X_IDLE[i]!
-        for (let k = -COPIES; k <= COPIES; k++) {
-          const s = new PIXI.Sprite(tex)
-          if (k === 0) s.name = keys[i]  // named so _captureTreeRunOffsets can find it
-          s.anchor.set(0.5, 1)
-          s.x = baseX + (m0 + k) * tileW
-          s.y = TREE_ANCHOR_WORLD_Y + TREE_Y_OFFSET[i]! - lift0
-          s.scale.set(targetH / tex.height)
-          this._sceneryLayer.addChild(s)
-        }
-      }
     }
-    this._logTreeLayout('syncSurfaceScenery')
   }
 
 
@@ -2031,26 +1915,6 @@ export class GameRenderer {
     c.y = top + dy
     c._drift = CLOUD_DRIFT_PX_S
     this._skyCloudLayer.addChild(c)
-  }
-
-  /**
-   * Фиксирует смещения деревьев от логического `charX` в момент перехода idle-сетка → три дерева в раунде.
-   * Вызывать только когда `charX` уже привязан к туннелю (после `tunnelXAtWorldY` / конец start-интро).
-   *
-   * Считаем мир X так же, как именованные `tree1`–`tree3` в idle (`baseX + m0 * step` при k=0 в `_syncSurfaceScenery`),
-   * а не через `getChildByName`: до первого `_syncSurfaceScenery` в раунде спрайты могут отставать от `camX`/`charX`,
-   * и `spr.x - startX` давал бы неверные `_treeRunDx` и скачок деревьев на первом кадре бега.
-   */
-  private _captureTreeRunOffsets(startX: number): void {
-    const anchorX = this.camX + this.W * 0.5
-    const step = TREE_IDLE_COPY_STEP_PX
-    const m0 = Math.round((anchorX - TREE_IDLE_TRIPLET_CENTER_X) / step)
-    this._treeRunDx = [
-      TREE_X_IDLE[0]! + m0 * step - startX,
-      TREE_X_IDLE[1]! + m0 * step - startX,
-      TREE_X_IDLE[2]! + m0 * step - startX,
-    ]
-    this._logTreeLayout('captureTreeRunOffsets')
   }
 
   /** Сдвигает весь предрассчитанный маршрут по X, чтобы старт совпал с текущей позицией героя. */
@@ -2383,7 +2247,6 @@ export class GameRenderer {
       this.miner.playStartDigTransition()
       this.miner.setIdleMode(false)
       this._spawnDirtEntry()
-      this._captureTreeRunOffsets(this.charX)
       this.running = true
       this._syncSurfaceScenery()
     }
@@ -2508,14 +2371,7 @@ export class GameRenderer {
       }
       this.skyLayer.removeChildren()
       this._buildSky()
-      // Полный `_syncSurfaceScenery` сносит все спрайты слоя (деревья) и пересоздаёт их.
-      // Если пакет текстур догружается уже во время RUNNING (медленная сеть + автоспин),
-      // на кадр деревья пропадают / скачут — в раунде только дозаполняем отсутствующие tree*.
-      if (this.running) {
-        this._ensureRunningTreesFromTextures()
-      } else {
-        this._syncSurfaceScenery()
-      }
+      this._syncSurfaceScenery()
     })()
     return this._texturesLoading
   }
@@ -2932,7 +2788,6 @@ export class GameRenderer {
         }
         this.miner.setIdleMode(false)
         this._spawnDirtEntry()
-        this._captureTreeRunOffsets(this.charX)
         this.running = true
         this._syncSurfaceScenery()
       }
@@ -3841,7 +3696,6 @@ export class GameRenderer {
     }
     this.charX = 0
     this.charY = 0
-    this._treeRunDx = [...TREE_X_RUN_DX]
     this.camX = this.idleX + GameConfig.hero.idle.rootOffsetXPx - this.W / 2
     this.camY = this.idleCamY
     this._syncLayerScroll()
