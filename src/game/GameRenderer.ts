@@ -994,16 +994,15 @@ class ObjectSpawner {
   }
 
   checkCollisions(charX: number, charY: number, onCollect: (obj: SpawnedObj) => void) {
-    const hits: SpawnedObj[] = []
+    let best: SpawnedObj | null = null
     for (const o of this.objects) {
       if (o.collected || !o.isRoadItem) continue
-      if (this._roadItemHit(charX, charY, o)) hits.push(o)
+      if (!this._roadItemHit(charX, charY, o)) continue
+      if (!best || o.worldY < best.worldY || (o.worldY === best.worldY && o.worldX < best.worldX)) best = o
     }
-    if (hits.length === 0) return
-    hits.sort((a, b) => a.worldY - b.worldY || a.worldX - b.worldX)
-    const o = hits[0]!
-    o.collected = true
-    onCollect(o)
+    if (!best) return
+    best.collected = true
+    onCollect(best)
   }
 
   skipTo(minY: number): void {
@@ -1336,6 +1335,9 @@ export class GameRenderer {
   private multiplier=0; private depth=0; private distance=0
   private particles:Particle[]=[]
   private floatTexts:FloatText[]=[]
+  private _particlePool:PIXI.Sprite[]=[]
+  private _floatTextPool:PIXI.Text[]=[]
+  private _collectAnims:Array<{gfx:PIXI.Graphics;t:number}>=[]
   private ppm=TILE*2
   private rgsQueue:RoundEvent[]=[]
   private rgsEvents:RoundEvent[]=[]   // оригинальный список — нужен для вычисления дельты
@@ -2007,6 +2009,12 @@ export class GameRenderer {
     this._cleanupLavaDeathCinematic()
     this.miner.resetFromDeath()
     this._lavaLossTimeoutPending = false
+    this._lavaLossIdleGlideActive = false
+    this._lavaLossIdleGlideT = 0
+    if (this._lavaLossResultTimerId !== null) {
+      clearTimeout(this._lavaLossResultTimerId)
+      this._lavaLossResultTimerId = null
+    }
     this.multiplier=0;this.depth=0;this.distance=0
     this.particles=[]
     this.floatTexts=[]
@@ -2086,6 +2094,7 @@ export class GameRenderer {
     this._repulseDir   = 1
     this._lossTerminalDescent = false
     this._caveZones    = []
+    this._collectAnims = []
     this._digSoundCarry = 0
 
     this.charY=startY
@@ -2557,6 +2566,7 @@ export class GameRenderer {
     const store = useGameStore.getState()
     if (store.phase !== 'RUNNING') return
     if (this.idleActive || this._ended) return
+    if (this._awaitingStartAnim) return
     if (this.rgsEvents.length === 0) return
     if (!store.roundID || this._rendererRoundId !== store.roundID) return
 
@@ -2940,7 +2950,13 @@ export class GameRenderer {
       lavaTrailAy = this.charY
 
       if (this._caveZones.length > 500 && !this._lossTerminalDescent) {
-        this._caveZones = this._caveZones.filter(z => z.y > this.camY - TILE * 5)
+        const cutY = this.camY - TILE * 5
+        for (let _ci = this._caveZones.length - 1; _ci >= 0; _ci--) {
+          if (this._caveZones[_ci]!.y <= cutY) {
+            this._caveZones[_ci] = this._caveZones[this._caveZones.length - 1]!
+            this._caveZones.pop()
+          }
+        }
       }
 
       // LOSS: при падении ниже полилинии у конца пути включаем терминальный спуск к лаве.
@@ -3740,12 +3756,19 @@ export class GameRenderer {
   // ─── Particles ────────────────────────────────────────────────────────────
 
   private _floatText(wx:number,wy:number,label:string,color:number){
-    const txt=new PIXI.Text(label,{
-      fontFamily:'Arial,sans-serif',fontWeight:'900',fontSize:24,
-      fill:color,stroke:{color:0x000000,width:3},
-      dropShadow:{color:0x000000,blur:0,distance:2,angle:Math.PI/2,alpha:1},
-    })
-    txt.anchor.set(0.5,0.5)
+    let txt=this._floatTextPool.pop()
+    if(txt){
+      txt.text=label
+      txt.style.fill=color
+      txt.alpha=1;txt.visible=true;txt.scale.set(1)
+    }else{
+      txt=new PIXI.Text(label,{
+        fontFamily:'Arial,sans-serif',fontWeight:'900',fontSize:24,
+        fill:color,stroke:{color:0x000000,width:3},
+        dropShadow:{color:0x000000,blur:0,distance:2,angle:Math.PI/2,alpha:1},
+      })
+      txt.anchor.set(0.5,0.5)
+    }
     txt.x=wx+(Math.random()-0.5)*40
     txt.y=wy-40
     this.objectsLayer.addChild(txt)
@@ -3760,9 +3783,10 @@ export class GameRenderer {
     if (useN <= 0) return
     for(let i=0;i<useN;i++){
       const r=(Math.random()*5+2)*2
-      const spr=new PIXI.Sprite(this._particleTexture)
+      const spr=this._particlePool.pop()??new PIXI.Sprite(this._particleTexture)
       spr.tint=col;spr.width=r;spr.height=r;spr.anchor.set(0.5)
-      spr.x=wx;spr.y=wy;this.objectsLayer.addChild(spr)
+      spr.x=wx;spr.y=wy;spr.alpha=1;spr.visible=true
+      this.objectsLayer.addChild(spr)
       const a=Math.random()*Math.PI*2,s=Math.random()*100+60
       this.particles.push({gfx:spr,vx:Math.cos(a)*s,vy:Math.sin(a)*s-80,life:1})
     }
@@ -3770,22 +3794,7 @@ export class GameRenderer {
 
   private _animCollect(gfx:PIXI.Graphics, spine: import('@esotericsoftware/spine-pixi-v8').Spine | null = null){
     SpineAnimator.remove(spine)
-    const app = this.app
-    let t=0
-    const tick=()=>{
-      if (!app?.ticker || (gfx as { destroyed?: boolean }).destroyed) {
-        app?.ticker.remove(tick)
-        return
-      }
-      t+=0.1
-      gfx.scale.set(1.5-t*0.5)
-      gfx.alpha=1-t
-      if(t>=1){
-        gfx.visible=false
-        app.ticker.remove(tick)
-      }
-    }
-    app.ticker.add(tick)
+    this._collectAnims.push({gfx,t:0})
   }
 
   /**
@@ -3803,7 +3812,7 @@ export class GameRenderer {
         const p = this.particles[i]!
         p.life -= dt * 1.8
         if (p.gfx.destroyed || p.life <= 0) {
-          if (!p.gfx.destroyed) { this.objectsLayer.removeChild(p.gfx); p.gfx.destroy() }
+          if (!p.gfx.destroyed) { this.objectsLayer.removeChild(p.gfx); this._particlePool.push(p.gfx) }
           this.particles[i] = this.particles[this.particles.length - 1]!
           this.particles.pop()
         } else {
@@ -3819,7 +3828,7 @@ export class GameRenderer {
         const f = this.floatTexts[i]!
         f.life -= dt * 1.1
         if ((f.txt as { destroyed?: boolean }).destroyed || f.life <= 0) {
-          if (!(f.txt as { destroyed?: boolean }).destroyed) { this.objectsLayer.removeChild(f.txt); f.txt.destroy() }
+          if (!(f.txt as { destroyed?: boolean }).destroyed) { this.objectsLayer.removeChild(f.txt); this._floatTextPool.push(f.txt) }
           this.floatTexts[i] = this.floatTexts[this.floatTexts.length - 1]!
           this.floatTexts.pop()
         } else {
@@ -3827,6 +3836,26 @@ export class GameRenderer {
           f.txt.alpha = f.life; f.txt.scale.set(0.8 + f.life * 0.4)
           i++
         }
+      }
+    }
+
+    {
+      let i=0
+      while(i<this._collectAnims.length){
+        const a=this._collectAnims[i]!
+        if((a.gfx as {destroyed?:boolean}).destroyed){
+          this._collectAnims[i]=this._collectAnims[this._collectAnims.length-1]!
+          this._collectAnims.pop();continue
+        }
+        a.t+=0.1
+        a.gfx.scale.set(1.5-a.t*0.5)
+        a.gfx.alpha=1-a.t
+        if(a.t>=1){
+          a.gfx.visible=false
+          this._collectAnims[i]=this._collectAnims[this._collectAnims.length-1]!
+          this._collectAnims.pop();continue
+        }
+        i++
       }
     }
 
@@ -3978,6 +4007,11 @@ export class GameRenderer {
     this.liveWinBadge.removeFromParent()
     this.miner.destroy()
     this.liveWinBadge.destroy({ children: true })
+    for(const spr of this._particlePool) if(!spr.destroyed) spr.destroy()
+    this._particlePool=[]
+    for(const txt of this._floatTextPool) if(!(txt as {destroyed?:boolean}).destroyed) txt.destroy()
+    this._floatTextPool=[]
+    this._collectAnims=[]
     if (!this._particleTexture.destroyed) this._particleTexture.destroy(true)
     this.app.destroy(false,{children:true,texture:true})
   }

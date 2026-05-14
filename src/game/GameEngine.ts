@@ -21,6 +21,8 @@ class GameEngine {
   private _abortAutoplay = false
   /** Колбэк рендерера: мгновенно завершить раунд по полной дорожке RGS (повторный Spin). */
   private _rendererInstantFinish: (() => Promise<void>) | null = null
+  /** performance.now() момента когда последний раунд завершился (WIN/LOSE). */
+  private _roundEndTime = 0
 
   private _setPhase(store: ReturnType<typeof useGameStore.getState>, phase: GamePhase): void {
     GameLogger.phaseChange(useGameStore.getState().phase, phase)
@@ -140,6 +142,13 @@ class GameEngine {
     store = useGameStore.getState()
     if (store.phase === 'BETTING' || store.phase === 'RUNNING') return
 
+    const gap = GameConfig.round.minRoundGapMs - (performance.now() - this._roundEndTime)
+    if (gap > 0) {
+      await new Promise<void>((resolve) => setTimeout(resolve, gap))
+      store = useGameStore.getState()
+      if (store.phase === 'BETTING' || store.phase === 'RUNNING') return
+    }
+
     this._setPhase(store, 'BETTING')
     store.resetStats()
 
@@ -195,6 +204,7 @@ class GameEngine {
    */
   async onRoundComplete(multiplier: number, won: boolean): Promise<void> {
     const store = useGameStore.getState()
+    const roundIDSnapshot = store.roundID
     const bet   = store.bet
 
     if (store.replayMode) {
@@ -239,6 +249,11 @@ class GameEngine {
       }
 
       store.setBalance(newBalance)
+
+      // Guard: if a new round started while waiting for RGS, don't overwrite its phase.
+      if (useGameStore.getState().roundID !== roundIDSnapshot) return
+
+      this._roundEndTime = performance.now()
 
       let creditedWinDisplay = 0
       if (won) {
