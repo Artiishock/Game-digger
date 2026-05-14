@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js'
+import { Assets } from 'pixi.js'
 import { initDevtools } from '@pixi/devtools'
 import { gameEngine }   from './GameEngine'
 import { useGameStore } from '../store/gameStore'
@@ -8,7 +9,7 @@ import * as Demo from '../rgs/demo'
 import { TileWorld, TILE, tileWorldMaxChunkWindowFromConfig } from './Tileworld'
 import { LavaSimulation } from './LavaSimulation'
 import { SpineAnimator, HERO_ANIM, ROCK_ANIM, GOLD_ANIM, GOLD_STAGE, STONE_STAGE, BREAK_ACTION_DURATION, getSpineItemSize } from './SpineAnimator'
-import type { Spine } from 'pixi-spine'
+import type { Spine } from '@esotericsoftware/spine-pixi-v8'
 import { GameConfig, effectiveDevicePixelRatio, HERO_MAX_SIDE_PX } from './GameConfig'
 import { gameAudio } from '../audio/GameAudio'
 import { GameAssets } from './gameAssets'
@@ -141,7 +142,7 @@ function collectPixiSubtreeStats(root: PIXI.Container) {
 }
 
 function collectPixiTopLayerStats(stage: PIXI.Container) {
-  const layers = stage.children.filter(Boolean) as PIXI.DisplayObject[];
+  const layers = stage.children.filter(Boolean) as PIXI.Container[];
   const out: Array<{
     idx: number;
     name: string;
@@ -345,7 +346,7 @@ function formatLiveWinAmount(value: number, currency: string): string {
 }
 
 /** Безопасное destroy: HMR / двойной teardown / WebGL уже снят — иначе Pixi кидает refCount. */
-function safePixiDestroyDisplay(obj: PIXI.DisplayObject | null | undefined): void {
+function safePixiDestroyDisplay(obj: PIXI.Container | null | undefined): void {
   if (!obj) return
   if ((obj as { destroyed?: boolean }).destroyed) return
   try {
@@ -422,7 +423,7 @@ class SpriteCharacter {
   private _setAnim(name: string, loop = true): void {
     if (!this._spine) return
     if (this._activeAnim === name) return
-    if (!this._spine.spineData.findAnimation(name)) return
+    if (!this._spine.skeleton.data.findAnimation(name)) return
     SpineAnimator.setAnimation(this._spine, name, loop)
     this._activeAnim = name
   }
@@ -510,7 +511,7 @@ class SpriteCharacter {
 
   playStartDigTransition() {
     if (!this._spine || this._dieLocked) return
-    const startAnim = this._spine.spineData.findAnimation(HERO_ANIM.start)
+    const startAnim = this._spine.skeleton.data.findAnimation(HERO_ANIM.start)
     if (!startAnim) {
       this._heroStartAnimDurationSec = 0
       this._resetStartCarveLatchPose()
@@ -607,7 +608,7 @@ class SpriteCharacter {
   /** Есть клип старта копания в hero Spine — тогда раунд ждёт его конца. */
   heroHasStartDigClip(): boolean {
     if (!this._spine || this._dieLocked) return false
-    return !!this._spine.spineData.findAnimation(HERO_ANIM.start)
+    return !!this._spine.skeleton.data.findAnimation(HERO_ANIM.start)
   }
 
   /** true пока не истёк hold после playStartDigTransition (анимация старта ещё идёт). */
@@ -676,7 +677,7 @@ class SpriteCharacter {
    */
   getHeroStartTunnelLengthProgress(): number | null {
     if (!this._spine || this._dieLocked) return null
-    if (!this._spine.spineData.findAnimation(HERO_ANIM.start)) return null
+    if (!this._spine.skeleton.data.findAnimation(HERO_ANIM.start)) return null
     if (this._activeAnim !== HERO_ANIM.start) return 1
     if (!this._startCarveLatched) return null
     const H = this._startCarveLatchHoldRefSec
@@ -735,7 +736,7 @@ class SpriteCharacter {
     const inHeroStartIntro =
       !!this._spine &&
       !this._dieLocked &&
-      !!this._spine.spineData.findAnimation(HERO_ANIM.start) &&
+      !!this._spine.skeleton.data.findAnimation(HERO_ANIM.start) &&
       this._activeAnim === HERO_ANIM.start &&
       this._animHoldSec > 0
 
@@ -1045,7 +1046,7 @@ class ObjectSpawner {
   /**
    * После `_destroyBreakObj`: `gfx` уже уничтожен, убрать «висячие» collected-записи STONE/GOLD.
    */
-  removeDeferredCollectedBreakVisual(gfx: PIXI.DisplayObject) {
+  removeDeferredCollectedBreakVisual(gfx: PIXI.Container) {
     for (let i = this.objects.length - 1; i >= 0; i--) {
       const o = this.objects[i]!
       if (o.collected && o.gfx === gfx) {
@@ -1168,19 +1169,13 @@ class ObjectSpawner {
     const angle = dist > 0 ? Math.atan2(dy, dx) : 0
     const tier = cfg.tiers[`${obj.type}:${value}`] ?? cfg.fallback
     const label = new PIXI.Text(`${prefix}${value}`, {
-      fontFamily:         cfg.fontFamily,
-      fontSize:           tier.fontSize,
-      fontWeight:         cfg.fontWeight as PIXI.TextStyleFontWeight,
-      fill:               tier.color,
-      stroke:             cfg.strokeColor,
-      strokeThickness:    cfg.strokeThickness,
-      align:              'center',
-      dropShadow:         sh.enabled,
-      dropShadowColor:    sh.color,
-      dropShadowAngle:    angle,
-      dropShadowDistance: dist,
-      dropShadowBlur:     sh.blur,
-      dropShadowAlpha:    sh.alpha,
+      fontFamily:  cfg.fontFamily,
+      fontSize:    tier.fontSize,
+      fontWeight:  cfg.fontWeight as PIXI.TextStyleFontWeight,
+      fill:        tier.color,
+      stroke:      { color: cfg.strokeColor, width: cfg.strokeThickness },
+      align:       'center',
+      dropShadow:  sh.enabled ? { color: sh.color, angle, distance: dist, blur: sh.blur, alpha: sh.alpha } : undefined,
     })
     label.anchor.set(0.5, 0.5)
     label.rotation = (cfg.rotationDeg * Math.PI) / 180
@@ -1258,6 +1253,8 @@ const TREE_RUN_SAVE_POS_TOL_PX = TILE * 24
 
 export class GameRenderer {
   app:PIXI.Application
+  /** Resolves when PixiJS renderer + ticker are ready (app.init completes). */
+  ready!:Promise<void>
   /** Подложка под выкопом (текстура земли / цвет из TileWorld.bgLight). */
   private worldBgLayer:   PIXI.Container
   /** Чанки травы/земли и лава — поверх неба и деревьев. */
@@ -1275,8 +1272,7 @@ export class GameRenderer {
     fontSize: 14,
     fontWeight: '800',
     fill: 0xFFFFFF,
-    stroke: 0x000000,
-    strokeThickness: 2,
+    stroke: { color: 0x000000, width: 2 },
     align: 'center',
   })
   private liveWinAmountText: PIXI.Text = new PIXI.Text('', {
@@ -1284,8 +1280,7 @@ export class GameRenderer {
     fontSize: 25,
     fontWeight: '900',
     fill: 0xFACB32,
-    stroke: 0x000000,
-    strokeThickness: 2,
+    stroke: { color: 0x000000, width: 2 },
     align: 'center',
   })
   private liveWinAmountCached = ''
@@ -1419,7 +1414,7 @@ export class GameRenderer {
   private _goldCrashPlayed = false;     // crash уже сыгран в финальной фазе (как у камня)
 
   // Активный объект во время брейка (показываем action-анимацию)
-  private _breakSpine: import('pixi-spine').Spine | null = null;
+  private _breakSpine: import('@esotericsoftware/spine-pixi-v8').Spine | null = null;
   private _breakGfx:   PIXI.Graphics | null = null;
   // Стадия брейка: 0=idle(не начат), 1=state1, 2=state2, 3=action
   private _breakStage = 0;
@@ -1429,7 +1424,7 @@ export class GameRenderer {
   private _texturesLoading: Promise<void> | null = null
 
   // Эффект грязи в точке входа (dirt_show → dirt_idle)
-  private _dirtEntry: import('pixi-spine').Spine | null = null
+  private _dirtEntry: import('@esotericsoftware/spine-pixi-v8').Spine | null = null
   private _dirtEntryGfx: PIXI.Container | null = null
 
   // Пещеры
@@ -1452,52 +1447,26 @@ export class GameRenderer {
     const dpr = effectiveDevicePixelRatio()
     canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr)
     const aa = GameConfig.performance.webglAntialias
-    const base:PIXI.IApplicationOptions={
-      view:canvas,width:w,height:h,backgroundColor:C.bg,
-      antialias:aa,resolution:dpr,autoDensity:true,hello:false,
-      powerPreference:'high-performance',
-    } as any
-    let app:PIXI.Application
-    try{
-      app=new PIXI.Application(base)
-      const gl=(app.renderer as any).context?.gl
-      if(gl?.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS)===0){app.destroy(false);throw new Error('')}
-    }catch{
-      app=new PIXI.Application({...base,antialias:false,forceCanvas:true})
-    }
-    this.app=app
 
-    // ─── Общая текстура для частиц (белый круг) — все частицы батчатся в 1 draw-call ──
+    // PixiJS v8: new Application() без аргументов — renderer и ticker создаются в async init()
+    this.app = new PIXI.Application()
+
+    // ─── Текстура частиц через canvas — не требует renderer ───────────────
     {
-      const pg = new PIXI.Graphics()
-      pg.beginFill(0xffffff).drawCircle(8, 8, 8).endFill()
-      this._particleTexture = app.renderer.generateTexture(pg, { resolution: 1 })
-      pg.destroy()
+      const sz = 16
+      const cvs = document.createElement('canvas')
+      cvs.width = sz; cvs.height = sz
+      const ctx2d = cvs.getContext('2d')!
+      ctx2d.fillStyle = '#ffffff'
+      ctx2d.beginPath(); ctx2d.arc(sz / 2, sz / 2, sz / 2, 0, Math.PI * 2); ctx2d.fill()
+      this._particleTexture = PIXI.Texture.from(cvs)
     }
-
-    // ─── PixiJS Devtools setup ──────────────────────────────────────────────
-    // All three methods combined for maximum compatibility:
-    // 1) window.__PIXI_DEVTOOLS__ — official manual setup (synchronous)
-    // 2) initDevtools()           — official package setup (passes stage+renderer)
-    // 3) window.__PIXI_APP__     — unofficial fallback (pixi-inspector style)
-    if (import.meta.env.DEV) {
-      ;(window as any).__PIXI_DEVTOOLS__ = {
-        pixi:     PIXI,
-        app:      this.app,
-        stage:    this.app.stage,
-        renderer: this.app.renderer,
-      }
-      ;(window as any).__PIXI_APP__ = this.app
-      initDevtools({ app: this.app })
-    }
-    // ────────────────────────────────────────────────────────────────────────
 
     this.skyLayer    = new PIXI.Container()
     this.worldBgLayer   = new PIXI.Container()
     this.worldChunkLayer = new PIXI.Container()
-    this.objectsLayer= new PIXI.Container()  // ← между миром и персонажем
+    this.objectsLayer= new PIXI.Container()
 
-    // Debug-friendly names for layer attribution in devtools/stats.
     this.worldBgLayer.name = 'worldBgLayer'
     this.skyLayer.name = 'skyLayer'
     this._skyCloudLayer.name = 'skyCloudLayer'
@@ -1507,7 +1476,7 @@ export class GameRenderer {
     this.minerLayer.name = 'minerLayer'
     this._worldMask.name = 'worldMask'
 
-    // Фон мира → небо → деревья → игровое поле (чанки) → предметы → герой
+    // app.stage — class field в v8, доступен до init()
     this.app.stage.addChild(
       this.worldBgLayer,
       this.skyLayer,
@@ -1517,11 +1486,9 @@ export class GameRenderer {
       this.minerLayer,
     )
 
-    // Маска для skyLayer: небо видно только выше линии травы на экране
     this._worldMask = new PIXI.Graphics()
     this._worldMask.name = 'worldMask'
-    this.app.stage.addChild(this._worldMask)
-    this.skyLayer.mask = this._worldMask
+    // addChild и mask= переносим в .then() — до init() AlphaMaskPipe не инициализирован
     this._updateWorldMask(w, h)
 
     this.charScreenY=h*0.42
@@ -1549,28 +1516,50 @@ export class GameRenderer {
       const heroSpine = SpineAnimator.createHero(HERO_SPINE_SCALE)
       if (heroSpine) this.miner.setHeroSpine(heroSpine)
     })
-    SpineAnimator.loadGoldStone()   // грузим параллельно с текстурами, не ждём
-    this.app.ticker.add(this._tick.bind(this))
-    this._installPageVisibilityPowerSave()
-    this._syncTickerPowerSave()
-    if (
-      GameConfig.performance.pauseTickerWhenPageHidden &&
-      typeof document !== 'undefined' &&
-      document.visibilityState === 'hidden'
-    ) {
-      this.app.ticker.stop()
-    }
+    SpineAnimator.loadGoldStone()
 
-    // Dev-only: print per-stage-child stats so we can attribute Sprite counts to a layer.
-    if (import.meta.env.DEV) {
-      installPerfProfiler()
-      // IMPORTANT: this traversal is expensive and will tank FPS.
-      // Enable only when explicitly requested in console:
-      //   window.__DR_TOP_LAYER_STATS__ = true; location.reload()
-      if ((window as any).__DR_TOP_LAYER_STATS__) {
-        installTopLayerStats(this.app)
+    // ─── Async PixiJS init: renderer + ticker доступны только после этого ──
+    this.ready = this.app.init({
+      canvas,
+      width:w, height:h,
+      backgroundColor:C.bg,
+      antialias:aa,
+      resolution:dpr,
+      autoDensity:true,
+      hello:false,
+      powerPreference:'high-performance',
+    } as any).then(() => {
+      if (!this.app) return  // компонент размонтирован до завершения init
+      // Маска skyLayer требует инициализированного AlphaMaskPipe — только после init()
+      this.app.stage.addChild(this._worldMask)
+      this.skyLayer.mask = this._worldMask
+      this._lastWorldMaskGrassTop = Infinity  // сброс кэша, чтобы _updateWorldMask точно отрисовал
+      this._updateWorldMask(this.W, this.H)
+      this.app.ticker.add(this._tick.bind(this))
+      this._installPageVisibilityPowerSave()
+      this._syncTickerPowerSave()
+      if (
+        GameConfig.performance.pauseTickerWhenPageHidden &&
+        typeof document !== 'undefined' &&
+        document.visibilityState === 'hidden'
+      ) {
+        this.app.ticker.stop()
       }
-    }
+      if (import.meta.env.DEV) {
+        ;(window as any).__PIXI_DEVTOOLS__ = {
+          pixi:     PIXI,
+          app:      this.app,
+          stage:    this.app.stage,
+          renderer: this.app.renderer,
+        }
+        ;(window as any).__PIXI_APP__ = this.app
+        initDevtools({ app: this.app })
+        installPerfProfiler()
+        if ((window as any).__DR_TOP_LAYER_STATS__) {
+          installTopLayerStats(this.app)
+        }
+      }
+    })
   }
 
   private _createLiveWinBadge(): void {
@@ -1684,6 +1673,7 @@ export class GameRenderer {
     // Сначала трава/чанки, затем дожидаемся текстур (constructor уже вызывает _loadTextures()).
     // Иначе первый _syncSurfaceScenery уходит без forest/tree — пустой сценарий на старте.
     void TileWorld.loadGrassTex().then(async () => {
+      await this.ready  // гарантируем что app.renderer доступен
       if (!this.app) return
       this.tileWorld = new TileWorld(this.worldBgLayer, this.worldChunkLayer, this.worldSeed)
       this.tileWorld.renderer = this.app.renderer as PIXI.Renderer
@@ -1906,6 +1896,8 @@ export class GameRenderer {
     } else {
       const dead = this._sceneryLayer.getChildByName('forest')
       if (dead) {
+        // Clear mask before removeChild — PixiJS v8 needs _renderGroup valid to tear down AlphaMask.
+        ;(dead as PIXI.Container).mask = null
         this._sceneryLayer.removeChild(dead)
         dead.destroy({ children: true })
       }
@@ -1990,7 +1982,7 @@ export class GameRenderer {
       rock.y = top - 6
     }
     for (const ch of this._skyCloudLayer.children) {
-      const name = (ch as PIXI.DisplayObject).name ?? ''
+      const name = (ch as PIXI.Container).name ?? ''
       if (!name.startsWith('cloud')) continue
       const c = ch as PIXI.Sprite & { _drift?: number; _topDy?: number }
       const drift = c._drift ?? CLOUD_DRIFT_PX_S
@@ -2493,9 +2485,9 @@ export class GameRenderer {
       ]
       for (const [key, url] of loads) {
         try {
-          const tex = await PIXI.Texture.fromURL(url)
+          const tex = await Assets.load<PIXI.Texture>(url)
           if (key === 'bg') {
-            tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.OFF
+            tex.source.mipLevelCount = 1
           }
 
           this._textures.set(key, tex)
@@ -2508,7 +2500,7 @@ export class GameRenderer {
         this.miner.setHeroSpine(heroSpine)
       } else {
         try {
-          const heroTex = await PIXI.Texture.fromURL(GameAssets.hero)
+          const heroTex = await Assets.load<PIXI.Texture>(GameAssets.hero)
           this.miner.setHeroTexture(heroTex)
         } catch {
           console.warn('[GameRenderer] Failed to load hero texture')
@@ -2846,9 +2838,9 @@ export class GameRenderer {
 
   // ─── Tick ─────────────────────────────────────────────────────────────────
 
-  private _tick(delta:number){
-    tickTickerFpsLog(this.app.ticker.deltaMS)
-    const dt=Math.min(delta/60, 0.1)  // cap 100ms — безопасно при лагге вкладки
+  private _tick(ticker:PIXI.Ticker){
+    tickTickerFpsLog(ticker.deltaMS)
+    const dt=Math.min(ticker.deltaTime/60, 0.1)  // cap 100ms — безопасно при лагге вкладки
     const store=useGameStore.getState()
     const spd=store.speed
     // gameDt — масштабированное время: вся игровая логика использует его,
@@ -3801,8 +3793,10 @@ export class GameRenderer {
       this.tileWorld.lavaSimulation = null
     }
     if (this.lavaSimulation) {
-      const lava = this.lavaSimulation as any
-      if (lava.container?.parent) lava.container.parent.removeChild(lava.container)
+      // Do NOT removeChild before destroy — LavaSimulation.destroy() clears masks first,
+      // then container.destroy() calls removeFromParent() internally. Calling removeChild
+      // here first would null _renderGroup before masks are cleared, leaving stale
+      // AlphaMask instructions in the render pipeline and causing a null.ids crash.
       this.lavaSimulation.destroy()
       this.lavaSimulation = null
     }
@@ -3866,8 +3860,8 @@ export class GameRenderer {
   private _floatText(wx:number,wy:number,label:string,color:number){
     const txt=new PIXI.Text(label,{
       fontFamily:'Arial,sans-serif',fontWeight:'900',fontSize:24,
-      fill:color,stroke:0x000000,strokeThickness:3,
-      dropShadow:true,dropShadowColor:0x000000,dropShadowBlur:0,dropShadowDistance:2,
+      fill:color,stroke:{color:0x000000,width:3},
+      dropShadow:{color:0x000000,blur:0,distance:2,angle:Math.PI/2,alpha:1},
     })
     txt.anchor.set(0.5,0.5)
     txt.x=wx+(Math.random()-0.5)*40
@@ -3892,7 +3886,7 @@ export class GameRenderer {
     }
   }
 
-  private _animCollect(gfx:PIXI.Graphics, spine: import('pixi-spine').Spine | null = null){
+  private _animCollect(gfx:PIXI.Graphics, spine: import('@esotericsoftware/spine-pixi-v8').Spine | null = null){
     SpineAnimator.remove(spine)
     const app = this.app
     let t=0
@@ -4040,9 +4034,8 @@ export class GameRenderer {
     this._lastWorldMaskGrassTop = screenGrassTop
     this._lastWorldMaskW = w
     this._worldMask.clear()
-    this._worldMask.beginFill(0xffffff)
-    this._worldMask.drawRect(0, 0, w, screenGrassTop)
-    this._worldMask.endFill()
+    this._worldMask.rect(0, 0, w, screenGrassTop)
+    this._worldMask.fill({ color: 0xffffff })
   }
 
   private _installPageVisibilityPowerSave(): void {
