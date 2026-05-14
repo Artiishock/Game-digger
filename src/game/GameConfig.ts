@@ -200,8 +200,8 @@ export const GameConfig = {
      * Размер TilingSprite лавы (логические px). Было 4096² — тяжело по памяти и fill-rate на Retina;
      * 2560 достаточно при типичном viewport, позиция в `LavaSimulation` центрируется под камеру.
      */
-    tilingWidthPx: 3072,
-    tilingHeightPx: 3072,
+    tilingWidthPx: 2816,
+    tilingHeightPx: 1920,
 
     /** Скорость вылета вверх с анимацией die (px/с, игровое время). */
     deathAscentSpeedPx: 500,
