@@ -174,7 +174,7 @@ export const GameConfig = {
     /** Уменьшение обеих осей для тёмного слоя маски */
     darkInsetPx: 5,
     /** Шаг субсэмплов вдоль сегмента: доля от min(rx,ry); больше — реже точки, дешевле CPU на Mac. */
-    segmentSpacingMul: 0.22,
+    segmentSpacingMul: 0.24,
     /** Вершин полигона овала (больше — глаже контур). Меньше — дешевле scratchAt. */
     ellipsePolySteps: 36,
   },
@@ -311,16 +311,16 @@ export const GameConfig = {
     maxDevicePixelRatio: 1.5,
 
     /** Сколько чанков из буферной очереди собирать за один кадр (меньше — ровнее FPS, дольше «догруз»). */
-    tileWorldChunkBuildsPerFrame: 1,
+    tileWorldChunkBuildsPerFrame: 2,
 
     /** Верхний предел одновременных круглых частиц `_burst` (остальные отбрасываются). */
-    particleMax: 120,
+    particleMax: 80,
     /** Число частиц при сборе пропа (не HOME). */
-    burstCollectParticles: 5,
-    burstHomeParticles: 12,
-    burstLavaHitParticles: 6,
+    burstCollectParticles: 4,
+    burstHomeParticles: 9,
+    burstLavaHitParticles: 5,
     burstGoldBreakParticles: 1,
-    burstGoldCollectParticles: 4,
+    burstGoldCollectParticles: 3,
     /**
      * WebGL multisampling (antialias). На встроенных GPU (MacBook Air, старые Intel) даёт заметную цену кадра;
      * на дискретных Windows часто почти бесплатно — при необходимости поставьте true.
