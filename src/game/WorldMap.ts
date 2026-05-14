@@ -2,7 +2,7 @@
  * WorldMap — физическое моделирование туннеля.
  *
  * Алгоритм:
- *  1. buildTunnel()     — строим путь как органичное блуждание
+ *  1. buildTunnel()     — строим путь как органичное блуждание (опц. calmPath — меньше синусов)
  *  2. capsuleTest()     — точное расстояние от точки до отрезка пути (капсула)
  *  3. placeRoadItems()  — road items на вершинах пути + snap на ось (полилиния)
  *  4. placeObstacles()  — объекты/лава/пещеры только вне всех капсул туннеля
@@ -428,7 +428,10 @@ export function buildTunnel(
   terminalY:   number,
   worldSeed:   number,
   roadTargets: RoadPoint[],
-  /** Раунд с лавой — меньше синусов, без резких зигзагов */
+  /**
+   * Усиленное сглаживание (меньше синусов) — раньше включалось для LOSS целиком;
+   * хвост к лаве теперь как обычный коридор, флаг оставлен для совместимости/экспериментов.
+   */
   calmPath = false,
 ): PathPoint[] {
   const path: PathPoint[] = []
@@ -542,8 +545,50 @@ export function placeRoadItems(
 export const GHOST_WAYPOINT_TYPE = 'GHOST'
 
 /**
+ * Промежуточные ghost-цели между двумя точками — тот же зигзаг/джиттер, что между предметами на дорожке.
+ * @param opts.extraMidpoints — добавить к числу mid (плотнее путь при том же ΔY, напр. хвост к лаве).
+ */
+function pushGhostMidpointsBetween(
+  a: RoadPoint,
+  b: RoadPoint,
+  segIndex: number,
+  worldSeed: number,
+  ghosts: RoadPoint[],
+  opts?: { extraMidpoints?: number },
+): void {
+  const ghostGrid = TILE * 0.5
+  const dy = b.worldY - a.worldY
+  if (dy < STEP_Y * 1.5) return
+
+  let nMid = 1
+  if (dy > STEP_Y * 34) nMid = 6
+  else if (dy > STEP_Y * 26) nMid = 5
+  else if (dy > STEP_Y * 18) nMid = 4
+  else if (dy > STEP_Y * 11) nMid = 3
+  else if (dy > STEP_Y * 5) nMid = 2
+
+  const extra = opts?.extraMidpoints ?? 0
+  /** Верхний предел — чтобы не раздувать merge/sort и buildTunnel без необходимости */
+  nMid = Math.min(14, Math.max(1, nMid + extra))
+
+  for (let g = 0; g < nMid; g++) {
+    const u = (g + 1) / (nMid + 1)
+    const jitterT = (rng(segIndex * 211 + g * 97, worldSeed) - 0.5) * 0.1
+    let t = Math.min(0.9, Math.max(0.1, u + jitterT))
+    const y = a.worldY + dy * t
+    const tLin = (y - a.worldY) / dy
+    const bx = a.worldX + (b.worldX - a.worldX) * tLin
+    const jx = (rng(segIndex * 313 + g * 41, worldSeed) - 0.5) * TILE * (3.8 + rng(segIndex ^ 0x33, worldSeed) * 5.5)
+    let x = bx + jx
+    x = Math.max(X_MIN, Math.min(X_MAX, x))
+    x = Math.round(x / ghostGrid) * ghostGrid
+    ghosts.push({ type: GHOST_WAYPOINT_TYPE, worldX: x, worldY: y, terminal: false })
+  }
+}
+
+/**
  * Ложные точки между собираемыми — туннель виляет «случайно», но предметы остаются на RGS.
- * Для LOSS — вертикальный коридор под последним предметом к зоне лавы (без рывков в стороны).
+ * Для LOSS хвост после последнего предмета — тот же приём, что между ивентами (не «лестница» вниз).
  */
 function buildGhostWaypoints(
   roughRoad: RoadPoint[],
@@ -553,55 +598,31 @@ function buildGhostWaypoints(
   if (roughRoad.length === 0) return []
   const ghosts: RoadPoint[] = []
 
-  const ghostGrid = TILE * 0.5
   for (let i = 0; i < roughRoad.length - 1; i++) {
-    const a = roughRoad[i]!, b = roughRoad[i + 1]!
-    const dy = b.worldY - a.worldY
-    if (dy < STEP_Y * 1.5) continue
-
-    let nMid = 1
-    if (dy > STEP_Y * 34) nMid = 6
-    else if (dy > STEP_Y * 26) nMid = 5
-    else if (dy > STEP_Y * 18) nMid = 4
-    else if (dy > STEP_Y * 11) nMid = 3
-    else if (dy > STEP_Y * 5) nMid = 2
-
-    for (let g = 0; g < nMid; g++) {
-      const u = (g + 1) / (nMid + 1)
-      const jitterT = (rng(i * 211 + g * 97, worldSeed) - 0.5) * 0.1
-      let t = Math.min(0.9, Math.max(0.1, u + jitterT))
-      const y = a.worldY + dy * t
-      const tLin = (y - a.worldY) / dy
-      const bx = a.worldX + (b.worldX - a.worldX) * tLin
-      const jx = (rng(i * 313 + g * 41, worldSeed) - 0.5) * TILE * (3.8 + rng(i ^ 0x33, worldSeed) * 5.5)
-      let x = bx + jx
-      x = Math.max(X_MIN, Math.min(X_MAX, x))
-      x = Math.round(x / ghostGrid) * ghostGrid
-      ghosts.push({ type: GHOST_WAYPOINT_TYPE, worldX: x, worldY: y, terminal: false })
-    }
+    pushGhostMidpointsBetween(roughRoad[i]!, roughRoad[i + 1]!, i, worldSeed, ghosts)
   }
 
   if (isLoss) {
-    const last  = roughRoad[roughRoad.length - 1]!
+    const last = roughRoad[roughRoad.length - 1]!
     const seedL = (worldSeed ^ 0x1055CAFE) >>> 0
-    const r7    = rng(7, seedL)
+    const r7 = rng(7, seedL)
     const caveHw = TILE * 2.15
-    // Боковое смещение: ±caveHw → персонаж подходит к боковой грани пещеры, не к центру сверху
-    const lateralOff = (r7 - 0.5) * 2 * caveHw  // −258..+258 px
-    const targetX    = Math.max(X_MIN, Math.min(X_MAX, last.worldX + lateralOff))
-
-    // Сначала прямо вниз, потом плавно уходим в сторону targetX
-    const ySteps = [1.4, 2.1, 2.8, 3.5, 4.2, 5.0, 5.8, 6.6, 7.4, 8.2, 9.0, 9.8]
-    for (let k = 0; k < ySteps.length; k++) {
-      const t = Math.max(0, (k - 2) / (ySteps.length - 3))   // кривая начинается со шага 2
-      const x = last.worldX + (targetX - last.worldX) * Math.min(1, t * 1.4)
-      ghosts.push({
-        type:     GHOST_WAYPOINT_TYPE,
-        worldX:   Math.round(Math.max(X_MIN, Math.min(X_MAX, x)) / ghostGrid) * ghostGrid,
-        worldY:   last.worldY + TILE * ySteps[k]!,
-        terminal: false,
-      })
+    const lateralOff = (r7 - 0.5) * 2 * caveHw
+    const targetX = Math.max(X_MIN, Math.min(X_MAX, last.worldX + lateralOff))
+    /** Было фиксированное «вниз по ступеням» ~9.8 TILE — сохраняем глубину подхода к зоне терминала. */
+    const tailEndY = last.worldY + TILE * 9.8
+    const tailEnd: RoadPoint = {
+      type:     GHOST_WAYPOINT_TYPE,
+      worldX:   targetX,
+      worldY:   tailEndY,
+      terminal: false,
     }
+    const lossSegIdx = 0x6000 + roughRoad.length
+    /** Больше ghost-целей на том же ΔY — туннель чаще «цепляется» к целям, длина участка не растёт. */
+    const LOSS_TAIL_EXTRA_MID = 5
+    pushGhostMidpointsBetween(last, tailEnd, lossSegIdx, worldSeed, ghosts, {
+      extraMidpoints: LOSS_TAIL_EXTRA_MID,
+    })
   }
 
   return ghosts
@@ -1071,19 +1092,19 @@ export function buildRoundPath(
   const _wt0 = performance.now()
 
   // Pass 1: путь без road items (случайное блуждание)
-  const roughPath  = buildTunnel(surfY, terminalY, worldSeed, [], isLoss)
+  const roughPath  = buildTunnel(surfY, terminalY, worldSeed, [], false)
   const _wt1 = performance.now()
 
   // Pass 2: road items на грубом пути
   const roughRoad = placeRoadItems(roadEvents, roughPath, surfY)
 
-  // Pass 2b: ложные цели (петли маршрута) + подвод к лаве для LOSS
+  // Pass 2b: ложные цели (петли маршрута) + хвост к лаве для LOSS (те же ghost-midpoints, что между ивентами)
   const ghostTargets = buildGhostWaypoints(roughRoad, worldSeed, isLoss)
   const tunnelTargets = [...roughRoad, ...ghostTargets].sort((a, b) => a.worldY - b.worldY)
   const _wt2 = performance.now()
 
-  // Pass 3: финальный туннель через реальные + призрачные цели
-  const path = buildTunnel(surfY, terminalY, worldSeed, tunnelTargets, isLoss)
+  // Pass 3: финальный туннель через реальные + призрачные цели (LOSS без calm — как WIN по волнам)
+  const path = buildTunnel(surfY, terminalY, worldSeed, tunnelTargets, false)
   const _wt3 = performance.now()
 
   // Pass 4: road items точно на финальном туннеле + на оси туннеля (проекция на полилинию)

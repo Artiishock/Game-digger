@@ -1,7 +1,10 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
+import { installTickerFpsLogFromUrl } from './dev/tickerFpsLog'
 import './dev/demoMathConsole'
+
+installTickerFpsLogFromUrl()
 
 if (import.meta.env.DEV) {
   const originalWarn = console.warn.bind(console)

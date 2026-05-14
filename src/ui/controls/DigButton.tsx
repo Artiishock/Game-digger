@@ -6,14 +6,26 @@ import { resolvePublicUrl } from "../../utils/publicUrl";
 import "../ui.css";
 
 const svgCache = new Map<string, string>();
+/** URL, которые уже не загрузились — не повторять fetch при каждом BETTING/RUNNING. */
+const svgFetchMiss = new Set<string>();
 
-const loadSvg = async (url: string): Promise<string> => {
+const loadSvg = async (url: string): Promise<string | null> => {
+  if (svgFetchMiss.has(url)) return null;
   const cached = svgCache.get(url);
-  if (cached) return cached;
-  const res = await fetch(url);
-  const text = await res.text();
-  svgCache.set(url, text);
-  return text;
+  if (cached !== undefined) return cached;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      svgFetchMiss.add(url);
+      return null;
+    }
+    const text = await res.text();
+    svgCache.set(url, text);
+    return text;
+  } catch {
+    svgFetchMiss.add(url);
+    return null;
+  }
 };
 
 export const DigButton: React.FC = () => {
@@ -22,6 +34,10 @@ export const DigButton: React.FC = () => {
   const setAP = useGameStore((s) => s.setAutoplayOpen);
   const isAPOpen = useGameStore((s) => s.autoplayOpen);
   const spaceEnabled = useGameStore((s) => s.settings.spaceEnabled);
+
+  /** Touchend + preventDefault глушит synthetic click; если он всё же приходит — один раз пропускаем. */
+  const ignoreNextSpinClick = useRef(false);
+  const clearIgnoreTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const canDig = phase === "IDLE" || phase === "WIN" || phase === "LOSE";
   const isRunning = phase === "RUNNING" || phase === "BETTING";
@@ -46,7 +62,7 @@ export const DigButton: React.FC = () => {
   useEffect(() => {
     let cancelled = false;
     loadSvg(iconUrl).then((markup) => {
-      if (!cancelled) setIconMarkup(markup);
+      if (!cancelled && markup != null) setIconMarkup(markup);
     });
     return () => {
       cancelled = true;
@@ -56,7 +72,7 @@ export const DigButton: React.FC = () => {
   useEffect(() => {
     let cancelled = false;
     loadSvg(autoIconUrl).then((markup) => {
-      if (!cancelled) setAutoIconMarkup(markup);
+      if (!cancelled && markup != null) setAutoIconMarkup(markup);
     });
     return () => {
       cancelled = true;
@@ -66,19 +82,30 @@ export const DigButton: React.FC = () => {
   useEffect(() => {
     if (!iconMarkup || !iconRef.current) return;
     if (!spinPushed) return;
-    const clickArea = iconRef.current.querySelector("#clickArea");
-    if (!clickArea) return;
-    clickArea.dispatchEvent(
-      new MouseEvent("click", { bubbles: false, cancelable: true })
-    );
+    const span = iconRef.current;
+    if (!span.querySelector("#clickArea")) return;
+    // Re-inject to reset frozen SMIL fill="freeze" state
+    span.innerHTML = iconMarkup;
+    // rAF: give WebKit one paint frame to initialize new SMIL timelines
+    const raf = requestAnimationFrame(() => {
+      const animations = span.querySelectorAll<SVGAnimationElement>(
+        "animate, animateTransform, set"
+      );
+      animations.forEach((el) => {
+        if (typeof el.beginElementAt !== "function") return;
+        const beginAttr = el.getAttribute("begin") ?? "";
+        const offset = parseFloat(beginAttr.match(/\+(\d+(?:\.\d+)?)s/)?.[1] ?? "0");
+        el.beginElementAt(offset);
+      });
+    });
+    return () => cancelAnimationFrame(raf);
   }, [iconMarkup, spinPushed]);
 
-  useEffect(() => {
-    console.log(isAutoActive);
-  }, [isAutoActive]);
-
-  const handleSpinClick = async () => {
+  const runSpinAction = async () => {
     gameAudio.unlock();
+
+    const phaseNow = useGameStore.getState().phase;
+    if (phaseNow === "BETTING") return;
 
     if (isAutoActive) {
       gameEngine.stopAutoplay();
@@ -94,8 +121,28 @@ export const DigButton: React.FC = () => {
     }
   };
 
-  const handleSpinClickRef = useRef(handleSpinClick);
-  useEffect(() => { handleSpinClickRef.current = handleSpinClick; });
+  const handleSpinTouchEnd = (e: React.TouchEvent<HTMLButtonElement>) => {
+    if (e.cancelable) e.preventDefault();
+    e.currentTarget.blur();
+    ignoreNextSpinClick.current = true;
+    if (clearIgnoreTimer.current) clearTimeout(clearIgnoreTimer.current);
+    clearIgnoreTimer.current = setTimeout(() => {
+      clearIgnoreTimer.current = null;
+      ignoreNextSpinClick.current = false;
+    }, 140);
+    void runSpinAction();
+  };
+
+  const handleSpinClick = () => {
+    if (ignoreNextSpinClick.current) {
+      ignoreNextSpinClick.current = false;
+      return;
+    }
+    void runSpinAction();
+  };
+
+  const handleSpinClickRef = useRef(runSpinAction);
+  useEffect(() => { handleSpinClickRef.current = runSpinAction; });
 
   useEffect(() => {
     if (!spaceEnabled) return;
@@ -107,6 +154,10 @@ export const DigButton: React.FC = () => {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [spaceEnabled]);
+
+  useEffect(() => () => {
+    if (clearIgnoreTimer.current) clearTimeout(clearIgnoreTimer.current);
+  }, []);
 
   const handleAutospinClick = () => {
     setAP(!isAPOpen);
@@ -130,9 +181,10 @@ export const DigButton: React.FC = () => {
 
       <button
         className={`ui-spin-btn${spinPushed ? " ui-spin-btn--active" : ""}`}
+        onTouchEnd={handleSpinTouchEnd}
         onClick={handleSpinClick}
-        disabled={phase === "BETTING"}
         type="button"
+        aria-busy={phase === "BETTING"}
       >
         <span
           ref={iconRef}

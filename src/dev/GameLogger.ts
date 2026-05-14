@@ -171,8 +171,8 @@ export const GameLogger = {
       css,
     )
     if (hasMultDrift) {
-      console.warn(
-        `[ROUND MULT] visual ×${visualMult.toFixed(2)} vs payout ×${settledMult.toFixed(2)}`
+      console.debug(
+        `[ROUND MULT] visual ×${visualMult.toFixed(2)} vs payout ×${settledMult.toFixed(2)}`,
       )
     }
 
@@ -245,6 +245,46 @@ export const GameLogger = {
       'терминал':    it.terminal ? '🏁' : '',
     })))
     console.groupEnd()
+  },
+
+  /**
+   * Позиции деревьев (мир / экран / ожидание от charX+dx) — отладка скачков при автоспине.
+   * В консоли фильтр: `[TREES]`
+   */
+  treeLayout(params: {
+    tag: string
+    running: boolean
+    idleActive: boolean
+    autoplay: boolean
+    charX: number
+    camX: number
+    viewW: number
+    treeRunDx: readonly [number, number, number]
+    trees: Array<{
+      name: string
+      worldX: number | null
+      screenX: number | null
+      expectedWorldX: number
+      onScreenApprox: boolean
+    }>
+  }): void {
+    const v1 = params.camX + params.viewW
+    const dxStr = params.treeRunDx.map((d) => d.toFixed(0)).join(', ')
+    console.log(
+      `%c[TREES] ${params.tag}  run=${params.running} idle=${params.idleActive} auto=${params.autoplay}  ` +
+        `charX=${params.charX.toFixed(1)} camX=${params.camX.toFixed(1)}  видимый мир X≈[${params.camX.toFixed(0)} … ${v1.toFixed(0)}]  _treeRunDx=[${dxStr}]`,
+      'color:#da77f2;font-weight:bold',
+    )
+    console.table(
+      params.trees.map((t) => ({
+        дерево: t.name,
+        'мир X': t.worldX == null ? '—' : t.worldX.toFixed(1),
+        'экран X': t.screenX == null ? '—' : t.screenX.toFixed(1),
+        'ожид мир X': t.expectedWorldX.toFixed(1),
+        'Δ ожид': t.worldX == null ? '—' : (t.worldX - t.expectedWorldX).toFixed(1),
+        'в кадре≈': t.onScreenApprox ? 'да' : 'нет',
+      })),
+    )
   },
 
   // ── Движение персонажа ───────────────────────────────────────────────────────
@@ -330,7 +370,9 @@ if (typeof window !== 'undefined') {
         '  .report()   — итоговая таблица всех раундов\n' +
         '  .rounds()   — массив объектов по каждому раунду\n' +
         '  .current()  — текущий незавершённый раунд\n' +
-        '  .help()     — эта подсказка',
+        '  .help()     — эта подсказка\n' +
+        'Деревья: логи с префиксом [TREES] (sync / capture). Отключить: window.__DR_TREE_LOG = false\n' +
+        'Плавность кадра: __DR_FPS_LOG__.help() (в DEV лог кадров включается сам раз в 8 с; ?nofps — выкл)',
       )
     },
   }

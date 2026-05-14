@@ -25,13 +25,12 @@ export const GameCanvas: React.FC<Props> = ({ width, height }) => {
     let renderer: GameRenderer | null = null
     const rafId = requestAnimationFrame(() => {
       if (!canvasRef.current) return
-      try {
-        renderer = new GameRenderer(canvas, width, height)
-        rendererRef.current = renderer
-        gameEngine.setRendererInstantFinish(() => renderer!.instantFinishRoundFromRoad())
-      } catch (err) {
+      renderer = new GameRenderer(canvas, width, height)
+      rendererRef.current = renderer
+      gameEngine.setRendererInstantFinish(() => renderer!.instantFinishRoundFromRoad())
+      renderer.ready.catch(err => {
         console.error('[GameCanvas] renderer init failed:', err)
-      }
+      })
     })
 
     return () => {
@@ -69,14 +68,27 @@ export const GameCanvas: React.FC<Props> = ({ width, height }) => {
     }
   }, [phase, events]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Skip lava death cinematic on any key press or screen tap
+  // Skip lava death cinematic on key / tap по игровому полю (не перехватываем UI — иначе гонки с кнопкой Spin на тач).
   useEffect(() => {
     const skip = () => rendererRef.current?.skipLavaDeath()
-    window.addEventListener('keydown', skip)
-    window.addEventListener('pointerdown', skip)
+    const onKey = () => skip()
+    const onPointerDown = (e: PointerEvent) => {
+      const t = e.target
+      if (t instanceof Element) {
+        if (t.closest('button, a[href], [role="button"], .ui-spin-control, .ui-hud, .ui-topright, .ui-depth-block, .ui-menu-modal, .ui-overlay, .ui-result, input, select, textarea, label')) {
+          return
+        }
+      }
+      const c = canvasRef.current
+      if (!c) return
+      if (t !== c && !(t instanceof Node && c.contains(t))) return
+      skip()
+    }
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('pointerdown', onPointerDown)
     return () => {
-      window.removeEventListener('keydown', skip)
-      window.removeEventListener('pointerdown', skip)
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('pointerdown', onPointerDown)
     }
   }, [])
 

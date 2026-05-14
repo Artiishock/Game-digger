@@ -1,4 +1,4 @@
-import{g as Za}from"./vendor-pixi-FgV3VPWf.js";var Ui={exports:{}},T={};/**
+import{g as Za}from"./vendor-pixi-DF0tMQ74.js";var Ui={exports:{}},T={};/**
  * @license React
  * react.production.min.js
  *

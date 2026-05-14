@@ -173,10 +173,10 @@ export const GameConfig = {
     ellipseRadiusYPx: HERO_MAX_SIDE_PX * TUNNEL_SCRATCH_RY_FRAC_OF_MAX_SIDE,
     /** Уменьшение обеих осей для тёмного слоя маски */
     darkInsetPx: 5,
-    /** Шаг субсэмплов вдоль сегмента: доля от min(rx,ry); меньше — плотнее, меньше дыр и раздуваний. */
-    segmentSpacingMul: 0.22,
-    /** Вершин полигона овала (больше — глаже контур). */
-    ellipsePolySteps: 36,
+    /** Шаг субсэмплов вдоль сегмента: доля от min(rx,ry); больше — реже точки, дешевле CPU на Mac. */
+    segmentSpacingMul: 0.32,
+    /** Вершин полигона овала (больше — глаже контур). Меньше — дешевле scratchAt. */
+    ellipsePolySteps: 24,
   },
 
   // ─── Лава ────────────────────────────────────────────────────────────────────
@@ -196,6 +196,13 @@ export const GameConfig = {
      * mask=3 → ~1/4; было (seed&1) → половина.
      */
     worldLavaSpawnMask: 3,
+    /**
+     * Размер TilingSprite лавы (логические px). Было 4096² — тяжело по памяти и fill-rate на Retina;
+     * 2560 достаточно при типичном viewport, позиция в `LavaSimulation` центрируется под камеру.
+     */
+    tilingWidthPx: 2560,
+    tilingHeightPx: 2560,
+
     /** Скорость вылета вверх с анимацией die (px/с, игровое время). */
     deathAscentSpeedPx: 500,
     /** Запас, если декодированный `finish_lose.ogg` ещё недоступен — расчёт скорости вылета призрака. */
@@ -226,11 +233,13 @@ export const GameConfig = {
     autoplayDelayMs:  1200,  // задержка между раундами в автоплее, мс
     /** Множитель «экран / глубина» для ppm — больше → дальше друг от друга символы по Y */
     depthSpreadScreenFactor: 2.6,
-    /** Порог множителя для оверлея WIN в `public/animations/{megawin|epicwin|bigwin}/` (Spine). */
-    megaWinMinMultiplier: 150,
-    epicWinMinMultiplier: 450,
-    /** Строго больше этого — уровень bigwin, пока множитель ниже epic. */
-    bigWinExclusiveAboveMultiplier: 50,
+    /**
+     * Пороги финального множителя (выплата/ставка) для Spine `public/animations/{bigwin|epicwin|megawin}/`.
+     * Порядок уровней: big < mega < epic (числа по возрастанию).
+     */
+    bigWinExclusiveAboveMultiplier: 10,
+    megaWinMinMultiplier: 50,
+    epicWinMinMultiplier: 175,
   },
 
   // ─── Герой: калибровка (px; углы — радианы) ────────────────────────────────
@@ -291,9 +300,32 @@ export const GameConfig = {
    */
   performance: {
     /** Главный экран (idle): верхний предел FPS тикера (0 = без лимита). */
-    idleMenuMaxFps: 30,
+    idleMenuMaxFps: 24,
     /** Остановка `app.ticker` при `document.visibilityState === 'hidden'`. */
     pauseTickerWhenPageHidden: true,
+    /**
+     * Потолок `devicePixelRatio` для внутреннего разрешения Pixi (`resolution` / backing store).
+     * 1.0 = рендер в логических пикселях, нет Retina-масштаба → ~56% меньше пикселей на Mac.
+     * На старых MacBook Air / Intel Mac это критичная экономия GPU.
+     */
+    maxDevicePixelRatio: 1.25,
+
+    /** Сколько чанков из буферной очереди собирать за один кадр (меньше — ровнее FPS, дольше «догруз»). */
+    tileWorldChunkBuildsPerFrame: 1,
+
+    /** Верхний предел одновременных круглых частиц `_burst` (остальные отбрасываются). */
+    particleMax: 120,
+    /** Число частиц при сборе пропа (не HOME). */
+    burstCollectParticles: 5,
+    burstHomeParticles: 12,
+    burstLavaHitParticles: 6,
+    burstGoldBreakParticles: 1,
+    burstGoldCollectParticles: 4,
+    /**
+     * WebGL multisampling (antialias). На встроенных GPU (MacBook Air, старые Intel) даёт заметную цену кадра;
+     * на дискретных Windows часто почти бесплатно — при необходимости поставьте true.
+     */
+    webglAntialias: false,
   },
 
   // ─── Коллизии ────────────────────────────────────────────────────────────────
@@ -319,3 +351,9 @@ export const GameConfig = {
   } as Record<string, { strength: number; freezeDurSec: number }>,
 
 } // as const убран — некоторые конфигурации Vite не распознают экспорт с as const
+
+/** Единый потолок DPR для Pixi / Spine‑оверлеев (см. `GameConfig.performance.maxDevicePixelRatio`). */
+export function effectiveDevicePixelRatio(): number {
+  const cap = GameConfig.performance.maxDevicePixelRatio
+  return Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, cap)
+}
