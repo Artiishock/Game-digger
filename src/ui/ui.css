@@ -3297,8 +3297,19 @@
   margin: 20px auto 30px;
 }
 
+@media (min-width: 901px) {
+  .ui-menu-modal:has(.info-panel) .ui-modal-body {
+    padding-left: 55px;
+    padding-right: 55px;
+    box-sizing: border-box;
+  }
 
-
+  .ui-menu-modal .info-panel {
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
+  }
+}
 
 
 
@@ -3372,6 +3383,11 @@
     box-sizing: border-box;
   }
 
+  .ui-menu-modal:has(.info-panel) .ui-modal-body {
+    padding-left: clamp(20px, 3.36vw, 25px);
+    padding-right: clamp(20px, 3.36vw, 25px);
+  }
+
   .ui-menu-modal .ui-tabs {
     gap: 10px;
     padding-left: 0;
@@ -3419,7 +3435,7 @@
     width: 100%;
     box-sizing: border-box;
     align-self: flex-start;
-    margin: 20px auto 30px;
+    margin: clamp(20px, 2.174vh, 25px) auto 30px;
     animation: fadeTab 0.25s ease;
   }
 
@@ -3428,6 +3444,12 @@
   }
 
   /* ───────── HISTORY / REPLAY TABLE ───────── */
+
+  .ui-menu-modal:has(.info-panel) .ui-modal-scrollbar {
+    display: block;
+    top: calc(100px + clamp(20px, 2.174vh, 25px));
+    bottom: 30px;
+  }
 
   .ui-menu-modal:has(.replay-panel--filled) .ui-modal-body {
     padding: 0;
@@ -3531,7 +3553,7 @@
     height: min(457px, calc(100vh - 270px));
     min-height: min(457px, calc(100vh - 270px));
     max-height: min(457px, calc(100vh - 270px));
-    margin-top: clamp(178px, 25.8vh, 194px);
+    margin-top: clamp(188px, 26.6vh, 204px);
   }
 
   .ui-menu-modal .ui-modal-header {
@@ -3541,7 +3563,7 @@
     display: block;
     padding: 0;
     position: fixed;
-    top: clamp(30px, 5.2vh, 40px);
+    top: clamp(24px, 4.5vh, 36px);
     left: 50%;
     right: auto;
     transform: translateX(-50%);
@@ -3551,7 +3573,7 @@
 
   .ui-menu-modal .ui-modal-title {
     position: absolute;
-    top: clamp(72px, 10.8vh, 82px);
+    top: clamp(64px, 10vh, 78px);
     left: 50%;
     transform: translateX(-50%);
   }
@@ -3602,6 +3624,11 @@
     justify-content: center;
   }
 
+  .ui-menu-modal:has(.info-panel) .ui-modal-body {
+    padding-left: clamp(20px, 2.174vw, 25px);
+    padding-right: clamp(20px, 2.174vw, 25px);
+  }
+
   .ui-menu-modal .sys-settings {
     width: 100%;
     max-width: none;
@@ -3615,7 +3642,6 @@
     animation: fadeTab 0.25s ease;
   }
 
-  .ui-menu-modal .info-panel,
   .ui-menu-modal .replay-panel {
     width: 100%;
     max-width: 720px;
@@ -3624,7 +3650,7 @@
 
   .ui-menu-modal .info-panel {
     align-self: flex-start;
-    margin: 20px auto 30px;
+    margin: clamp(16px, 2.688vh, 20px) auto 30px;
     animation: fadeTab 0.25s ease;
   }
 
@@ -3641,6 +3667,12 @@
 
   .ui-menu-modal .ui-modal-scrollbar {
     display: none;
+  }
+
+  .ui-menu-modal:has(.info-panel) .ui-modal-scrollbar {
+    display: block;
+    top: calc(90px + clamp(16px, 2.688vh, 20px));
+    bottom: 30px;
   }
 
   /* ───────── HISTORY / REPLAY TABLE ───────── */
@@ -3846,6 +3878,13 @@
     overflow-x: hidden;
   }
 
+  .ui-menu-modal:has(.info-panel) .ui-modal-body {
+    padding-top: clamp(12px, 3.75vh, 15px);
+    padding-left: clamp(12px, 1.667vw, 15px);
+    padding-right: clamp(12px, 1.667vw, 15px);
+    padding-bottom: clamp(20px, 6vh, 24px);
+  }
+
   .ui-menu-modal .sys-settings {
     width: 100%;
     max-width: none;
@@ -3925,7 +3964,7 @@
 
   .ui-menu-modal .info-panel {
     align-self: flex-start;
-    margin: 14px auto 24px;
+    margin: 0 auto;
   }
 
   .ui-menu-modal .info-section {
@@ -3963,7 +4002,14 @@
   }
 
   .ui-menu-modal:has(.info-panel) .ui-modal-scrollbar {
-    display: none;
+    display: block;
+    top: clamp(12px, 3.75vh, 15px);
+    bottom: clamp(20px, 6vh, 24px);
+  }
+
+  .ui-menu-modal:has(.info-panel) .ui-modal-scrollbar-thumb {
+    width: 12px;
+    height: 50px;
   }
 
   /* ───────── HISTORY / REPLAY TABLE ───────── */
@@ -4180,6 +4226,13 @@
     overflow-x: hidden;
   }
 
+  .ui-menu-modal:has(.info-panel) .ui-modal-body {
+    padding-top: clamp(12px, 1.667vh, 15px);
+    padding-left: clamp(12px, 3.75vw, 15px);
+    padding-right: clamp(12px, 3.75vw, 15px);
+    padding-bottom: clamp(20px, 2.667vh, 24px);
+  }
+
   .ui-menu-modal .sys-settings {
     width: 100%;
     max-width: none;
@@ -4266,7 +4319,7 @@
 
   .ui-menu-modal .info-panel {
     align-self: flex-start;
-    margin: 0 auto 24px;
+    margin: 0 auto;
     animation: fadeTab 0.25s ease;
   }
 
@@ -4326,6 +4379,12 @@
   }
 
   /* ───────── HISTORY / REPLAY TABLE ───────── */
+
+  .ui-menu-modal:has(.info-panel) .ui-modal-scrollbar {
+    display: block;
+    top: clamp(12px, 1.667vh, 15px);
+    bottom: clamp(20px, 2.667vh, 24px);
+  }
 
   .ui-menu-modal:has(.replay-panel--filled) .ui-modal-body {
     padding: 0;
