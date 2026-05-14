@@ -1290,6 +1290,12 @@ export class GameRenderer {
   private _lastWorldMaskGrassTop = -999
   private _lastWorldMaskW = 0
   private _particleTexture: PIXI.Texture = PIXI.Texture.EMPTY
+  private _forestSprite: PIXI.TilingSprite | null = null
+  private _prevScrollCamX = NaN
+  private _prevScrollCamY = NaN
+  private _lastSentDepth = -1
+  private _lastSentDistance = -1
+  private _lastSentMultiplier = -1
   private spawner:ObjectSpawner|null=null
   private tunnelActive = false
   private W=0; private H=0
@@ -1609,6 +1615,9 @@ export class GameRenderer {
   }
 
   private _syncLayerScroll() {
+    if (this.camX === this._prevScrollCamX && this.camY === this._prevScrollCamY) return
+    this._prevScrollCamX = this.camX
+    this._prevScrollCamY = this.camY
     const x = -this.camX
     const y = -this.camY
     this.worldBgLayer.position.set(x, y)
@@ -1771,7 +1780,7 @@ export class GameRenderer {
       const sc = this.H * 0.2 / forestTex.height
       const forestH = forestTex.height * sc
       const pad = 4
-      let forest = this._sceneryLayer.getChildByName('forest') as PIXI.TilingSprite | null
+      let forest = this._forestSprite
       if (!forest) {
         forest = new PIXI.TilingSprite(forestTex, this.W, forestH + pad)
         forest.name = 'forest'
@@ -1783,6 +1792,7 @@ export class GameRenderer {
         forest.addChild(forestMask)
         forest.mask = forestMask
         this._sceneryLayer.addChildAt(forest, 0)
+        this._forestSprite = forest
       } else {
         forest.texture = forestTex
         forest.width = this.W
@@ -1800,12 +1810,13 @@ export class GameRenderer {
       forest.y = TREE_ANCHOR_WORLD_Y - forestH - 140
       this._syncForestToCamera()
     } else {
-      const dead = this._sceneryLayer.getChildByName('forest')
+      const dead = this._forestSprite
       if (dead) {
         // Clear mask before removeChild — PixiJS v8 needs _renderGroup valid to tear down AlphaMask.
-        ;(dead as PIXI.Container).mask = null
+        dead.mask = null
         this._sceneryLayer.removeChild(dead)
         dead.destroy({ children: true })
+        this._forestSprite = null
       }
     }
 
@@ -1846,7 +1857,7 @@ export class GameRenderer {
 
   /** Лес привязан к camX; вызывать после любого скачка камеры до первого _tick (старт раунда / спин). */
   private _syncForestToCamera(): void {
-    const forest = this._sceneryLayer.getChildByName('forest') as PIXI.TilingSprite | null
+    const forest = this._forestSprite
     if (!forest) return
     forest.x = this.camX
     forest.tilePosition.x = -this.camX * 0.4
@@ -3081,14 +3092,27 @@ export class GameRenderer {
     this.miner.update(gameDt, 1, true)
     perf.end('miner', _pmn)
 
-    store.updateStats({
-      depth:    Math.max(0,Math.round(this.depth*10)/10),
-      distance: Math.round(this.distance*10)/10,
-      // Во время брейков multiplier обновляет их собственная логика (плавно)
-      ...((!this.stoneBreakActive && !this.goldBreakActive) && {
-        multiplier: Math.round(this.multiplier*100)/100,
-      }),
-    })
+    {
+      const depth    = Math.max(0, Math.round(this.depth * 10) / 10)
+      const distance = Math.round(this.distance * 10) / 10
+      const mult     = (!this.stoneBreakActive && !this.goldBreakActive)
+        ? Math.round(this.multiplier * 100) / 100
+        : null
+      if (
+        depth !== this._lastSentDepth ||
+        distance !== this._lastSentDistance ||
+        (mult !== null && mult !== this._lastSentMultiplier)
+      ) {
+        store.updateStats({
+          depth,
+          distance,
+          ...(mult !== null && { multiplier: mult }),
+        })
+        this._lastSentDepth = depth
+        this._lastSentDistance = distance
+        if (mult !== null) this._lastSentMultiplier = mult
+      }
+    }
 
     if(this.spawner && !this._ended && !this.stoneBreakActive && !this.goldBreakActive){
       const _pco = perf.begin('collide', 0.5)
@@ -3672,6 +3696,9 @@ export class GameRenderer {
     this.running = false
     this._ended = false
     this._rendererRoundId = ''
+    this._lastSentDepth = -1
+    this._lastSentDistance = -1
+    this._lastSentMultiplier = -1
     this._liveWinBadgeFading = false
     this._liveWinBadgeFadeT = 1
     this.liveWinBadge.alpha = 1
@@ -3769,32 +3796,38 @@ export class GameRenderer {
     SpineAnimator.tick(spineDt ?? dt)
     perf.end('spine', _tsp)
 
-    this.particles=this.particles.filter(p=>{
-      if (p.gfx.destroyed) return false
-      p.life-=dt*1.8
-      if(p.life<=0){
-        if(!p.gfx.destroyed){
-          this.objectsLayer.removeChild(p.gfx)
-          p.gfx.destroy()
+    {
+      let i = 0
+      while (i < this.particles.length) {
+        const p = this.particles[i]!
+        p.life -= dt * 1.8
+        if (p.gfx.destroyed || p.life <= 0) {
+          if (!p.gfx.destroyed) { this.objectsLayer.removeChild(p.gfx); p.gfx.destroy() }
+          this.particles[i] = this.particles[this.particles.length - 1]!
+          this.particles.pop()
+        } else {
+          p.gfx.x += p.vx * dt; p.gfx.y += p.vy * dt; p.vy += 260 * dt
+          p.gfx.alpha = p.life; p.gfx.scale.set(p.life * 0.7 + 0.3)
+          i++
         }
-        return false
       }
-      p.gfx.x+=p.vx*dt;p.gfx.y+=p.vy*dt;p.vy+=260*dt
-      p.gfx.alpha=p.life;p.gfx.scale.set(p.life*0.7+0.3);return true
-    })
-    this.floatTexts=this.floatTexts.filter(f=>{
-      if ((f.txt as { destroyed?: boolean }).destroyed) return false
-      f.life-=dt*1.1
-      if(f.life<=0){
-        if(!(f.txt as { destroyed?: boolean }).destroyed){
-          this.objectsLayer.removeChild(f.txt)
-          f.txt.destroy()
+    }
+    {
+      let i = 0
+      while (i < this.floatTexts.length) {
+        const f = this.floatTexts[i]!
+        f.life -= dt * 1.1
+        if ((f.txt as { destroyed?: boolean }).destroyed || f.life <= 0) {
+          if (!(f.txt as { destroyed?: boolean }).destroyed) { this.objectsLayer.removeChild(f.txt); f.txt.destroy() }
+          this.floatTexts[i] = this.floatTexts[this.floatTexts.length - 1]!
+          this.floatTexts.pop()
+        } else {
+          f.txt.y += f.vy * dt; f.vy *= Math.pow(0.92, dt * 60)
+          f.txt.alpha = f.life; f.txt.scale.set(0.8 + f.life * 0.4)
+          i++
         }
-        return false
       }
-      f.txt.y+=f.vy*dt;f.vy*=Math.pow(0.92,dt*60)
-      f.txt.alpha=f.life;f.txt.scale.set(0.8+f.life*0.4);return true
-    })
+    }
 
     if (this.lavaSimulation?.hasRenderableLava()) {
       this.lavaSimulation.setCameraPos(this.camX, this.camY)
