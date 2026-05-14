@@ -5126,7 +5126,7 @@
 
   .ui-logo-zone {
     left: var(--ui-left-stack-center);
-    top: clamp(75px, 19.5vw, 80px);
+    top: clamp(40px, 11vw, 64px);
     width: var(--ui-logo-width);
     height: var(--ui-logo-height);
     transform: translateX(-50%);
@@ -5154,7 +5154,7 @@
   .ui-depth-block {
     position: fixed;
     left: var(--ui-left-stack-left);
-    top: clamp(150px, 30vw, 155px);
+    top: clamp(123px, 26vw, 140px);
     width: var(--ui-left-stack-width);
     min-width: var(--ui-left-stack-width);
     transform: none;
