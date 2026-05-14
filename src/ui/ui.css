@@ -3154,7 +3154,6 @@
 
 
 .replay-table-shell {
-  --replay-header-height: 65px;
   width: 100%;
   height: 100%;
   padding: 0 10px;
@@ -3174,8 +3173,8 @@
   position: sticky;
   top: 0;
   z-index: 2;
-  height: var(--replay-header-height);
-  margin-bottom: calc(var(--replay-header-height) * -1);
+  height: 68px;
+  margin-bottom: -68px;
   background-color: rgba(6, 6, 6, 1);
   pointer-events: none;
 }
@@ -3454,7 +3453,6 @@
   }
 
   .ui-menu-modal .replay-table-wrap {
-    --replay-header-height: clamp(36px, 7.39vw, 55px);
     width: 100%;
     height: calc(100% - clamp(25px, 4.7vw, 35px));
     min-height: 0;
@@ -3465,6 +3463,11 @@
 
   .ui-menu-modal .replay-table-shell {
     clip-path: inset(0 10px 0 10px round 8px);
+  }
+
+  .ui-menu-modal .replay-table-shell::before {
+    height: calc(clamp(36px, 7.39vw, 55px) + 3px);
+    margin-bottom: calc((clamp(36px, 7.39vw, 55px) + 3px) * -1);
   }
 
   .ui-menu-modal .replay-table {
@@ -3522,6 +3525,398 @@
     top: 100px;
   }
 }
+
+
+/* ═══════════════════════════════════════════════════════
+   MENU MODAL ADAPTIVE — mobile portrait
+   Control point: 400x900
+   Desktop, tablet portrait, tablet landscape and mobile landscape styles above are untouched.
+   ═══════════════════════════════════════════════════════ */
+
+@media (max-width: 532px) and (orientation: portrait) {
+  .ui-overlay:has(.ui-menu-modal) {
+    align-items: flex-start;
+  }
+
+  .ui-menu-modal {
+    width: min(365px, calc(100vw - 16px));
+    max-width: calc(100vw - 16px);
+
+    height: min(522px, calc(100vh - 210px));
+    min-height: min(522px, calc(100vh - 210px));
+    max-height: min(522px, calc(100vh - 210px));
+
+    margin-top: clamp(150px, 17.8vh, 164px);
+    overflow: visible;
+  }
+
+  .ui-menu-modal .ui-modal-header {
+    width: min(365px, calc(100vw - 16px));
+    height: 24px;
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) 24px;
+    align-items: center;
+
+    position: fixed;
+    top: 22px;
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    padding: 0;
+    z-index: 240;
+  }
+
+  .ui-menu-modal .ui-modal-title {
+    grid-column: 2;
+    justify-self: center;
+    font-family: Inter, var(--font-body), sans-serif;
+    font-size: 16px;
+    font-weight: 800;
+    line-height: 100%;
+    letter-spacing: 0;
+  }
+
+  .ui-menu-modal .ui-modal-close {
+    grid-column: 3;
+    justify-self: end;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+  }
+
+  .ui-menu-modal .ui-modal-close img,
+  .ui-menu-modal .ui-modal-close svg {
+    width: 24px;
+    height: 24px;
+    display: block;
+  }
+
+  .ui-menu-modal .ui-tabs {
+    position: absolute;
+    top: -82px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 230;
+
+    width: auto;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    padding: 0;
+  }
+
+  .ui-menu-modal .ui-tab {
+    width: 120px;
+    height: 60px;
+    padding: 0;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    font-size: 0;
+  }
+
+  .ui-menu-modal .ui-tab-label {
+    display: none;
+  }
+
+  .ui-menu-modal .ui-tab-icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .ui-menu-modal .ui-tab:hover .ui-tab-icon,
+  .ui-menu-modal .ui-tab--active .ui-tab-icon {
+    width: 48px;
+    height: 48px;
+  }
+
+  .ui-menu-modal .ui-modal-body {
+    height: 100%;
+    padding: 42px 44px 42px;
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: center;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .ui-menu-modal .sys-settings {
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
+    gap: 58px;
+    margin: auto 0;
+    animation: fadeTab 0.25s ease;
+  }
+
+  .ui-menu-modal .sys-settings-section {
+    gap: 20px;
+  }
+
+  .ui-menu-modal .sys-settings-section + .sys-settings-section {
+    gap: 25px;
+  }
+
+  .ui-menu-modal .sys-settings-toggle-item {
+    gap: 16px;
+  }
+
+  .ui-menu-modal .sys-settings-toggle-title {
+    margin-bottom: 8px;
+    font-size: 16px;
+    font-weight: 800;
+    line-height: 100%;
+  }
+
+  .ui-menu-modal .sys-settings-toggle-desc {
+    font-size: 16px;
+    font-weight: 500;
+    line-height: 120%;
+    max-width: 225px;
+  }
+
+  .ui-menu-modal .sys-settings-slider-row {
+    grid-template-columns: 24px minmax(0, 1fr) 42px;
+    gap: 8px;
+  }
+
+  .ui-menu-modal .sys-settings-slider-icon {
+    width: 24px;
+    height: 24px;
+    font-size: 24px;
+  }
+
+  .ui-menu-modal .sys-settings-slider-val {
+    font-size: 16px;
+    font-weight: 800;
+    line-height: 100%;
+  }
+
+  .ui-menu-modal .sys-slider-track {
+    height: 10px;
+  }
+
+  .ui-menu-modal .sys-slider-thumb {
+    width: 20px;
+    height: 20px;
+  }
+
+  .ui-menu-modal .sys-toggle {
+    width: 43px;
+    height: 24px;
+  }
+
+  .ui-menu-modal .sys-toggle-knob {
+    top: 2px;
+    left: 2px;
+    width: 20px;
+    height: 20px;
+  }
+
+  .ui-menu-modal .sys-toggle--on .sys-toggle-knob {
+    left: 21px;
+  }
+
+  .ui-menu-modal .info-panel,
+  .ui-menu-modal .replay-panel {
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
+  }
+
+  .ui-menu-modal .info-panel {
+    align-self: flex-start;
+    margin: 0 auto 24px;
+    animation: fadeTab 0.25s ease;
+  }
+
+  .ui-menu-modal .info-section {
+    gap: 10px;
+  }
+
+  .ui-menu-modal .info-section-title {
+    font-size: 16px;
+    font-weight: 800;
+    line-height: 100%;
+  }
+
+  .ui-menu-modal .info-text,
+  .ui-menu-modal .info-list-label,
+  .ui-menu-modal .info-list-value,
+  .ui-menu-modal .info-bullet-list {
+    font-size: 16px;
+    line-height: 125%;
+  }
+
+  .ui-menu-modal .info-text,
+  .ui-menu-modal .info-list-value,
+  .ui-menu-modal .info-bullet-list {
+    font-weight: 500;
+  }
+
+  .ui-menu-modal .info-list-label,
+  .ui-menu-modal .info-text-strong {
+    font-weight: 800;
+  }
+
+  .ui-menu-modal .info-list-row {
+    grid-template-columns: 140px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .ui-menu-modal .info-version {
+    font-size: 14px;
+    line-height: 120%;
+  }
+
+  .ui-menu-modal .replay-panel {
+    margin-top: auto;
+    margin-bottom: auto;
+    animation: fadeTab 0.25s ease;
+  }
+
+  .ui-menu-modal .ui-modal-scrollbar {
+    top: 42px;
+    right: 0;
+    bottom: 15px;
+  }
+
+  .ui-menu-modal .ui-modal-scrollbar {
+    display: none;
+  }
+
+  /* ───────── HISTORY / REPLAY TABLE ───────── */
+
+  .ui-menu-modal:has(.replay-panel--filled) .ui-modal-body {
+    padding: 0;
+    align-items: stretch;
+    justify-content: flex-start;
+    overflow: hidden;
+  }
+
+  .ui-menu-modal .replay-panel--filled {
+    width: 100%;
+    max-width: none;
+    min-height: 100%;
+    height: 100%;
+    margin: 0;
+  }
+
+  .ui-menu-modal .replay-table-wrap {
+    width: 100%;
+    height: calc(100% - clamp(32px, 10vw, 40px) - clamp(10px, 3.75vw, 15px));
+    min-height: 0;
+    margin-top: clamp(10px, 3.75vw, 15px);
+    padding: 0 clamp(10px, 3vw, 12px);
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+
+  .ui-menu-modal .replay-table-shell {
+    clip-path: inset(0 10px 0 10px round 8px);
+  }
+
+  .ui-menu-modal .replay-table-shell::before {
+    height: calc(clamp(30px, 10vw, 40px) + 3px);
+    margin-bottom: calc((clamp(30px, 10vw, 40px) + 3px) * -1);
+  }
+
+  .ui-menu-modal .replay-table {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 0;
+    border-radius: 8px;
+    overflow: visible;
+  }
+
+  .ui-menu-modal .replay-table th {
+    height: clamp(30px, 10vw, 40px);
+    padding: 0 3px;
+    font-size: clamp(8px, 2.75vw, 11px);
+    line-height: 1;
+    font-weight: 800;
+    text-align: center;
+    vertical-align: middle;
+  }
+
+  .ui-menu-modal .replay-table td {
+    height: clamp(35px, 10vw, 40px);
+    padding: 0 3px;
+    font-size: clamp(8px, 2.5vw, 10px);
+    line-height: 1.15;
+    font-weight: 500;
+    text-align: center;
+    vertical-align: middle;
+  }
+
+  .ui-menu-modal .replay-table th:nth-child(1),
+  .ui-menu-modal .replay-table td:nth-child(1) {
+    width: 22%;
+  }
+
+  .ui-menu-modal .replay-table th:nth-child(2),
+  .ui-menu-modal .replay-table td:nth-child(2) {
+    width: 23%;
+  }
+
+  .ui-menu-modal .replay-table th:nth-child(3),
+  .ui-menu-modal .replay-table td:nth-child(3),
+  .ui-menu-modal .replay-table th:nth-child(4),
+  .ui-menu-modal .replay-table td:nth-child(4) {
+    width: 16%;
+  }
+
+  .ui-menu-modal .replay-table th:nth-child(5),
+  .ui-menu-modal .replay-table td:nth-child(5) {
+    width: 23%;
+  }
+
+  .ui-menu-modal .replay-time-cell {
+    line-height: 1.15;
+    text-align: left;
+    white-space: nowrap;
+  }
+
+
+  .ui-menu-modal .replay-button {
+    width: clamp(45px, 13.75vw, 55px);
+    height: clamp(20px, 6.25vw, 25px);
+    border-radius: 4px;
+    margin: 0 auto;
+  }
+
+  .ui-menu-modal .replay-icon {
+    width: clamp(11px, 3.25vw, 13px);
+    height: clamp(11px, 3.25vw, 13px);
+  }
+
+  .ui-menu-modal:has(.replay-panel--filled) .ui-modal-scrollbar {
+    display: block;
+    top: clamp(10px, 3.75vw, 15px);
+    bottom: clamp(32px, 10vw, 40px);
+  }
+
+  .ui-menu-modal:has(.replay-panel--filled) .ui-modal-scrollbar-thumb {
+    width: 12px;
+    height: clamp(90px, 27.5vw, 110px);
+  }
+}
+
+
+
+
+
+
 
 /* ═══════════════════════════════════════════════════════
    MENU MODAL ADAPTIVE — tablet landscape only
@@ -3670,7 +4065,6 @@
   }
 
   .ui-menu-modal .replay-table-wrap {
-    --replay-header-height: clamp(36px, 7.39vh, 55px);
     width: 100%;
     height: calc(100% - 25px);
     min-height: 0;
@@ -3681,6 +4075,11 @@
 
   .ui-menu-modal .replay-table-shell {
     clip-path: inset(0 10px 0 10px round 8px);
+  }
+
+  .ui-menu-modal .replay-table-shell::before {
+    height: calc(clamp(36px, 7.39vh, 55px) + 3px);
+    margin-bottom: calc((clamp(36px, 7.39vh, 55px) + 3px) * -1);
   }
 
   .ui-menu-modal .replay-table {
@@ -3993,7 +4392,6 @@
   }
 
   .ui-menu-modal .replay-table-wrap {
-    --replay-header-height: clamp(30px, 10vh, 40px);
     width: 100%;
     height: calc(100% - (clamp(10px, 3.75vh, 15px) * 2));
     min-height: 0;
@@ -4005,6 +4403,11 @@
 
   .ui-menu-modal .replay-table-shell {
     clip-path: inset(0 10px 0 10px round 8px);
+  }
+
+  .ui-menu-modal .replay-table-shell::before {
+    height: calc(clamp(30px, 10vh, 40px) + 3px);
+    margin-bottom: calc((clamp(30px, 10vh, 40px) + 3px) * -1);
   }
 
   .ui-menu-modal .replay-table {
@@ -4069,386 +4472,7 @@
   }
 }
 
-/* ═══════════════════════════════════════════════════════
-   MENU MODAL ADAPTIVE — mobile portrait
-   Control point: 400x900
-   Desktop, tablet portrait, tablet landscape and mobile landscape styles above are untouched.
-   ═══════════════════════════════════════════════════════ */
 
-@media (max-width: 532px) and (orientation: portrait) {
-  .ui-overlay:has(.ui-menu-modal) {
-    align-items: flex-start;
-  }
-
-  .ui-menu-modal {
-    width: min(365px, calc(100vw - 16px));
-    max-width: calc(100vw - 16px);
-
-    height: min(522px, calc(100vh - 210px));
-    min-height: min(522px, calc(100vh - 210px));
-    max-height: min(522px, calc(100vh - 210px));
-
-    margin-top: clamp(150px, 17.8vh, 164px);
-    overflow: visible;
-  }
-
-  .ui-menu-modal .ui-modal-header {
-    width: min(365px, calc(100vw - 16px));
-    height: 24px;
-    display: grid;
-    grid-template-columns: 24px minmax(0, 1fr) 24px;
-    align-items: center;
-
-    position: fixed;
-    top: 22px;
-    left: 50%;
-    right: auto;
-    transform: translateX(-50%);
-    padding: 0;
-    z-index: 240;
-  }
-
-  .ui-menu-modal .ui-modal-title {
-    grid-column: 2;
-    justify-self: center;
-    font-family: Inter, var(--font-body), sans-serif;
-    font-size: 16px;
-    font-weight: 800;
-    line-height: 100%;
-    letter-spacing: 0;
-  }
-
-  .ui-menu-modal .ui-modal-close {
-    grid-column: 3;
-    justify-self: end;
-    width: 24px;
-    height: 24px;
-    padding: 0;
-  }
-
-  .ui-menu-modal .ui-modal-close img,
-  .ui-menu-modal .ui-modal-close svg {
-    width: 24px;
-    height: 24px;
-    display: block;
-  }
-
-  .ui-menu-modal .ui-tabs {
-    position: absolute;
-    top: -82px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 230;
-
-    width: auto;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 10px;
-    padding: 0;
-  }
-
-  .ui-menu-modal .ui-tab {
-    width: 120px;
-    height: 60px;
-    padding: 0;
-
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0;
-
-    background: transparent;
-    border: none;
-    border-radius: 0;
-    font-size: 0;
-  }
-
-  .ui-menu-modal .ui-tab-label {
-    display: none;
-  }
-
-  .ui-menu-modal .ui-tab-icon {
-    width: 32px;
-    height: 32px;
-  }
-
-  .ui-menu-modal .ui-tab:hover .ui-tab-icon,
-  .ui-menu-modal .ui-tab--active .ui-tab-icon {
-    width: 48px;
-    height: 48px;
-  }
-
-  .ui-menu-modal .ui-modal-body {
-    height: 100%;
-    padding: 42px 44px 42px;
-    box-sizing: border-box;
-    align-items: center;
-    justify-content: center;
-    overflow-y: auto;
-    overflow-x: hidden;
-  }
-
-  .ui-menu-modal .sys-settings {
-    width: 100%;
-    max-width: none;
-    box-sizing: border-box;
-    gap: 58px;
-    margin: auto 0;
-    animation: fadeTab 0.25s ease;
-  }
-
-  .ui-menu-modal .sys-settings-section {
-    gap: 20px;
-  }
-
-  .ui-menu-modal .sys-settings-section + .sys-settings-section {
-    gap: 25px;
-  }
-
-  .ui-menu-modal .sys-settings-toggle-item {
-    gap: 16px;
-  }
-
-  .ui-menu-modal .sys-settings-toggle-title {
-    margin-bottom: 8px;
-    font-size: 16px;
-    font-weight: 800;
-    line-height: 100%;
-  }
-
-  .ui-menu-modal .sys-settings-toggle-desc {
-    font-size: 16px;
-    font-weight: 500;
-    line-height: 120%;
-    max-width: 225px;
-  }
-
-  .ui-menu-modal .sys-settings-slider-row {
-    grid-template-columns: 24px minmax(0, 1fr) 42px;
-    gap: 8px;
-  }
-
-  .ui-menu-modal .sys-settings-slider-icon {
-    width: 24px;
-    height: 24px;
-    font-size: 24px;
-  }
-
-  .ui-menu-modal .sys-settings-slider-val {
-    font-size: 16px;
-    font-weight: 800;
-    line-height: 100%;
-  }
-
-  .ui-menu-modal .sys-slider-track {
-    height: 10px;
-  }
-
-  .ui-menu-modal .sys-slider-thumb {
-    width: 20px;
-    height: 20px;
-  }
-
-  .ui-menu-modal .sys-toggle {
-    width: 43px;
-    height: 24px;
-  }
-
-  .ui-menu-modal .sys-toggle-knob {
-    top: 2px;
-    left: 2px;
-    width: 20px;
-    height: 20px;
-  }
-
-  .ui-menu-modal .sys-toggle--on .sys-toggle-knob {
-    left: 21px;
-  }
-
-  .ui-menu-modal .info-panel,
-  .ui-menu-modal .replay-panel {
-    width: 100%;
-    max-width: none;
-    box-sizing: border-box;
-  }
-
-  .ui-menu-modal .info-panel {
-    align-self: flex-start;
-    margin: 0 auto 24px;
-    animation: fadeTab 0.25s ease;
-  }
-
-  .ui-menu-modal .info-section {
-    gap: 10px;
-  }
-
-  .ui-menu-modal .info-section-title {
-    font-size: 16px;
-    font-weight: 800;
-    line-height: 100%;
-  }
-
-  .ui-menu-modal .info-text,
-  .ui-menu-modal .info-list-label,
-  .ui-menu-modal .info-list-value,
-  .ui-menu-modal .info-bullet-list {
-    font-size: 16px;
-    line-height: 125%;
-  }
-
-  .ui-menu-modal .info-text,
-  .ui-menu-modal .info-list-value,
-  .ui-menu-modal .info-bullet-list {
-    font-weight: 500;
-  }
-
-  .ui-menu-modal .info-list-label,
-  .ui-menu-modal .info-text-strong {
-    font-weight: 800;
-  }
-
-  .ui-menu-modal .info-list-row {
-    grid-template-columns: 140px minmax(0, 1fr);
-    gap: 12px;
-  }
-
-  .ui-menu-modal .info-version {
-    font-size: 14px;
-    line-height: 120%;
-  }
-
-  .ui-menu-modal .replay-panel {
-    margin-top: auto;
-    margin-bottom: auto;
-    animation: fadeTab 0.25s ease;
-  }
-
-  .ui-menu-modal .ui-modal-scrollbar {
-    top: 42px;
-    right: 0;
-    bottom: 15px;
-  }
-
-  .ui-menu-modal .ui-modal-scrollbar {
-    display: none;
-  }
-
-  /* ───────── HISTORY / REPLAY TABLE ───────── */
-
-  .ui-menu-modal:has(.replay-panel--filled) .ui-modal-body {
-    padding: 0;
-    align-items: stretch;
-    justify-content: flex-start;
-    overflow: hidden;
-  }
-
-  .ui-menu-modal .replay-panel--filled {
-    width: 100%;
-    max-width: none;
-    min-height: 100%;
-    height: 100%;
-    margin: 0;
-  }
-
-  .ui-menu-modal .replay-table-wrap {
-    --replay-header-height: clamp(30px, 10vw, 40px);
-    width: 100%;
-    height: calc(100% - clamp(32px, 10vw, 40px) - clamp(10px, 3.75vw, 15px));
-    min-height: 0;
-    margin-top: clamp(10px, 3.75vw, 15px);
-    padding: 0 clamp(10px, 3vw, 12px);
-    box-sizing: border-box;
-    overflow: hidden;
-  }
-
-  .ui-menu-modal .replay-table-shell {
-    clip-path: inset(0 10px 0 10px round 8px);
-  }
-
-  .ui-menu-modal .replay-table {
-    width: 100%;
-    min-width: 0;
-    margin: 0;
-    table-layout: fixed;
-    border-collapse: separate;
-    border-spacing: 0;
-    border-radius: 8px;
-    overflow: visible;
-  }
-
-  .ui-menu-modal .replay-table th {
-    height: clamp(30px, 10vw, 40px);
-    padding: 0 3px;
-    font-size: clamp(8px, 2.75vw, 11px);
-    line-height: 1;
-    font-weight: 800;
-    text-align: center;
-    vertical-align: middle;
-  }
-
-  .ui-menu-modal .replay-table td {
-    height: clamp(35px, 10vw, 40px);
-    padding: 0 3px;
-    font-size: clamp(8px, 2.5vw, 10px);
-    line-height: 1.15;
-    font-weight: 500;
-    text-align: center;
-    vertical-align: middle;
-  }
-
-  .ui-menu-modal .replay-table th:nth-child(1),
-  .ui-menu-modal .replay-table td:nth-child(1) {
-    width: 22%;
-  }
-
-  .ui-menu-modal .replay-table th:nth-child(2),
-  .ui-menu-modal .replay-table td:nth-child(2) {
-    width: 23%;
-  }
-
-  .ui-menu-modal .replay-table th:nth-child(3),
-  .ui-menu-modal .replay-table td:nth-child(3),
-  .ui-menu-modal .replay-table th:nth-child(4),
-  .ui-menu-modal .replay-table td:nth-child(4) {
-    width: 16%;
-  }
-
-  .ui-menu-modal .replay-table th:nth-child(5),
-  .ui-menu-modal .replay-table td:nth-child(5) {
-    width: 23%;
-  }
-
-  .ui-menu-modal .replay-time-cell {
-    line-height: 1.15;
-    text-align: left;
-    white-space: nowrap;
-  }
-
-
-  .ui-menu-modal .replay-button {
-    width: clamp(45px, 13.75vw, 55px);
-    height: clamp(20px, 6.25vw, 25px);
-    border-radius: 4px;
-    margin: 0 auto;
-  }
-
-  .ui-menu-modal .replay-icon {
-    width: clamp(11px, 3.25vw, 13px);
-    height: clamp(11px, 3.25vw, 13px);
-  }
-
-  .ui-menu-modal:has(.replay-panel--filled) .ui-modal-scrollbar {
-    display: block;
-    top: clamp(10px, 3.75vw, 15px);
-    bottom: clamp(32px, 10vw, 40px);
-  }
-
-  .ui-menu-modal:has(.replay-panel--filled) .ui-modal-scrollbar-thumb {
-    width: 12px;
-    height: clamp(90px, 27.5vw, 110px);
-  }
-}
 
 .ui-spin-btn-icon,
 .ui-autospin-btn-icon,
