@@ -3323,22 +3323,11 @@
 
 
 /* ═══════════════════════════════════════════════════════
-   MENU MODAL ADAPTIVE — tablet portrait only
-   Desktop styles above are intentionally untouched.
+   MENU MODAL ADAPTIVE — portrait
+   Height larger than width: tablet layout, sizes flow to mobile values.
    ═══════════════════════════════════════════════════════ */
 
-@keyframes fadeTab {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@media (min-width: 533px) and (max-width: 900px) and (orientation: portrait) {
+@media (max-aspect-ratio: 1/1) {
   .ui-overlay:has(.ui-menu-modal) {
     align-items: flex-start;
   }
@@ -3350,6 +3339,7 @@
     min-height: 705px;
     max-height: 705px;
     margin-top: 185px;
+    overflow: visible;
   }
 
   .ui-menu-modal .ui-modal-header {
@@ -3372,21 +3362,39 @@
     top: 65px;
     left: 50%;
     transform: translateX(-50%);
+    font-family: Inter, var(--font-body), sans-serif;
+    font-size: 52px;
+    font-weight: 800;
+    line-height: 100%;
+    letter-spacing: 0;
   }
 
   .ui-menu-modal .ui-modal-close {
     position: absolute;
     top: 0;
-    right: 20px;
+    right: min(9px, calc((705px - 100vw) / 2 + 28px));
+    width: 48px;
+    height: 48px;
     padding: 0;
     pointer-events: auto;
   }
 
+  .ui-menu-modal .ui-modal-close img,
+  .ui-menu-modal .ui-modal-close svg {
+    width: 48px;
+    height: 48px;
+    display: block;
+  }
+
   .ui-menu-modal .ui-modal-body {
-    justify-content: center;
+    height: 100%;
     padding-left: 78px;
     padding-right: 78px;
     box-sizing: border-box;
+    align-items: center;
+    justify-content: center;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
 
   .ui-menu-modal:has(.info-panel) .ui-modal-body {
@@ -3405,7 +3413,14 @@
   .ui-menu-modal .ui-tab {
     width: 120px;
     height: 60px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     gap: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
     font-size: 0;
   }
 
@@ -3432,30 +3447,144 @@
   .ui-menu-modal .sys-settings,
   .ui-menu-modal .replay-panel {
     width: 100%;
+    max-width: none;
     box-sizing: border-box;
     margin-top: auto;
     margin-bottom: auto;
+    animation: fadeTab 0.25s ease;
+  }
+
+  .ui-menu-modal .sys-settings {
+    gap: clamp(58px, calc(0.374vw + 56.636px), 60px);
+  }
+
+  .ui-menu-modal .sys-settings-section {
+    gap: clamp(20px, calc(0.374vw + 18.636px), 22px);
+  }
+
+  .ui-menu-modal .sys-settings-section + .sys-settings-section {
+    gap: clamp(22px, calc(-0.561vw + 27.047px), 25px);
+  }
+
+  .ui-menu-modal .sys-settings-toggle-item {
+    gap: clamp(16px, calc(2.243vw + 7.813px), 28px);
+  }
+
+  .ui-menu-modal .sys-settings-toggle-title {
+    margin-bottom: clamp(5px, calc(-0.561vw + 10.047px), 8px);
+    font-size: clamp(16px, calc(1.682vw + 9.860px), 25px);
+    font-weight: 800;
+    line-height: 100%;
+  }
+
+  .ui-menu-modal .sys-settings-toggle-desc {
+    font-size: clamp(16px, calc(0.748vw + 13.271px), 20px);
+    font-weight: 500;
+    line-height: 120%;
+    max-width: clamp(225px, calc(25.234vw + 132.944px), 360px);
+  }
+
+  .ui-menu-modal .sys-settings-slider-row {
+    grid-template-columns: clamp(24px, calc(1.869vw + 17.178px), 34px) minmax(0, 1fr) clamp(42px, calc(5.234vw + 22.897px), 70px);
+    gap: clamp(8px, calc(1.121vw + 3.907px), 14px);
+  }
+
+  .ui-menu-modal .sys-settings-slider-icon {
+    width: clamp(24px, calc(2.991vw + 13.084px), 40px);
+    height: clamp(24px, calc(2.991vw + 13.084px), 40px);
+    font-size: clamp(24px, calc(1.121vw + 19.907px), 30px);
+  }
+
+  .ui-menu-modal .sys-settings-slider-val {
+    font-size: clamp(16px, calc(2.617vw + 6.449px), 30px);
+    font-weight: 800;
+    line-height: 100%;
+  }
+
+  .ui-menu-modal .sys-slider-track {
+    height: clamp(10px, calc(0.935vw + 6.589px), 15px);
+  }
+
+  .ui-menu-modal .sys-slider-thumb {
+    width: clamp(20px, calc(0.374vw + 18.636px), 22px);
+    height: clamp(20px, calc(0.374vw + 18.636px), 22px);
+  }
+
+  .ui-menu-modal .sys-toggle {
+    width: clamp(43px, calc(2.991vw + 32.084px), 59px);
+    height: clamp(24px, calc(1.495vw + 18.542px), 32px);
+  }
+
+  .ui-menu-modal .sys-toggle-knob {
+    top: clamp(2px, calc(0.125vw + 1.542px), 2.67px);
+    left: clamp(2px, calc(0.499vw + 0.180px), 4.67px);
+    width: clamp(20px, calc(1.308vw + 15.224px), 27px);
+    height: clamp(20px, calc(1.308vw + 15.224px), 27px);
+  }
+
+  .ui-menu-modal .sys-toggle--on .sys-toggle-knob {
+    left: clamp(21px, calc(1.247vw + 16.449px), 27.67px);
   }
 
   .ui-menu-modal .info-panel {
     width: 100%;
+    max-width: none;
     box-sizing: border-box;
     align-self: flex-start;
-    margin: clamp(20px, 2.174vh, 25px) auto 30px;
+    margin: clamp(20px, calc(1.121vw + 15.907px), 26px) auto clamp(24px, calc(1.121vw + 19.907px), 30px);
     animation: fadeTab 0.25s ease;
+  }
+
+  .ui-menu-modal .info-section {
+    gap: clamp(10px, calc(0.374vw + 8.636px), 12px);
+  }
+
+  .ui-menu-modal .info-section-title {
+    font-size: clamp(16px, calc(1.682vw + 9.860px), 25px);
+    font-weight: 800;
+    line-height: 100%;
+  }
+
+  .ui-menu-modal .info-text,
+  .ui-menu-modal .info-list-label,
+  .ui-menu-modal .info-list-value,
+  .ui-menu-modal .info-bullet-list {
+    font-size: clamp(16px, calc(0.748vw + 13.271px), 20px);
+    line-height: 125%;
+  }
+
+  .ui-menu-modal .info-text,
+  .ui-menu-modal .info-list-value,
+  .ui-menu-modal .info-bullet-list {
+    font-weight: 500;
+  }
+
+  .ui-menu-modal .info-list-label,
+  .ui-menu-modal .info-text-strong {
+    font-weight: 800;
+  }
+
+  .ui-menu-modal .info-list-row {
+    grid-template-columns: clamp(140px, calc(14.953vw + 85.421px), 220px) minmax(0, 1fr);
+    gap: clamp(12px, calc(1.121vw + 7.907px), 18px);
+  }
+
+  .ui-menu-modal .info-version {
+    font-size: clamp(14px, calc(0.748vw + 11.271px), 18px);
+    line-height: 120%;
   }
 
   .ui-menu-modal .ui-modal-scrollbar {
     display: none;
   }
 
-  /* ───────── HISTORY / REPLAY TABLE ───────── */
-
   .ui-menu-modal:has(.info-panel) .ui-modal-scrollbar {
     display: block;
     top: calc(100px + clamp(20px, 2.174vh, 25px));
     bottom: 30px;
   }
+
+  /* ───────── HISTORY / REPLAY TABLE ───────── */
 
   .ui-menu-modal:has(.replay-panel--filled) .ui-modal-body {
     padding: 0;
@@ -3486,8 +3615,8 @@
   }
 
   .ui-menu-modal .replay-table-shell::before {
-    height: calc(clamp(36px, 7.39vw, 55px) + 3px);
-    margin-bottom: calc((clamp(36px, 7.39vw, 55px) + 3px) * -1);
+    height: calc(clamp(30px, calc(1.869vw + 23.178px), 40px) + 3px);
+    margin-bottom: calc((clamp(30px, calc(1.869vw + 23.178px), 40px) + 3px) * -1);
   }
 
   .ui-menu-modal .replay-table {
@@ -3502,378 +3631,9 @@
   }
 
   .ui-menu-modal .replay-table th {
-    height: clamp(36px, 7.39vw, 55px);
-    padding: 0 8px;
-    font-size: 20px;
-    line-height: 1;
-    font-weight: 700;
-    text-align: center;
-    vertical-align: middle;
-  }
-
-  .ui-menu-modal .replay-table td {
-    height: clamp(48px, 9.41vw, 70px);
-    padding: 0 8px;
-    font-size: 20px;
-    line-height: 1.1;
-    font-weight: 500;
-    text-align: center;
-    vertical-align: middle;
-  }
-
-  .ui-menu-modal .replay-time-cell {
-    line-height: 1.15;
-    text-align: left;
-    white-space: nowrap;
-  }
-
-  .ui-menu-modal .replay-button {
-    width: clamp(82px, 15.46vw, 115px);
-    height: clamp(28px, 5.38vw, 40px);
-    border-radius: 4px;
-    margin: 0 auto;
-  }
-
-  .ui-menu-modal .replay-icon {
-    width: 26px;
-    height: 26px;
-  }
-
-  .ui-menu-modal:has(.replay-panel--filled) .ui-modal-scrollbar {
-    display: block;
-    bottom: clamp(25px, 4.7vw, 40px);
-    top: 100px;
-  }
-}
-
-
-/* ═══════════════════════════════════════════════════════
-   MENU MODAL ADAPTIVE — mobile portrait
-   Control point: 400x900
-   Desktop, tablet portrait, tablet landscape and mobile landscape styles above are untouched.
-   ═══════════════════════════════════════════════════════ */
-
-@media (max-width: 532px) and (orientation: portrait) {
-  .ui-overlay:has(.ui-menu-modal) {
-    align-items: flex-start;
-  }
-
-  .ui-menu-modal {
-    width: min(365px, calc(100vw - 16px));
-    max-width: calc(100vw - 16px);
-
-    height: min(522px, calc(100vh - 210px));
-    min-height: min(522px, calc(100vh - 210px));
-    max-height: min(522px, calc(100vh - 210px));
-
-    margin-top: clamp(150px, 17.8vh, 164px);
-    overflow: visible;
-  }
-
-  .ui-menu-modal .ui-modal-header {
-    width: min(365px, calc(100vw - 16px));
-    height: 24px;
-    display: grid;
-    grid-template-columns: 24px minmax(0, 1fr) 24px;
-    align-items: center;
-
-    position: fixed;
-    top: 22px;
-    left: 50%;
-    right: auto;
-    transform: translateX(-50%);
-    padding: 0;
-    z-index: 240;
-  }
-
-  .ui-menu-modal .ui-modal-title {
-    grid-column: 2;
-    justify-self: center;
-    font-family: Inter, var(--font-body), sans-serif;
-    font-size: 16px;
-    font-weight: 800;
-    line-height: 100%;
-    letter-spacing: 0;
-  }
-
-  .ui-menu-modal .ui-modal-close {
-    grid-column: 3;
-    justify-self: end;
-    width: 24px;
-    height: 24px;
-    padding: 0;
-  }
-
-  .ui-menu-modal .ui-modal-close img,
-  .ui-menu-modal .ui-modal-close svg {
-    width: 24px;
-    height: 24px;
-    display: block;
-  }
-
-  .ui-menu-modal .ui-tabs {
-    position: absolute;
-    top: -82px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 230;
-
-    width: auto;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 10px;
-    padding: 0;
-  }
-
-  .ui-menu-modal .ui-tab {
-    width: 120px;
-    height: 60px;
-    padding: 0;
-
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0;
-
-    background: transparent;
-    border: none;
-    border-radius: 0;
-    font-size: 0;
-  }
-
-  .ui-menu-modal .ui-tab-label {
-    display: none;
-  }
-
-  .ui-menu-modal .ui-tab-icon {
-    width: 32px;
-    height: 32px;
-  }
-
-  .ui-menu-modal .ui-tab:hover .ui-tab-icon,
-  .ui-menu-modal .ui-tab--active .ui-tab-icon {
-    width: 48px;
-    height: 48px;
-  }
-
-  .ui-menu-modal .ui-modal-body {
-    height: 100%;
-    padding: 42px 44px 42px;
-    box-sizing: border-box;
-    align-items: center;
-    justify-content: center;
-    overflow-y: auto;
-    overflow-x: hidden;
-  }
-
-  .ui-menu-modal:has(.info-panel) .ui-modal-body {
-    padding-left: clamp(20px, 2.174vw, 25px);
-    padding-right: clamp(20px, 2.174vw, 25px);
-  }
-
-  .ui-menu-modal .sys-settings {
-    width: 100%;
-    max-width: none;
-    box-sizing: border-box;
-    gap: 58px;
-    margin: auto 0;
-    animation: fadeTab 0.25s ease;
-  }
-
-  .ui-menu-modal .sys-settings-section {
-    gap: 20px;
-  }
-
-  .ui-menu-modal .sys-settings-section + .sys-settings-section {
-    gap: 25px;
-  }
-
-  .ui-menu-modal .sys-settings-toggle-item {
-    gap: 16px;
-  }
-
-  .ui-menu-modal .sys-settings-toggle-title {
-    margin-bottom: 8px;
-    font-size: 16px;
-    font-weight: 800;
-    line-height: 100%;
-  }
-
-  .ui-menu-modal .sys-settings-toggle-desc {
-    font-size: 16px;
-    font-weight: 500;
-    line-height: 120%;
-    max-width: 225px;
-  }
-
-  .ui-menu-modal .sys-settings-slider-row {
-    grid-template-columns: 24px minmax(0, 1fr) 42px;
-    gap: 8px;
-  }
-
-  .ui-menu-modal .sys-settings-slider-icon {
-    width: 24px;
-    height: 24px;
-    font-size: 24px;
-  }
-
-  .ui-menu-modal .sys-settings-slider-val {
-    font-size: 16px;
-    font-weight: 800;
-    line-height: 100%;
-  }
-
-  .ui-menu-modal .sys-slider-track {
-    height: 10px;
-  }
-
-  .ui-menu-modal .sys-slider-thumb {
-    width: 20px;
-    height: 20px;
-  }
-
-  .ui-menu-modal .sys-toggle {
-    width: 43px;
-    height: 24px;
-  }
-
-  .ui-menu-modal .sys-toggle-knob {
-    top: 2px;
-    left: 2px;
-    width: 20px;
-    height: 20px;
-  }
-
-  .ui-menu-modal .sys-toggle--on .sys-toggle-knob {
-    left: 21px;
-  }
-
-  .ui-menu-modal .info-panel,
-  .ui-menu-modal .replay-panel {
-    width: 100%;
-    max-width: none;
-    box-sizing: border-box;
-  }
-
-  .ui-menu-modal .info-panel {
-    align-self: flex-start;
-    margin: 0 auto 24px;
-    animation: fadeTab 0.25s ease;
-  }
-
-  .ui-menu-modal .info-section {
-    gap: 10px;
-  }
-
-  .ui-menu-modal .info-section-title {
-    font-size: 16px;
-    font-weight: 800;
-    line-height: 100%;
-  }
-
-  .ui-menu-modal .info-text,
-  .ui-menu-modal .info-list-label,
-  .ui-menu-modal .info-list-value,
-  .ui-menu-modal .info-bullet-list {
-    font-size: 16px;
-    line-height: 125%;
-  }
-
-  .ui-menu-modal .info-text,
-  .ui-menu-modal .info-list-value,
-  .ui-menu-modal .info-bullet-list {
-    font-weight: 500;
-  }
-
-  .ui-menu-modal .info-list-label,
-  .ui-menu-modal .info-text-strong {
-    font-weight: 800;
-  }
-
-  .ui-menu-modal .info-list-row {
-    grid-template-columns: 140px minmax(0, 1fr);
-    gap: 12px;
-  }
-
-  .ui-menu-modal .info-version {
-    font-size: 14px;
-    line-height: 120%;
-  }
-
-  .ui-menu-modal .replay-panel {
-    margin-top: auto;
-    margin-bottom: auto;
-    animation: fadeTab 0.25s ease;
-  }
-
-  .ui-menu-modal .ui-modal-scrollbar {
-    top: 42px;
-    right: 0;
-    bottom: 15px;
-  }
-
-  .ui-menu-modal .ui-modal-scrollbar {
-    display: none;
-  }
-
-  .ui-menu-modal:has(.info-panel) .ui-modal-scrollbar {
-    display: block;
-    top: calc(90px + clamp(16px, 2.688vh, 20px));
-    bottom: 30px;
-  }
-
-  /* ───────── HISTORY / REPLAY TABLE ───────── */
-
-  .ui-menu-modal:has(.replay-panel--filled) .ui-modal-body {
-    padding: 0;
-    align-items: stretch;
-    justify-content: flex-start;
-    overflow: hidden;
-  }
-
-  .ui-menu-modal .replay-panel--filled {
-    width: 100%;
-    max-width: none;
-    min-height: 100%;
-    height: 100%;
-    margin: 0;
-  }
-
-  .ui-menu-modal .replay-table-wrap {
-    width: 100%;
-    height: calc(100% - clamp(32px, 10vw, 40px) - clamp(10px, 3.75vw, 15px));
-    min-height: 0;
-    margin-top: clamp(10px, 3.75vw, 15px);
-    padding: 0 clamp(10px, 3vw, 12px);
-    box-sizing: border-box;
-    overflow: hidden;
-  }
-
-  .ui-menu-modal .replay-table-shell {
-    clip-path: inset(0 10px 0 10px round 8px);
-  }
-
-  .ui-menu-modal .replay-table-shell::before {
-    height: calc(clamp(30px, 10vw, 40px) + 3px);
-    margin-bottom: calc((clamp(30px, 10vw, 40px) + 3px) * -1);
-  }
-
-  .ui-menu-modal .replay-table {
-    width: 100%;
-    min-width: 0;
-    margin: 0;
-    table-layout: fixed;
-    border-collapse: separate;
-    border-spacing: 0;
-    border-radius: 8px;
-    overflow: visible;
-  }
-
-  .ui-menu-modal .replay-table th {
-    height: clamp(30px, 10vw, 40px);
-    padding: 0 3px;
-    font-size: clamp(8px, 2.75vw, 11px);
+    height: clamp(30px, calc(1.869vw + 23.178px), 40px);
+    padding: 0 clamp(3px, calc(0.935vw - 0.411px), 8px);
+    font-size: clamp(8px, calc(2.243vw - 0.187px), 20px);
     line-height: 1;
     font-weight: 800;
     text-align: center;
@@ -3881,9 +3641,9 @@
   }
 
   .ui-menu-modal .replay-table td {
-    height: clamp(35px, 10vw, 40px);
-    padding: 0 3px;
-    font-size: clamp(8px, 2.5vw, 10px);
+    height: clamp(35px, calc(0.935vw + 31.589px), 40px);
+    padding: 0 clamp(3px, calc(0.935vw - 0.411px), 8px);
+    font-size: clamp(8px, calc(2.243vw - 0.187px), 20px);
     line-height: 1.15;
     font-weight: 500;
     text-align: center;
@@ -3918,12 +3678,221 @@
     white-space: nowrap;
   }
 
+  .ui-menu-modal .replay-button {
+    width: clamp(45px, calc(13.084vw - 2.757px), 115px);
+    height: clamp(20px, calc(3.738vw + 6.355px), 40px);
+    border-radius: 4px;
+    margin: 0 auto;
+  }
+
+  .ui-menu-modal .replay-icon {
+    width: clamp(11px, calc(2.804vw + 0.766px), 26px);
+    height: clamp(11px, calc(2.804vw + 0.766px), 26px);
+  }
+
+  .ui-menu-modal:has(.replay-panel--filled) .ui-modal-scrollbar {
+    display: block;
+    bottom: clamp(25px, 4.7vw, 40px);
+    top: 100px;
+  }
+}
+
+@media (max-aspect-ratio: 1/1) and (max-width: 600px) {
+  .ui-menu-modal {
+    width: min(clamp(365px, calc(500vw - 2295px), 705px), calc(100vw - clamp(16px, calc(32.353vw - 156.118px), 38px)));
+    max-width: calc(100vw - clamp(16px, calc(32.353vw - 156.118px), 38px));
+    height: min(clamp(522px, calc(269.118vw - 909.706px), 705px), calc(100vh - clamp(0px, calc(-308.824vw + 1852.941px), 210px)));
+    min-height: min(clamp(522px, calc(269.118vw - 909.706px), 705px), calc(100vh - clamp(0px, calc(-308.824vw + 1852.941px), 210px)));
+    max-height: min(clamp(522px, calc(269.118vw - 909.706px), 705px), calc(100vh - clamp(0px, calc(-308.824vw + 1852.941px), 210px)));
+    margin-top: clamp(150px, calc(51.471vw - 123.824px), 185px);
+  }
+
+  .ui-menu-modal .ui-modal-header {
+    width: min(clamp(365px, calc(500vw - 2295px), 705px), calc(100vw - clamp(16px, calc(32.353vw - 156.118px), 38px)));
+    max-width: calc(100vw - clamp(16px, calc(32.353vw - 156.118px), 38px));
+    height: clamp(24px, calc(155.882vw - 805.294px), 130px);
+    display: grid;
+    grid-template-columns: clamp(24px, calc(155.882vw - 805.294px), 130px) minmax(0, 1fr) clamp(24px, calc(155.882vw - 805.294px), 130px);
+    align-items: center;
+    top: 14px;
+    z-index: 240;
+    pointer-events: auto;
+  }
+
+  .ui-menu-modal .ui-modal-title {
+    grid-column: 2;
+    justify-self: center;
+    position: static;
+    transform: none;
+    font-size: clamp(16px, calc(52.941vw - 265.647px), 52px);
+  }
+
+  .ui-menu-modal .ui-modal-close {
+    grid-column: 3;
+    justify-self: end;
+    position: static;
+    width: clamp(24px, calc(35.294vw - 163.765px), 48px);
+    height: clamp(24px, calc(35.294vw - 163.765px), 48px);
+  }
+
+  .ui-menu-modal .ui-modal-close img,
+  .ui-menu-modal .ui-modal-close svg {
+    width: clamp(24px, calc(35.294vw - 163.765px), 48px);
+    height: clamp(24px, calc(35.294vw - 163.765px), 48px);
+  }
+
+  .ui-menu-modal .ui-tabs {
+    position: absolute;
+    top: -82px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 230;
+    width: auto;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 0;
+  }
+
+  .ui-menu-modal .ui-modal-body {
+    padding: 30px 38px 30px;
+  }
+
+  .ui-menu-modal:has(.info-panel) .ui-modal-body {
+    padding-left: clamp(20px, 2.174vw, 25px);
+    padding-right: clamp(20px, 2.174vw, 25px);
+  }
+
+  .ui-menu-modal .sys-settings {
+    gap: 36px;
+    margin: auto 0;
+    transform: translateY(-14px);
+  }
+
+  .ui-menu-modal .sys-settings-section {
+    gap: 14px;
+  }
+
+  .ui-menu-modal .sys-settings-section + .sys-settings-section {
+    gap: 16px;
+  }
+
+  .ui-menu-modal .sys-settings-toggle-item {
+    gap: 10px;
+  }
+
+  .ui-menu-modal .sys-settings-toggle-title {
+    margin-bottom: 5px;
+    font-size: 14px;
+  }
+
+  .ui-menu-modal .sys-settings-toggle-desc {
+    font-size: 14px;
+    max-width: 205px;
+  }
+
+  .ui-menu-modal .sys-settings-slider-row {
+    grid-template-columns: 22px minmax(0, 1fr) 38px;
+    gap: 7px;
+  }
+
+  .ui-menu-modal .sys-settings-slider-icon {
+    width: 22px;
+    height: 22px;
+    font-size: 22px;
+  }
+
+  .ui-menu-modal .sys-settings-slider-val {
+    font-size: 15px;
+  }
+
+  .ui-menu-modal .sys-slider-track {
+    height: 8px;
+  }
+
+  .ui-menu-modal .sys-slider-thumb {
+    width: 18px;
+    height: 18px;
+  }
+
+  .ui-menu-modal .sys-toggle {
+    width: 40px;
+    height: 22px;
+  }
+
+  .ui-menu-modal .sys-toggle-knob {
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+  }
+
+  .ui-menu-modal .sys-toggle--on .sys-toggle-knob {
+    left: 20px;
+  }
+
+  .ui-menu-modal .info-panel {
+    margin: 0 auto 24px;
+  }
+
+  .ui-menu-modal .info-section {
+    gap: 10px;
+  }
+
+  .ui-menu-modal .info-section-title,
+  .ui-menu-modal .info-text,
+  .ui-menu-modal .info-list-label,
+  .ui-menu-modal .info-list-value,
+  .ui-menu-modal .info-bullet-list {
+    font-size: 16px;
+  }
+
+  .ui-menu-modal .info-list-row {
+    grid-template-columns: 140px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .ui-menu-modal .info-version {
+    font-size: 14px;
+  }
+
+  .ui-menu-modal .ui-modal-scrollbar {
+    top: 42px;
+    right: 0;
+    bottom: 42px;
+  }
+
+  .ui-menu-modal:has(.info-panel) .ui-modal-scrollbar {
+    top: 42px;
+    bottom: 42px;
+  }
+
+  .ui-menu-modal .replay-table-wrap {
+    height: calc(100% - clamp(32px, 10vw, 40px) - clamp(10px, 3.75vw, 15px));
+    margin-top: clamp(10px, 3.75vw, 15px);
+    padding: 0 clamp(10px, 3vw, 12px);
+  }
+
+  .ui-menu-modal .replay-table-shell::before {
+    height: calc(clamp(30px, 10vw, 40px) + 3px);
+    margin-bottom: calc((clamp(30px, 10vw, 40px) + 3px) * -1);
+  }
+
+  .ui-menu-modal .replay-table th {
+    height: clamp(30px, 10vw, 40px);
+    padding: 0 3px;
+    font-size: clamp(8px, 2.75vw, 11px);
+  }
+
+  .ui-menu-modal .replay-table td {
+    height: clamp(35px, 10vw, 40px);
+    padding: 0 3px;
+    font-size: clamp(8px, 2.5vw, 10px);
+  }
 
   .ui-menu-modal .replay-button {
     width: clamp(45px, 13.75vw, 55px);
     height: clamp(20px, 6.25vw, 25px);
-    border-radius: 4px;
-    margin: 0 auto;
   }
 
   .ui-menu-modal .replay-icon {
@@ -3932,7 +3901,6 @@
   }
 
   .ui-menu-modal:has(.replay-panel--filled) .ui-modal-scrollbar {
-    display: block;
     top: clamp(10px, 3.75vw, 15px);
     bottom: clamp(32px, 10vw, 40px);
   }
@@ -3942,8 +3910,6 @@
     height: clamp(90px, 27.5vw, 110px);
   }
 }
-
-
 
 
 
