@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { t } from "../i18n/t";
 import { resolvePublicUrl } from "../utils/publicUrl";
 
@@ -14,17 +14,72 @@ const slides = [
   { image: resolvePublicUrl("rules/places.png"),      alt: "Places",      titleKey: "get to safe place" },
 ];
 
+interface InlineSvgImageProps {
+  idPrefix: string;
+  src: string;
+}
+
+const prefixSvgIds = (markup: string, prefix: string) =>
+  markup
+    .replace(/\sid="([^"]+)"/g, ` id="${prefix}-$1"`)
+    .replace(/url\(#([^)]+)\)/g, `url(#${prefix}-$1)`)
+    .replace(/href="#([^"]+)"/g, `href="#${prefix}-$1"`);
+
+const InlineSvgImage: React.FC<InlineSvgImageProps> = ({ idPrefix, src }) => {
+  const [markup, setMarkup] = useState<string | null>(null);
+  const svgMarkup = useMemo(
+    () => (markup ? prefixSvgIds(markup, idPrefix) : null),
+    [idPrefix, markup]
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+
+    fetch(src)
+      .then((response) => (response.ok ? response.text() : null))
+      .then((loadedMarkup) => {
+        if (isMounted) {
+          setMarkup(loadedMarkup);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setMarkup(null);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [src]);
+
+  if (!svgMarkup) {
+    return <img src={src} alt="" />;
+  }
+
+  return (
+    <span
+      className="rules-inline-svg"
+      aria-hidden="true"
+      dangerouslySetInnerHTML={{ __html: svgMarkup }}
+    />
+  );
+};
+
 export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart }) => {
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
   const [bannerSrc, setBannerSrc] = useState(resolvePublicUrl("rules/banner.svg"));
+  const [slideAnimation, setSlideAnimation] = useState<"left" | "right">("right");
 
   const goToPreviousSlide = () => {
+    setSlideAnimation("left");
     setActiveSlideIndex((currentIndex) =>
       currentIndex === 0 ? slides.length - 1 : currentIndex - 1
     );
   };
 
   const goToNextSlide = () => {
+    setSlideAnimation("right");
     setActiveSlideIndex((currentIndex) =>
       currentIndex === slides.length - 1 ? 0 : currentIndex + 1
     );
@@ -49,7 +104,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart
             <div
               className={`rules-slide-main ${
                 isPlacesSlide ? "rules-slide-main--places" : ""
-              }`}
+              } rules-slide-main--${slideAnimation}`}
             >
               <button
                 className="rules-arrow rules-arrow--left"
@@ -57,24 +112,26 @@ export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart
                 aria-label="Previous slide"
                 onClick={goToPreviousSlide}
               >
-                <img src={resolvePublicUrl("rules/button_left.svg")} alt="" />
+                <InlineSvgImage idPrefix="rules-left-arrow" src={resolvePublicUrl("rules/button_left.svg")} />
               </button>
 
               <div className="rules-image-slot">
                 {slides.map((slide, index) => (
                   <img
-                    key={slide.image}
+                    key={`${slide.image}-${index === activeSlideIndex ? slideAnimation : "idle"}`}
                     className={`rules-multipliers ${
                       index === activeSlideIndex ? "rules-multipliers--active" : ""
                     } ${index === 2 ? "rules-multipliers--places" : ""}`}
                     src={slide.image}
                     alt={index === activeSlideIndex ? slide.alt : ""}
                     aria-hidden={index === activeSlideIndex ? undefined : true}
+                    draggable={false}
                   />
                 ))}
               </div>
 
               <div
+                key={`${slides[activeSlideIndex].titleKey}-${slideAnimation}`}
                 className="rules-title">
                 {t(slides[activeSlideIndex].titleKey)}
               </div>
@@ -85,7 +142,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart
                 aria-label="Next slide"
                 onClick={goToNextSlide}
               >
-                <img src={resolvePublicUrl("rules/button_right.svg")} alt="" />
+                <InlineSvgImage idPrefix="rules-right-arrow" src={resolvePublicUrl("rules/button_right.svg")} />
               </button>
             </div>
 
@@ -97,7 +154,11 @@ export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart
                   type="button"
                   aria-label={`Go to slide ${index + 1}`}
                   aria-current={activeSlideIndex === index}
-                  onClick={() => setActiveSlideIndex(index)}
+                  onClick={() => {
+                    if (index === activeSlideIndex) return;
+                    setSlideAnimation(index > activeSlideIndex ? "right" : "left");
+                    setActiveSlideIndex(index);
+                  }}
                 >
                   <img
                     src={

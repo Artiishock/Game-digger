@@ -106,17 +106,13 @@
 
 .ui-win-zone {
   position: absolute;
-  top: clamp(16px, 3.7vmin, 56px);
+  top: 40px;
   left: 50%;
   transform: translateX(-50%);
-  background: radial-gradient(
-    ellipse,
-    rgba(0, 0, 0, 1) 0%,
-    rgba(252, 70, 107, 0) 70%
-  );
-  width: 410px;
-  height: 50px;
-  z-index: 20;
+  background-color: rgba(6, 6, 6, 0.5);
+  padding: 25px 25px;
+  border-radius: 24px;
+  z-index: 60;
   pointer-events: none;
   white-space: nowrap;
   gap: 10px;
@@ -1791,6 +1787,66 @@
   justify-content: center;
 }
 
+@keyframes rulesSlideBounceRight {
+  0% {
+    transform: translateX(52%);
+    opacity: 0;
+  }
+  42% {
+    transform: translateX(-4.5%);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes rulesSlideBounceLeft {
+  0% {
+    transform: translateX(-52%);
+    opacity: 0;
+  }
+  42% {
+    transform: translateX(4.5%);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes rulesTitleBounceRight {
+  0% {
+    transform: translateX(18%);
+    opacity: 0;
+  }
+  42% {
+    transform: translateX(-2.5%);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes rulesTitleBounceLeft {
+  0% {
+    transform: translateX(-18%);
+    opacity: 0;
+  }
+  42% {
+    transform: translateX(2.5%);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
 .rules-multipliers {
   position: absolute;
   inset: auto;
@@ -1806,6 +1862,14 @@
 .rules-multipliers--active {
   position: relative;
   opacity: 1;
+}
+
+.rules-slide-main--right .rules-multipliers--active {
+  animation: rulesSlideBounceRight 0.58s cubic-bezier(0.16, 0.86, 0.24, 1) both;
+}
+
+.rules-slide-main--left .rules-multipliers--active {
+  animation: rulesSlideBounceLeft 0.58s cubic-bezier(0.16, 0.86, 0.24, 1) both;
 }
 
 .rules-multipliers--places {
@@ -1838,6 +1902,14 @@
   text-shadow: 0 clamp(1px, 0.14vw, 2px) 0 #000;
 }
 
+.rules-slide-main--right .rules-title {
+  animation: rulesTitleBounceRight 0.5s cubic-bezier(0.16, 0.86, 0.24, 1) both;
+}
+
+.rules-slide-main--left .rules-title {
+  animation: rulesTitleBounceLeft 0.5s cubic-bezier(0.16, 0.86, 0.24, 1) both;
+}
+
 .rules-slide-main--places .rules-title {
   font-size: clamp(11px, 2.7vmin, 24px);
   letter-spacing: -0.6px;
@@ -1866,7 +1938,9 @@
   left: calc(50% + var(--arrow-center-offset) - var(--arrow-size) / 2);
 }
 
-.rules-arrow img {
+.rules-arrow img,
+.rules-inline-svg,
+.rules-inline-svg svg {
   width: 100%;
   height: 100%;
   display: block;
