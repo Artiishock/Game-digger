@@ -15,6 +15,16 @@ import type { RoundEvent, EventType } from '../rgs/client'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
+export interface FpsSnapshot {
+  at:        number  // performance.now()
+  windowSec: number
+  frames:    number
+  avgMs:     number
+  minMs:     number
+  maxMs:     number
+  avgFps:    number
+}
+
 export interface CollectRecord {
   seq:        number
   type:       EventType
@@ -44,6 +54,7 @@ export interface RoundRecord {
 const MAX_ROUNDS = 30
 const _rounds: RoundRecord[] = []
 let _current: RoundRecord | null = null
+const _fpsSnapshots: FpsSnapshot[] = []
 let _collectSeq = 0
 let _roundSeq   = 0
 
@@ -349,12 +360,27 @@ export const GameLogger = {
       'длит с':      r.endedAt ? ((r.endedAt - r.startedAt) / 1000).toFixed(1) : '?',
     })))
     console.groupEnd()
+    if (_fpsSnapshots.length > 0) {
+      const avgFps = _fpsSnapshots.reduce((s, f) => s + f.avgFps, 0) / _fpsSnapshots.length
+      const minFps = Math.min(..._fpsSnapshots.map(f => f.avgFps))
+      console.log(
+        `%c[SESSION FPS] снимков: ${_fpsSnapshots.length}  avg≈${avgFps.toFixed(1)} fps  min≈${minFps.toFixed(1)} fps`,
+        'color:#7cfc00',
+      )
+    }
+  },
+
+  // ── FPS ──────────────────────────────────────────────────────────────────────
+
+  recordFpsSnapshot(snap: FpsSnapshot): void {
+    _fpsSnapshots.push(snap)
   },
 
   // ── Accessors ────────────────────────────────────────────────────────────────
 
-  get rounds(): readonly RoundRecord[] { return _rounds },
-  get current(): RoundRecord | null    { return _current },
+  get rounds():       readonly RoundRecord[]  { return _rounds },
+  get current():      RoundRecord | null      { return _current },
+  get fpsLog():       readonly FpsSnapshot[]  { return _fpsSnapshots },
 }
 
 // ─── Browser globals ───────────────────────────────────────────────────────────
@@ -364,12 +390,14 @@ if (typeof window !== 'undefined') {
     report:  () => GameLogger.report(),
     rounds:  () => GameLogger.rounds,
     current: () => GameLogger.current,
+    fps:     () => GameLogger.fpsLog,
     help() {
       console.log(
         'window.__DEEP_RUSH_LOG\n' +
-        '  .report()   — итоговая таблица всех раундов\n' +
+        '  .report()   — итоговая таблица всех раундов + FPS-сводка\n' +
         '  .rounds()   — массив объектов по каждому раунду\n' +
         '  .current()  — текущий незавершённый раунд\n' +
+        '  .fps()      — все FPS-снимки сессии (avgFps, minMs, maxMs, …)\n' +
         '  .help()     — эта подсказка\n' +
         'Деревья: логи с префиксом [TREES] (sync / capture). Отключить: window.__DR_TREE_LOG = false\n' +
         'Плавность кадра: __DR_FPS_LOG__.help() (в DEV лог кадров включается сам раз в 8 с; ?nofps — выкл)',

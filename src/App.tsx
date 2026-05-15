@@ -33,6 +33,8 @@ export const App: React.FC = () => {
   const prevPhase = useRef<string>('')
   const [assetsReady, setAssetsReady] = useState(false)
   const [gameStarted, setGameStarted] = useState(() => isReplayMode())
+  const [startDismissing, setStartDismissing] = useState(false)
+  const [startScreenGone, setStartScreenGone] = useState(() => isReplayMode())
 
   // ── Boot ─────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -144,19 +146,6 @@ ${d.toLocaleTimeString("en-GB", {
     );
   }
 
-  if (!gameStarted) {
-    return (
-      <StartScreen
-        width={width}
-        height={height}
-        onStart={() => {
-          gameAudio.unlock();
-          setGameStarted(true);
-        }}
-      />
-    );
-  }
-
   return (
     <div
       style={{
@@ -169,21 +158,46 @@ ${d.toLocaleTimeString("en-GB", {
       }}
     >
       {/* ── PixiJS canvas ── */}
-      <GameCanvas width={width} height={height} />
+      {gameStarted && <GameCanvas width={width} height={height} />}
 
       {/* ── HUD (bottom bar) ── */}
-      <Hud />
+      {gameStarted && <Hud />}
 
       {/* ── DIG button + Autoplay button ── */}
-      {!isReplayMode() && <DigButton />}
+      {gameStarted && !isReplayMode() && <DigButton />}
 
       {/* ── Top-right controls ── */}
-      <TopBar />
+      {gameStarted && <TopBar />}
 
       {/* ── Overlays ── */}
-      <ResultOverlay />
-      <AutoplayModal />
-      <BurgerMenu />
+      {gameStarted && <ResultOverlay />}
+      {gameStarted && <AutoplayModal />}
+      {gameStarted && <BurgerMenu />}
+
+      {/* ── Rules/Start overlay: фейдится поверх канваса, пока Pixi прогревается ── */}
+      {!startScreenGone && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 10,
+            opacity: startDismissing ? 0 : 1,
+            transition: startDismissing ? "opacity 0.6s ease" : "none",
+            pointerEvents: startDismissing ? "none" : "auto",
+          }}
+          onTransitionEnd={() => setStartScreenGone(true)}
+        >
+          <StartScreen
+            width={width}
+            height={height}
+            onStart={() => {
+              gameAudio.unlock();
+              setGameStarted(true);
+              setStartDismissing(true);
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 };

@@ -1820,6 +1820,21 @@ export class SpineAnimator {
   private static _instanceNullSlots: Map<Spine, any[]> = new Map();
   private static _coinDebugFrame = 0;
 
+  /** Накопленное время для троттлинга tick() до 30fps: экономит CPU на матрицах костей. */
+  private static _spineAccumDt = 0
+  private static readonly _SPINE_INTERVAL = 1 / 30
+  /** Инстансы с полным 60fps (герой): обновляются каждый кадр, минуя троттл пикапов. */
+  private static _highPriorityInstances: Set<Spine> = new Set()
+
+  // Кеш ссылок на кости/слоты для _applyCoinConstraint — строится один раз при первом вызове
+  private static _coinCache: Map<Spine, {
+    ctrl: any; frontScale: any; backScale: any
+    sideCtrl: any | null; backRotate: any | null
+    slotFront: any | null; slotBack: any | null; slotL: any | null; slotR: any | null
+    coinContainerIndices: number[]
+    sideAtt: any | null
+  }> = new Map();
+
   // ── Загрузка ────────────────────────────────────────────────────────────────
 
   static load(): Promise<boolean> {
@@ -2108,18 +2123,49 @@ export class SpineAnimator {
   /** Удалить из пула тиков */
   static remove(inst: Spine | null): void {
     if (!inst) return;
-    const i = this._instances.indexOf(inst);
-    if (i >= 0) this._instances.splice(i, 1);
+    const arr = this._instances;
+    const i = arr.indexOf(inst);
+    if (i >= 0) { arr[i] = arr[arr.length - 1]!; arr.pop(); }
     this._instanceNullSlots.delete(inst);
+    this._coinCache.delete(inst);
+    this._highPriorityInstances.delete(inst);
   }
 
-  /** Тикать все инстансы. Вызывать каждый кадр, dt в секундах. */
+  /** Пометить инстанс как высокоприоритетный (true = 60fps, false = 30fps). Герой — true. */
+  static setHighPriority(inst: Spine | null, hp: boolean): void {
+    if (!inst) return
+    if (hp) this._highPriorityInstances.add(inst)
+    else this._highPriorityInstances.delete(inst)
+  }
+
+  /** Тикать все инстансы. Герой (highPriority) — 60fps каждый кадр; пикапы — 30fps через накопление. */
   static tick(dt: number): void {
-    this._instances = this._instances.filter((inst) => {
-      if (!inst || (inst as any).destroyed) return false;
-      if ((inst as any).sleeping) return true;
+    // Герой и idle — полный 60fps
+    for (const inst of this._highPriorityInstances) {
+      if (!inst || (inst as any).destroyed || (inst as any).sleeping) continue
+      try { inst.update(dt) } catch { /* ignore */ }
+    }
+
+    // Пикапы — throttle до 30fps
+    this._spineAccumDt += dt
+    if (this._spineAccumDt < this._SPINE_INTERVAL) return
+    const spineDt = this._spineAccumDt
+    this._spineAccumDt = 0
+
+    const arr = this._instances;
+    let i = arr.length;
+    while (i-- > 0) {
+      const inst = arr[i]!;
+      if (!inst || (inst as any).destroyed) {
+        arr[i] = arr[arr.length - 1]!; arr.pop();
+        this._instanceNullSlots.delete(inst);
+        this._coinCache.delete(inst);
+        continue;
+      }
+      if ((inst as any).sleeping) continue;
+      if (this._highPriorityInstances.has(inst)) continue;
       try {
-        inst.update(dt);
+        inst.update(spineDt);
 
         // Принудительно обнуляем слоты чужих объектов которые Spine восстанавливает при loop
         const nullSlots = this._instanceNullSlots.get(inst);
@@ -2142,8 +2188,7 @@ export class SpineAnimator {
       } catch {
         /* ignore */
       }
-      return true;
-    });
+    }
   }
 
   /**
@@ -2188,70 +2233,67 @@ export class SpineAnimator {
     }
   }
 
+  private static _buildCoinCache(inst: Spine): void {
+    const skel = inst.skeleton;
+    const ctrl = skel.findBone("coin_scale_control");
+    const frontScale = skel.findBone("coin_front_scale");
+    const backScale = skel.findBone("coin_back_scale");
+    if (!ctrl || !frontScale || !backScale) return;
+    const coinSlotNameSet = new Set(["coin_front","coin_back","coin_front2","coin_back2","side_left","side_right"]);
+    const coinContainerIndices: number[] = [];
+    for (let i = 0; i < skel.slots.length; i++) {
+      if (coinSlotNameSet.has(skel.slots[i]!.data.name)) coinContainerIndices.push(i);
+    }
+    const skin = skel.data.defaultSkin;
+    const sideLeftIdx = (skel.data as any).findSlot?.("side_left")?.index ?? -1;
+    const sideAtt = (skin && sideLeftIdx >= 0) ? (skin as any).getAttachment(sideLeftIdx, "coin_side") : null;
+    this._coinCache.set(inst, {
+      ctrl, frontScale, backScale,
+      sideCtrl:   skel.findBone("coin_side_control"),
+      backRotate: skel.findBone("coin_back_rotate"),
+      slotFront:  skel.findSlot("coin_front"),
+      slotBack:   skel.findSlot("coin_back"),
+      slotL:      skel.findSlot("side_left"),
+      slotR:      skel.findSlot("side_right"),
+      coinContainerIndices,
+      sideAtt,
+    });
+  }
+
   private static _applyCoinConstraint(inst: Spine): void {
     try {
-      const skel = inst.skeleton;
-      const ctrl = skel.findBone("coin_scale_control");
-      const frontScale = skel.findBone("coin_front_scale");
-      const backScale = skel.findBone("coin_back_scale");
-      if (!ctrl || !frontScale || !backScale) return;
+      let cache = this._coinCache.get(inst);
+      if (!cache) { this._buildCoinCache(inst); cache = this._coinCache.get(inst); }
+      if (!cache) return;
+
+      const { ctrl, frontScale, backScale, sideCtrl, backRotate,
+              slotFront, slotBack, slotL, slotR, coinContainerIndices, sideAtt } = cache;
 
       const sy = (ctrl as any).scaleY as number;
       const showSide = sy < SpineAnimator.SIDE_SCALE;
 
-      // coin_scale_CTRL эмуляция: при ребре — фиксируем на SIDE_SCALE
       (frontScale as any).scaleY = showSide ? SpineAnimator.SIDE_SCALE : sy;
-      (backScale as any).scaleY = showSide ? SpineAnimator.SIDE_SCALE : sy;
+      (backScale as any).scaleY  = showSide ? SpineAnimator.SIDE_SCALE : sy;
 
-      // coin_side_CTRL эмуляция
-      const sideCtrl = skel.findBone("coin_side_control");
-      const backRotate = skel.findBone("coin_back_rotate");
       if (sideCtrl && backRotate)
         (backRotate as any).scaleY = (sideCtrl as any).scaleY;
 
-      (skel as any).updateWorldTransform();
-
-      // Управление attachment-ами
-      const slotFront = skel.findSlot("coin_front");
-      const slotBack = skel.findSlot("coin_back");
-      const slotL = skel.findSlot("side_left");
-      const slotR = skel.findSlot("side_right");
+      (inst.skeleton as any).updateWorldTransform();
 
       if (showSide) {
         if (slotFront) (slotFront as any).attachment = null;
-        if (slotBack) (slotBack as any).attachment = null;
-        const skin = skel.data.defaultSkin;
-        if (!skin) return;
-        const idx = skel.data.findSlot("side_left")?.index ?? -1;
-        const att = idx >= 0 ? skin.getAttachment(idx, "coin_side") : null;
-        if (slotL) (slotL as any).attachment = att ?? null;
-        if (slotR) (slotR as any).attachment = att ?? null;
+        if (slotBack)  (slotBack  as any).attachment = null;
+        if (slotL) (slotL as any).attachment = sideAtt ?? null;
+        if (slotR) (slotR as any).attachment = sideAtt ?? null;
       } else {
         if (slotL) (slotL as any).attachment = null;
         if (slotR) (slotR as any).attachment = null;
       }
 
-      // slot.color.a — не работает надёжно: PIXI рендер-луп вызывает updateTransform()
-      // который перестраивает меши с оригинальными цветами из анимации.
-      // Форсируем alpha напрямую на PIXI slotContainers — это уровень отображения,
-      // он не перезаписывается Spine-таймлайном.
-      const containers = (inst as any).slotContainers as
-        | PIXI.Container[]
-        | undefined;
+      const containers = (inst as any).slotContainers as PIXI.Container[] | undefined;
       if (containers) {
-        const coinSlotNames = [
-          "coin_front",
-          "coin_back",
-          "coin_front2",
-          "coin_back2",
-          "side_left",
-          "side_right",
-        ];
-        for (let i = 0; i < skel.slots.length; i++) {
-          const slotName = skel.slots[i].data.name;
-          if (coinSlotNames.includes(slotName) && containers[i]) {
-            containers[i].alpha = 1.0;
-          }
+        for (const i of coinContainerIndices) {
+          if (containers[i]) containers[i].alpha = 1.0;
         }
       }
     } catch (e) {

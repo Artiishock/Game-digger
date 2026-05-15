@@ -1,3 +1,5 @@
+import { GameLogger } from './GameLogger'
+
 /**
  * Редкий лог плавности: средний / min / max `ticker.deltaMS` (Pixi) за окно.
  *
@@ -34,6 +36,15 @@ function _emitLine(): void {
   console.log(
     `[DR fps] ${_intervalSec}s: frames=${_frames} avg=${avg.toFixed(2)}ms min=${minStr} max=${_maxMs.toFixed(2)}ms ≈${fps.toFixed(1)} fps`,
   )
+  GameLogger.recordFpsSnapshot({
+    at:        performance.now(),
+    windowSec: _intervalSec,
+    frames:    _frames,
+    avgMs:     avg,
+    minMs:     _minMs === Infinity ? avg : _minMs,
+    maxMs:     _maxMs,
+    avgFps:    fps,
+  })
   _resetAccum()
   _lastLogAt = performance.now()
 }

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useGameStore } from '../../store/gameStore'
 import { gameAudio } from '../../audio/GameAudio'
 import { resolveWinCelebration, type WinCelebrateKind } from '../winCelebration'
-import { t } from '../../i18n/t'
+import { t, T } from '../../i18n/t'
 import { WinCelebrationSpine } from '../WinCelebrationSpine'
 import '../ui.css'
 
@@ -125,7 +125,14 @@ export const ResultOverlay: React.FC = () => {
       )}
 
       {!autoplay.active && (
-        <div className="ui-result-hint">{t('press anywhere to close')}</div>
+        <div className="ui-result-claim-wrap">
+          <button
+            className="ui-result-claim-btn"
+            onClick={(e) => { e.stopPropagation(); handleInteraction(); }}
+          >
+            <span>{T('claim')}</span>
+          </button>
+        </div>
       )}
     </div>
   )

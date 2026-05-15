@@ -994,16 +994,15 @@ class ObjectSpawner {
   }
 
   checkCollisions(charX: number, charY: number, onCollect: (obj: SpawnedObj) => void) {
-    const hits: SpawnedObj[] = []
+    let best: SpawnedObj | null = null
     for (const o of this.objects) {
       if (o.collected || !o.isRoadItem) continue
-      if (this._roadItemHit(charX, charY, o)) hits.push(o)
+      if (!this._roadItemHit(charX, charY, o)) continue
+      if (!best || o.worldY < best.worldY || (o.worldY === best.worldY && o.worldX < best.worldX)) best = o
     }
-    if (hits.length === 0) return
-    hits.sort((a, b) => a.worldY - b.worldY || a.worldX - b.worldX)
-    const o = hits[0]!
-    o.collected = true
-    onCollect(o)
+    if (!best) return
+    best.collected = true
+    onCollect(best)
   }
 
   skipTo(minY: number): void {
@@ -1242,12 +1241,8 @@ const TREE_X_IDLE: readonly [number, number, number] = [-1000, 420, 820]
  * (лавовый idle слева) `Math.round((anchorX - 420)/step)` даёт лишний −1 и tree1 уезжает на −3880.
  */
 const TREE_IDLE_TRIPLET_CENTER_X = (TREE_X_IDLE[0] + TREE_X_IDLE[1] + TREE_X_IDLE[2]) / 3
-/** В раунде: смещения от charX для тех же трёх деревьев */
-const TREE_X_RUN_DX: readonly [number, number, number] = [-480, 180, 520]
 /** Шаг между соседними копиями одного дерева в idle (мир px), не от ширины канваса (= 1920×1.5). */
 const TREE_IDLE_COPY_STEP_PX = TILE * 24
-/** В раунде сохраняем мировые X деревьев только если они уже у героя (ресайз), не от прошлой idle-сетки — иначе автоспины «телепортируют» деревья. */
-const TREE_RUN_SAVE_POS_TOL_PX = TILE * 24
 
 // ─── GameRenderer ─────────────────────────────────────────────────────────────
 
@@ -1294,7 +1289,12 @@ export class GameRenderer {
   private _lastWorldMaskGrassTop = -999
   private _lastWorldMaskW = 0
   private _particleTexture: PIXI.Texture = PIXI.Texture.EMPTY
-  private _treeRunDx: [number, number, number] = [...TREE_X_RUN_DX]
+  private _forestSprite: PIXI.TilingSprite | null = null
+  private _prevScrollCamX = NaN
+  private _prevScrollCamY = NaN
+  private _lastSentDepth = -1
+  private _lastSentDistance = -1
+  private _lastSentMultiplier = -1
   private spawner:ObjectSpawner|null=null
   private tunnelActive = false
   private W=0; private H=0
@@ -1335,6 +1335,9 @@ export class GameRenderer {
   private multiplier=0; private depth=0; private distance=0
   private particles:Particle[]=[]
   private floatTexts:FloatText[]=[]
+  private _particlePool:PIXI.Sprite[]=[]
+  private _floatTextPool:PIXI.Text[]=[]
+  private _collectAnims:Array<{gfx:PIXI.Graphics;t:number}>=[]
   private ppm=TILE*2
   private rgsQueue:RoundEvent[]=[]
   private rgsEvents:RoundEvent[]=[]   // оригинальный список — нужен для вычисления дельты
@@ -1384,6 +1387,10 @@ export class GameRenderer {
   private _lavaLossResultTimerId: ReturnType<typeof setTimeout> | null = null
   /** HOME/LAVA через `_onCollect` / лава в движении — отменяется в `startRound`, иначе двойной исход после раннего спина. */
   private _terminalOutcomeTimerId: ReturnType<typeof setTimeout> | null = null
+  /** Режим ускорения x10 при повторном нажатии Spin во время RUNNING. */
+  private _turboActive = false
+  private _pendingOutcomeFn: (() => void) | null = null
+  private _pendingLossResultFn: (() => void) | null = null
   private _caveZones:   Array<{x:number; y:number; r:number}> = []  // круги всех активных пещер
   /** Позиция вдоль туннеля: длина дуги от начала path; скорость = const вдоль этой дуги */
   private _pathArcS = 0
@@ -1480,7 +1487,6 @@ export class GameRenderer {
     this.app.stage.addChild(
       this.worldBgLayer,
       this.skyLayer,
-      this._sceneryLayer,
       this.worldChunkLayer,
       this.objectsLayer,
       this.minerLayer,
@@ -1514,7 +1520,10 @@ export class GameRenderer {
     void SpineAnimator.loadHero().then(() => {
       if (!this.app) return
       const heroSpine = SpineAnimator.createHero(HERO_SPINE_SCALE)
-      if (heroSpine) this.miner.setHeroSpine(heroSpine)
+      if (heroSpine) {
+        this.miner.setHeroSpine(heroSpine)
+        SpineAnimator.setHighPriority(heroSpine, true)
+      }
     })
     SpineAnimator.loadGoldStone()
 
@@ -1533,6 +1542,8 @@ export class GameRenderer {
       // Маска skyLayer требует инициализированного AlphaMaskPipe — только после init()
       this.app.stage.addChild(this._worldMask)
       this.skyLayer.mask = this._worldMask
+      // _sceneryLayer (лес + деревья) живёт внутри skyLayer — наследует маску и не просвечивает через туннель
+      this.skyLayer.addChild(this._sceneryLayer)
       this._lastWorldMaskGrassTop = Infinity  // сброс кэша, чтобы _updateWorldMask точно отрисовал
       this._updateWorldMask(this.W, this.H)
       this.app.ticker.add(this._tick.bind(this))
@@ -1614,8 +1625,12 @@ export class GameRenderer {
   }
 
   private _syncLayerScroll() {
-    const x = -this.camX
-    const y = -this.camY
+    if (this.camX === this._prevScrollCamX && this.camY === this._prevScrollCamY) return
+    this._prevScrollCamX = this.camX
+    this._prevScrollCamY = this.camY
+    const dpr = (this.app.renderer as PIXI.Renderer | undefined)?.resolution ?? 1
+    const x = -Math.round(this.camX * dpr) / dpr
+    const y = -Math.round(this.camY * dpr) / dpr
     this.worldBgLayer.position.set(x, y)
     this._sceneryLayer.position.set(x, y)
     this.worldChunkLayer.position.set(x, y)
@@ -1762,96 +1777,7 @@ export class GameRenderer {
     }
   }
 
-  /**
-   * Позиции tree1–3 в мир/экранных координатах (фильтр консоли: `[TREES]`).
-   * В production отключите шум: `window.__DR_TREE_LOG = false`.
-   */
-  private _logTreeLayout(tag: string): void {
-    if (typeof window !== 'undefined' && (window as any).__DR_TREE_LOG === false) return
-    const st = useGameStore.getState()
-    const keys = ['tree1', 'tree2', 'tree3'] as const
-    const margin = 120
-    const x0 = this.camX - margin
-    const x1 = this.camX + this.W + margin
-    const anchorX = this.camX + this.W * 0.5
-    const idleM0 = this.running
-      ? null
-      : Math.round((anchorX - TREE_IDLE_TRIPLET_CENTER_X) / TREE_IDLE_COPY_STEP_PX)
-    const gp = this._badgeAnchorScratch
-    const trees = keys.map((name, i) => {
-      const spr = this._sceneryLayer.getChildByName(name) as PIXI.Sprite | null
-      const expectedWorldX =
-        idleM0 === null ? this.charX + this._treeRunDx[i]! : TREE_X_IDLE[i]! + idleM0 * TREE_IDLE_COPY_STEP_PX
-      if (!spr) {
-        return {
-          name,
-          worldX: null as number | null,
-          screenX: null as number | null,
-          expectedWorldX,
-          onScreenApprox: false,
-        }
-      }
-      const wx = spr.x
-      spr.getGlobalPosition(gp)
-      return {
-        name,
-        worldX: wx,
-        screenX: gp.x,
-        expectedWorldX,
-        onScreenApprox: wx >= x0 && wx <= x1,
-      }
-    })
-    GameLogger.treeLayout({
-      tag,
-      running: this.running,
-      idleActive: this.idleActive,
-      autoplay: st.autoplay.active,
-      charX: this.charX,
-      camX: this.camX,
-      viewW: this.W,
-      treeRunDx: this._treeRunDx,
-      trees,
-    })
-  }
-
-  /**
-   * Добавляет tree1–3 в RUNNING, если текстуры появились после `startRound` (без полного сброса слоя).
-   * См. `_loadTextures`: полный `_syncSurfaceScenery` во время раунда снимает деревья на кадр.
-   */
-  private _ensureRunningTreesFromTextures(): void {
-    if (!this.running) return
-    const keys = ['tree1', 'tree2', 'tree3'] as const
-    let added = false
-    for (let i = 0; i < 3; i++) {
-      const name = keys[i]!
-      if (this._sceneryLayer.getChildByName(name)) continue
-      const tex = this._textures.get(name)
-      if (!tex) continue
-      const s = new PIXI.Sprite(tex)
-      s.name = name
-      s.anchor.set(0.5, 1)
-      s.x = this.charX + this._treeRunDx[i]!
-      const targetH = TREE_HEIGHTS_PX[i]!
-      const lift0 = i === 0 ? targetH * TREE0_LIFT_FRAC_OF_HEIGHT : 0
-      s.y = TREE_ANCHOR_WORLD_Y + TREE_Y_OFFSET[i]! - lift0
-      s.scale.set(targetH / tex.height)
-      this._sceneryLayer.addChild(s)
-      added = true
-    }
-    if (added) this._syncForestToCamera()
-  }
-
   private _syncSurfaceScenery() {
-    const savedTreeX: [number | null, number | null, number | null] = [null, null, null]
-    if (this.running) {
-      for (let i = 0; i < 3; i++) {
-        const s = this._sceneryLayer.getChildByName(`tree${i + 1}`) as PIXI.Sprite | null
-        if (!s) continue
-        const expected = this.charX + this._treeRunDx[i]!
-        if (Math.abs(s.x - expected) < TREE_RUN_SAVE_POS_TOL_PX) savedTreeX[i] = s.x
-      }
-    }
-
     // Не трогаем TilingSprite «forest» — пересоздание даёт кадр без текстуры / мигание.
     for (let i = this._sceneryLayer.children.length - 1; i >= 0; i--) {
       const ch = this._sceneryLayer.children[i]!
@@ -1865,7 +1791,7 @@ export class GameRenderer {
       const sc = this.H * 0.2 / forestTex.height
       const forestH = forestTex.height * sc
       const pad = 4
-      let forest = this._sceneryLayer.getChildByName('forest') as PIXI.TilingSprite | null
+      let forest = this._forestSprite
       if (!forest) {
         forest = new PIXI.TilingSprite(forestTex, this.W, forestH + pad)
         forest.name = 'forest'
@@ -1877,6 +1803,7 @@ export class GameRenderer {
         forest.addChild(forestMask)
         forest.mask = forestMask
         this._sceneryLayer.addChildAt(forest, 0)
+        this._forestSprite = forest
       } else {
         forest.texture = forestTex
         forest.width = this.W
@@ -1894,61 +1821,40 @@ export class GameRenderer {
       forest.y = TREE_ANCHOR_WORLD_Y - forestH - 140
       this._syncForestToCamera()
     } else {
-      const dead = this._sceneryLayer.getChildByName('forest')
+      const dead = this._forestSprite
       if (dead) {
         // Clear mask before removeChild — PixiJS v8 needs _renderGroup valid to tear down AlphaMask.
-        ;(dead as PIXI.Container).mask = null
+        dead.mask = null
         this._sceneryLayer.removeChild(dead)
         dead.destroy({ children: true })
+        this._forestSprite = null
       }
     }
 
     const keys = ['tree1', 'tree2', 'tree3'] as const
 
-    if (this.running) {
-      const xs = this._treeRunDx.map((dx, i) => {
-        const saved = savedTreeX[i]
-        if (saved !== null) return saved
-        return this.charX + dx
-      }) as [number, number, number]
-      for (let i = 0; i < 3; i++) {
-        const tex = this._textures.get(keys[i])
-        if (!tex) continue
+    // Idle: копии деревьев по X с фиксированным шагом; сдвигаем сетку к центру экрана, иначе после
+    // глубокого раунда (большой world X) все копии остаются слева от камеры — «пропадают».
+    const tileW = TREE_IDLE_COPY_STEP_PX
+    const anchorX = this.camX + this.W * 0.5
+    const m0 = Math.round((anchorX - TREE_IDLE_TRIPLET_CENTER_X) / tileW)
+    const COPIES = 6
+    for (let i = 0; i < 3; i++) {
+      const tex = this._textures.get(keys[i])
+      if (!tex) continue
+      const targetH = TREE_HEIGHTS_PX[i]!
+      const lift0 = i === 0 ? targetH * TREE0_LIFT_FRAC_OF_HEIGHT : 0
+      const baseX = TREE_X_IDLE[i]!
+      for (let k = -COPIES; k <= COPIES; k++) {
         const s = new PIXI.Sprite(tex)
-        s.name = keys[i]
+        if (k === 0) s.name = keys[i]
         s.anchor.set(0.5, 1)
-        s.x = xs[i]!
-        const targetH = TREE_HEIGHTS_PX[i]!
-        const lift0 = i === 0 ? targetH * TREE0_LIFT_FRAC_OF_HEIGHT : 0
+        s.x = baseX + (m0 + k) * tileW
         s.y = TREE_ANCHOR_WORLD_Y + TREE_Y_OFFSET[i]! - lift0
         s.scale.set(targetH / tex.height)
         this._sceneryLayer.addChild(s)
       }
-    } else {
-      // Idle: копии деревьев по X с фиксированным шагом; сдвигаем сетку к центру экрана, иначе после
-      // глубокого раунда (большой world X) все копии остаются слева от камеры — «пропадают».
-      const tileW = TREE_IDLE_COPY_STEP_PX
-      const anchorX = this.camX + this.W * 0.5
-      const m0 = Math.round((anchorX - TREE_IDLE_TRIPLET_CENTER_X) / tileW)
-      const COPIES = 6
-      for (let i = 0; i < 3; i++) {
-        const tex = this._textures.get(keys[i])
-        if (!tex) continue
-        const targetH = TREE_HEIGHTS_PX[i]!
-        const lift0 = i === 0 ? targetH * TREE0_LIFT_FRAC_OF_HEIGHT : 0
-        const baseX = TREE_X_IDLE[i]!
-        for (let k = -COPIES; k <= COPIES; k++) {
-          const s = new PIXI.Sprite(tex)
-          if (k === 0) s.name = keys[i]  // named so _captureTreeRunOffsets can find it
-          s.anchor.set(0.5, 1)
-          s.x = baseX + (m0 + k) * tileW
-          s.y = TREE_ANCHOR_WORLD_Y + TREE_Y_OFFSET[i]! - lift0
-          s.scale.set(targetH / tex.height)
-          this._sceneryLayer.addChild(s)
-        }
-      }
     }
-    this._logTreeLayout('syncSurfaceScenery')
   }
 
 
@@ -1962,7 +1868,7 @@ export class GameRenderer {
 
   /** Лес привязан к camX; вызывать после любого скачка камеры до первого _tick (старт раунда / спин). */
   private _syncForestToCamera(): void {
-    const forest = this._sceneryLayer.getChildByName('forest') as PIXI.TilingSprite | null
+    const forest = this._forestSprite
     if (!forest) return
     forest.x = this.camX
     forest.tilePosition.x = -this.camX * 0.4
@@ -1973,8 +1879,6 @@ export class GameRenderer {
     this._cloudT += dt
     const camDx = this._cloudPrevCamX === null ? 0 : (this.camX - this._cloudPrevCamX)
     this._cloudPrevCamX = this.camX
-    // Скорость камеры вправо (px/сек в масштабе dt): усиливаем дрейф облаков на эту величину
-    const camVxRight = dt > 1e-9 ? Math.max(0, camDx / dt) : 0
     const top = Math.max(0, Math.min(this.H, -this.camY))
     const rock = this.skyLayer.getChildByName('rockSprite') as PIXI.Sprite | null
     if (rock) {
@@ -1986,7 +1890,7 @@ export class GameRenderer {
       if (!name.startsWith('cloud')) continue
       const c = ch as PIXI.Sprite & { _drift?: number; _topDy?: number }
       const drift = c._drift ?? CLOUD_DRIFT_PX_S
-      c.x += (drift + camVxRight) * dt - camDx
+      c.x += drift * dt
       c.y = top + (c._topDy ?? c.y - top)
       const half = (c.texture?.width ?? 100) * 0.5 * Math.abs(c.scale.x)
       if (c.x > this.W + half + 20) {
@@ -2031,26 +1935,6 @@ export class GameRenderer {
     c.y = top + dy
     c._drift = CLOUD_DRIFT_PX_S
     this._skyCloudLayer.addChild(c)
-  }
-
-  /**
-   * Фиксирует смещения деревьев от логического `charX` в момент перехода idle-сетка → три дерева в раунде.
-   * Вызывать только когда `charX` уже привязан к туннелю (после `tunnelXAtWorldY` / конец start-интро).
-   *
-   * Считаем мир X так же, как именованные `tree1`–`tree3` в idle (`baseX + m0 * step` при k=0 в `_syncSurfaceScenery`),
-   * а не через `getChildByName`: до первого `_syncSurfaceScenery` в раунде спрайты могут отставать от `camX`/`charX`,
-   * и `spr.x - startX` давал бы неверные `_treeRunDx` и скачок деревьев на первом кадре бега.
-   */
-  private _captureTreeRunOffsets(startX: number): void {
-    const anchorX = this.camX + this.W * 0.5
-    const step = TREE_IDLE_COPY_STEP_PX
-    const m0 = Math.round((anchorX - TREE_IDLE_TRIPLET_CENTER_X) / step)
-    this._treeRunDx = [
-      TREE_X_IDLE[0]! + m0 * step - startX,
-      TREE_X_IDLE[1]! + m0 * step - startX,
-      TREE_X_IDLE[2]! + m0 * step - startX,
-    ]
-    this._logTreeLayout('captureTreeRunOffsets')
   }
 
   /** Сдвигает весь предрассчитанный маршрут по X, чтобы старт совпал с текущей позицией героя. */
@@ -2131,6 +2015,15 @@ export class GameRenderer {
     this._cleanupLavaDeathCinematic()
     this.miner.resetFromDeath()
     this._lavaLossTimeoutPending = false
+    this._lavaLossIdleGlideActive = false
+    this._lavaLossIdleGlideT = 0
+    if (this._lavaLossResultTimerId !== null) {
+      clearTimeout(this._lavaLossResultTimerId)
+      this._lavaLossResultTimerId = null
+    }
+    this._pendingOutcomeFn = null
+    this._pendingLossResultFn = null
+    this._turboActive = false
     this.multiplier=0;this.depth=0;this.distance=0
     this.particles=[]
     this.floatTexts=[]
@@ -2210,6 +2103,7 @@ export class GameRenderer {
     this._repulseDir   = 1
     this._lossTerminalDescent = false
     this._caveZones    = []
+    this._collectAnims = []
     this._digSoundCarry = 0
 
     this.charY=startY
@@ -2383,7 +2277,6 @@ export class GameRenderer {
       this.miner.playStartDigTransition()
       this.miner.setIdleMode(false)
       this._spawnDirtEntry()
-      this._captureTreeRunOffsets(this.charX)
       this.running = true
       this._syncSurfaceScenery()
     }
@@ -2508,14 +2401,7 @@ export class GameRenderer {
       }
       this.skyLayer.removeChildren()
       this._buildSky()
-      // Полный `_syncSurfaceScenery` сносит все спрайты слоя (деревья) и пересоздаёт их.
-      // Если пакет текстур догружается уже во время RUNNING (медленная сеть + автоспин),
-      // на кадр деревья пропадают / скачут — в раунде только дозаполняем отсутствующие tree*.
-      if (this.running) {
-        this._ensureRunningTreesFromTextures()
-      } else {
-        this._syncSurfaceScenery()
-      }
+      this._syncSurfaceScenery()
     })()
     return this._texturesLoading
   }
@@ -2641,7 +2527,7 @@ export class GameRenderer {
     const offTopPx = TILE * 2 + HERO_MAX_SIDE_PX * 0.42
     this._lavaDeathExitWorldY = this._lavaFrozenCamY - offTopPx
     const distPx = Math.max(TILE, this._lavaDeathRootY - this._lavaDeathExitWorldY)
-    this._lavaDeathAscentSpeedPx = distPx / denom
+    this._lavaDeathAscentSpeedPx = distPx / denom * (GameConfig.lava.deathAscentSpeedMul ?? 1)
 
     this._lavaExitFlightActive = true
     this.miner.root.visible = true
@@ -2653,18 +2539,21 @@ export class GameRenderer {
   private _scheduleLavaLossResult(): void {
     if (this._lavaLossTimeoutPending) return
     this._lavaLossTimeoutPending = true
-    this._lavaLossResultTimerId = setTimeout(() => {
+    const cb = () => {
       this._lavaLossTimeoutPending = false
       this._lavaLossResultTimerId = null
+      this._pendingLossResultFn = null
       gameEngine.onRoundComplete(0, false)
       this._startLavaLossIdleGlideOrIdle()
-    }, GameConfig.round.loseDelayMs)
+    }
+    this._pendingLossResultFn = cb
+    this._lavaLossResultTimerId = setTimeout(cb, this._turboActive ? 0 : GameConfig.round.loseDelayMs)
   }
 
-  /** Skip the lava death cinematic on any user input. */
-  skipLavaDeath(): void {
+  /** Skip the lava death cinematic on any user input. Returns true if something was skipped. */
+  skipLavaDeath(): boolean {
     const active = this._lavaDeathCinematic || this._lavaLossIdleGlideActive || this._lavaLossTimeoutPending
-    if (!active) return
+    if (!active) return false
 
     const needsRoundComplete = this._lavaDeathCinematic
 
@@ -2672,12 +2561,38 @@ export class GameRenderer {
       clearTimeout(this._lavaLossResultTimerId)
       this._lavaLossResultTimerId = null
     }
+    this._pendingLossResultFn = null
     this._lavaLossTimeoutPending = false
     this._lavaLossIdleGlideActive = false
     this._returnToIdle()
 
     if (needsRoundComplete) {
       void gameEngine.onRoundComplete(0, false)
+    }
+    return true
+  }
+
+  /**
+   * Повторный Spin во время RUNNING: ускоряем анимацию до x10 скорости.
+   * Если уже в turbo-режиме — игнорируем.
+   */
+  activateTurbo(): void {
+    if (this._turboActive) return
+    if (!this.running || this._ended || this.idleActive) return
+    this._turboActive = true
+    if (this._terminalOutcomeTimerId !== null && this._pendingOutcomeFn) {
+      clearTimeout(this._terminalOutcomeTimerId)
+      this._terminalOutcomeTimerId = null
+      const fn = this._pendingOutcomeFn
+      this._pendingOutcomeFn = null
+      setTimeout(fn, 0)
+    }
+    if (this._lavaLossResultTimerId !== null && this._pendingLossResultFn) {
+      clearTimeout(this._lavaLossResultTimerId)
+      this._lavaLossResultTimerId = null
+      const fn = this._pendingLossResultFn
+      this._pendingLossResultFn = null
+      setTimeout(fn, 0)
     }
   }
 
@@ -2689,6 +2604,7 @@ export class GameRenderer {
     const store = useGameStore.getState()
     if (store.phase !== 'RUNNING') return
     if (this.idleActive || this._ended) return
+    if (this._awaitingStartAnim) return
     if (this.rgsEvents.length === 0) return
     if (!store.roundID || this._rendererRoundId !== store.roundID) return
 
@@ -2704,6 +2620,8 @@ export class GameRenderer {
       clearTimeout(this._terminalOutcomeTimerId)
       this._terminalOutcomeTimerId = null
     }
+    this._pendingOutcomeFn = null
+    this._pendingLossResultFn = null
     this._lavaLossTimeoutPending = false
 
     this._ended = true
@@ -2846,7 +2764,7 @@ export class GameRenderer {
     // gameDt — масштабированное время: вся игровая логика использует его,
     // чтобы spd=2 ускорял буквально всё (движение, анимации, таймеры, частицы).
     // Камера тоже использует gameDt — при высокой скорости она должна быть отзывчивее.
-    const gameDt = dt * spd
+    const gameDt = dt * (this._turboActive ? Math.max(10, spd) : spd)
 
     if(this.idleActive){
       if(this.tunnelActive) this._hideTunnel()
@@ -2906,7 +2824,7 @@ export class GameRenderer {
       // Коллизии остаются выключены, т.к. running=false.F
       if (this.spawner) this.spawner.update(this.charY, this.camX, this.camY, this.W, this.H)
       this.miner.update(gameDt, 1, true)
-      this._pUpdate(gameDt, dt)
+      this._pUpdate(gameDt)
       this.miner.syncStartCarveLatchAfterSpineTick()
       this._perfPushSceneSnapshot()
       if (this._startTunnelCarveDelaySec <= 0) {
@@ -2932,7 +2850,6 @@ export class GameRenderer {
         }
         this.miner.setIdleMode(false)
         this._spawnDirtEntry()
-        this._captureTreeRunOffsets(this.charX)
         this.running = true
         this._syncSurfaceScenery()
       }
@@ -3073,7 +2990,13 @@ export class GameRenderer {
       lavaTrailAy = this.charY
 
       if (this._caveZones.length > 500 && !this._lossTerminalDescent) {
-        this._caveZones = this._caveZones.filter(z => z.y > this.camY - TILE * 5)
+        const cutY = this.camY - TILE * 5
+        for (let _ci = this._caveZones.length - 1; _ci >= 0; _ci--) {
+          if (this._caveZones[_ci]!.y <= cutY) {
+            this._caveZones[_ci] = this._caveZones[this._caveZones.length - 1]!
+            this._caveZones.pop()
+          }
+        }
       }
 
       // LOSS: при падении ниже полилинии у конца пути включаем терминальный спуск к лаве.
@@ -3226,14 +3149,27 @@ export class GameRenderer {
     this.miner.update(gameDt, 1, true)
     perf.end('miner', _pmn)
 
-    store.updateStats({
-      depth:    Math.max(0,Math.round(this.depth*10)/10),
-      distance: Math.round(this.distance*10)/10,
-      // Во время брейков multiplier обновляет их собственная логика (плавно)
-      ...((!this.stoneBreakActive && !this.goldBreakActive) && {
-        multiplier: Math.round(this.multiplier*100)/100,
-      }),
-    })
+    {
+      const depth    = Math.max(0, Math.round(this.depth * 10) / 10)
+      const distance = Math.round(this.distance * 10) / 10
+      const mult     = (!this.stoneBreakActive && !this.goldBreakActive)
+        ? Math.round(this.multiplier * 100) / 100
+        : null
+      if (
+        depth !== this._lastSentDepth ||
+        distance !== this._lastSentDistance ||
+        (mult !== null && mult !== this._lastSentMultiplier)
+      ) {
+        store.updateStats({
+          depth,
+          distance,
+          ...(mult !== null && { multiplier: mult }),
+        })
+        this._lastSentDepth = depth
+        this._lastSentDistance = distance
+        if (mult !== null) this._lastSentMultiplier = mult
+      }
+    }
 
     if(this.spawner && !this._ended && !this.stoneBreakActive && !this.goldBreakActive){
       const _pco = perf.begin('collide', 0.5)
@@ -3272,11 +3208,14 @@ export class GameRenderer {
           clearTimeout(this._terminalOutcomeTimerId)
           this._terminalOutcomeTimerId = null
         }
-        this._terminalOutcomeTimerId = setTimeout(() => {
+        const cbLavaCatch = () => {
           this._terminalOutcomeTimerId = null
+          this._pendingOutcomeFn = null
           gameEngine.onRoundComplete(0, false)
           this._returnToIdle()
-        }, GameConfig.round.loseDelayMs)
+        }
+        this._pendingOutcomeFn = cbLavaCatch
+        this._terminalOutcomeTimerId = setTimeout(cbLavaCatch, this._turboActive ? 0 : GameConfig.round.loseDelayMs)
       }
     }
 
@@ -3587,18 +3526,24 @@ export class GameRenderer {
         this._terminalOutcomeTimerId = null
       }
       if (won) {
-        this._terminalOutcomeTimerId = setTimeout(() => {
+        const cbWin = () => {
           this._terminalOutcomeTimerId = null
+          this._pendingOutcomeFn = null
           gameEngine.onRoundComplete(this.multiplier, true)
           this._returnToIdle()
-        }, GameConfig.round.winDelayMs)
+        }
+        this._pendingOutcomeFn = cbWin
+        this._terminalOutcomeTimerId = setTimeout(cbWin, this._turboActive ? 0 : GameConfig.round.winDelayMs)
       } else {
         if (!this._tryStartLavaDeathCinematic()) {
-          this._terminalOutcomeTimerId = setTimeout(() => {
+          const cbLose = () => {
             this._terminalOutcomeTimerId = null
+            this._pendingOutcomeFn = null
             gameEngine.onRoundComplete(0, false)
             this._returnToIdle()
-          }, GameConfig.round.loseDelayMs)
+          }
+          this._pendingOutcomeFn = cbLose
+          this._terminalOutcomeTimerId = setTimeout(cbLose, this._turboActive ? 0 : GameConfig.round.loseDelayMs)
         }
       }
     }else{
@@ -3817,6 +3762,9 @@ export class GameRenderer {
     this.running = false
     this._ended = false
     this._rendererRoundId = ''
+    this._lastSentDepth = -1
+    this._lastSentDistance = -1
+    this._lastSentMultiplier = -1
     this._liveWinBadgeFading = false
     this._liveWinBadgeFadeT = 1
     this.liveWinBadge.alpha = 1
@@ -3830,6 +3778,9 @@ export class GameRenderer {
     this.goldBreakTickTimer = 0
     this.goldBreakDisplayMult = 0
     this._goldCrashPlayed = false
+    this._turboActive = false
+    this._pendingOutcomeFn = null
+    this._pendingLossResultFn = null
     this.idleActive = true
     this._awaitingStartAnim = false
     this.miner.setIdleMode(true)
@@ -3841,7 +3792,6 @@ export class GameRenderer {
     }
     this.charX = 0
     this.charY = 0
-    this._treeRunDx = [...TREE_X_RUN_DX]
     this.camX = this.idleX + GameConfig.hero.idle.rootOffsetXPx - this.W / 2
     this.camY = this.idleCamY
     this._syncLayerScroll()
@@ -3858,12 +3808,19 @@ export class GameRenderer {
   // ─── Particles ────────────────────────────────────────────────────────────
 
   private _floatText(wx:number,wy:number,label:string,color:number){
-    const txt=new PIXI.Text(label,{
-      fontFamily:'Arial,sans-serif',fontWeight:'900',fontSize:24,
-      fill:color,stroke:{color:0x000000,width:3},
-      dropShadow:{color:0x000000,blur:0,distance:2,angle:Math.PI/2,alpha:1},
-    })
-    txt.anchor.set(0.5,0.5)
+    let txt=this._floatTextPool.pop()
+    if(txt){
+      txt.text=label
+      txt.style.fill=color
+      txt.alpha=1;txt.visible=true;txt.scale.set(1)
+    }else{
+      txt=new PIXI.Text(label,{
+        fontFamily:'Arial,sans-serif',fontWeight:'900',fontSize:24,
+        fill:color,stroke:{color:0x000000,width:3},
+        dropShadow:{color:0x000000,blur:0,distance:2,angle:Math.PI/2,alpha:1},
+      })
+      txt.anchor.set(0.5,0.5)
+    }
     txt.x=wx+(Math.random()-0.5)*40
     txt.y=wy-40
     this.objectsLayer.addChild(txt)
@@ -3878,9 +3835,10 @@ export class GameRenderer {
     if (useN <= 0) return
     for(let i=0;i<useN;i++){
       const r=(Math.random()*5+2)*2
-      const spr=new PIXI.Sprite(this._particleTexture)
+      const spr=this._particlePool.pop()??new PIXI.Sprite(this._particleTexture)
       spr.tint=col;spr.width=r;spr.height=r;spr.anchor.set(0.5)
-      spr.x=wx;spr.y=wy;this.objectsLayer.addChild(spr)
+      spr.x=wx;spr.y=wy;spr.alpha=1;spr.visible=true
+      this.objectsLayer.addChild(spr)
       const a=Math.random()*Math.PI*2,s=Math.random()*100+60
       this.particles.push({gfx:spr,vx:Math.cos(a)*s,vy:Math.sin(a)*s-80,life:1})
     }
@@ -3888,22 +3846,7 @@ export class GameRenderer {
 
   private _animCollect(gfx:PIXI.Graphics, spine: import('@esotericsoftware/spine-pixi-v8').Spine | null = null){
     SpineAnimator.remove(spine)
-    const app = this.app
-    let t=0
-    const tick=()=>{
-      if (!app?.ticker || (gfx as { destroyed?: boolean }).destroyed) {
-        app?.ticker.remove(tick)
-        return
-      }
-      t+=0.1
-      gfx.scale.set(1.5-t*0.5)
-      gfx.alpha=1-t
-      if(t>=1){
-        gfx.visible=false
-        app.ticker.remove(tick)
-      }
-    }
-    app.ticker.add(tick)
+    this._collectAnims.push({gfx,t:0})
   }
 
   /**
@@ -3915,32 +3858,58 @@ export class GameRenderer {
     SpineAnimator.tick(spineDt ?? dt)
     perf.end('spine', _tsp)
 
-    this.particles=this.particles.filter(p=>{
-      if (p.gfx.destroyed) return false
-      p.life-=dt*1.8
-      if(p.life<=0){
-        if(!p.gfx.destroyed){
-          this.objectsLayer.removeChild(p.gfx)
-          p.gfx.destroy()
+    {
+      let i = 0
+      while (i < this.particles.length) {
+        const p = this.particles[i]!
+        p.life -= dt * 1.8
+        if (p.gfx.destroyed || p.life <= 0) {
+          if (!p.gfx.destroyed) { this.objectsLayer.removeChild(p.gfx); this._particlePool.push(p.gfx) }
+          this.particles[i] = this.particles[this.particles.length - 1]!
+          this.particles.pop()
+        } else {
+          p.gfx.x += p.vx * dt; p.gfx.y += p.vy * dt; p.vy += 260 * dt
+          p.gfx.alpha = p.life; p.gfx.scale.set(p.life * 0.7 + 0.3)
+          i++
         }
-        return false
       }
-      p.gfx.x+=p.vx*dt;p.gfx.y+=p.vy*dt;p.vy+=260*dt
-      p.gfx.alpha=p.life;p.gfx.scale.set(p.life*0.7+0.3);return true
-    })
-    this.floatTexts=this.floatTexts.filter(f=>{
-      if ((f.txt as { destroyed?: boolean }).destroyed) return false
-      f.life-=dt*1.1
-      if(f.life<=0){
-        if(!(f.txt as { destroyed?: boolean }).destroyed){
-          this.objectsLayer.removeChild(f.txt)
-          f.txt.destroy()
+    }
+    {
+      let i = 0
+      while (i < this.floatTexts.length) {
+        const f = this.floatTexts[i]!
+        f.life -= dt * 1.1
+        if ((f.txt as { destroyed?: boolean }).destroyed || f.life <= 0) {
+          if (!(f.txt as { destroyed?: boolean }).destroyed) { this.objectsLayer.removeChild(f.txt); this._floatTextPool.push(f.txt) }
+          this.floatTexts[i] = this.floatTexts[this.floatTexts.length - 1]!
+          this.floatTexts.pop()
+        } else {
+          f.txt.y += f.vy * dt; f.vy *= Math.pow(0.92, dt * 60)
+          f.txt.alpha = f.life; f.txt.scale.set(0.8 + f.life * 0.4)
+          i++
         }
-        return false
       }
-      f.txt.y+=f.vy*dt;f.vy*=Math.pow(0.92,dt*60)
-      f.txt.alpha=f.life;f.txt.scale.set(0.8+f.life*0.4);return true
-    })
+    }
+
+    {
+      let i=0
+      while(i<this._collectAnims.length){
+        const a=this._collectAnims[i]!
+        if((a.gfx as {destroyed?:boolean}).destroyed){
+          this._collectAnims[i]=this._collectAnims[this._collectAnims.length-1]!
+          this._collectAnims.pop();continue
+        }
+        a.t+=0.1
+        a.gfx.scale.set(1.5-a.t*0.5)
+        a.gfx.alpha=1-a.t
+        if(a.t>=1){
+          a.gfx.visible=false
+          this._collectAnims[i]=this._collectAnims[this._collectAnims.length-1]!
+          this._collectAnims.pop();continue
+        }
+        i++
+      }
+    }
 
     if (this.lavaSimulation?.hasRenderableLava()) {
       this.lavaSimulation.setCameraPos(this.camX, this.camY)
@@ -4043,21 +4012,26 @@ export class GameRenderer {
     document.addEventListener('visibilitychange', this._onPageVisibility)
   }
 
-  /** Лимит FPS в главном меню; в фоновой вкладке тикер уже остановлен обработчиком visibility. */
+  /** Лимит FPS: idle-меню → idleMenuMaxFps, геймплей → gameplayMaxFps (60). Снижает нагрузку на 120Hz Mac вдвое. */
   private _syncTickerPowerSave(): void {
     if (!this.app) return
     const cfg = GameConfig.performance
     if (cfg.pauseTickerWhenPageHidden && typeof document !== 'undefined' && document.visibilityState === 'hidden') {
       return
     }
-    const cap = cfg.idleMenuMaxFps ?? 0
+    const idleCap = cfg.idleMenuMaxFps ?? 0
+    const gameplayCap = cfg.gameplayMaxFps ?? 60
     const idleMenuOnly =
       this.idleActive &&
       !this.running &&
       !this._awaitingStartAnim &&
       !this._lavaDeathCinematic &&
       !this._lavaLossIdleGlideActive
-    this.app.ticker.maxFPS = idleMenuOnly && cap > 0 ? cap : 0
+    if (idleMenuOnly && idleCap > 0) {
+      this.app.ticker.maxFPS = idleCap
+    } else {
+      this.app.ticker.maxFPS = gameplayCap > 0 ? gameplayCap : 0
+    }
   }
 
   resize(w:number,h:number){
@@ -4090,6 +4064,11 @@ export class GameRenderer {
     this.liveWinBadge.removeFromParent()
     this.miner.destroy()
     this.liveWinBadge.destroy({ children: true })
+    for(const spr of this._particlePool) if(!spr.destroyed) spr.destroy()
+    this._particlePool=[]
+    for(const txt of this._floatTextPool) if(!(txt as {destroyed?:boolean}).destroyed) txt.destroy()
+    this._floatTextPool=[]
+    this._collectAnims=[]
     if (!this._particleTexture.destroyed) this._particleTexture.destroy(true)
     this.app.destroy(false,{children:true,texture:true})
   }

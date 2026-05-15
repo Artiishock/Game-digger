@@ -161,7 +161,7 @@ export class LavaSimulation {
 
     const movedX = Math.abs(this._camX - this._lastRenderCamX)
     const movedY = Math.abs(this._camY - this._lastRenderCamY)
-    if (movedX > CELL_PX * 2 || movedY > CELL_PX * 2) {
+    if (movedX > CELL_PX * 4 || movedY > CELL_PX * 4) {
       this._lastRenderCamX = this._camX
       this._lastRenderCamY = this._camY
       const _tr = perf.begin('lava.render', 1)

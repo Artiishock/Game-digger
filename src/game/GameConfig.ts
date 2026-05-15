@@ -174,9 +174,9 @@ export const GameConfig = {
     /** Уменьшение обеих осей для тёмного слоя маски */
     darkInsetPx: 5,
     /** Шаг субсэмплов вдоль сегмента: доля от min(rx,ry); больше — реже точки, дешевле CPU на Mac. */
-    segmentSpacingMul: 0.32,
+    segmentSpacingMul: 0.24,
     /** Вершин полигона овала (больше — глаже контур). Меньше — дешевле scratchAt. */
-    ellipsePolySteps: 24,
+    ellipsePolySteps: 36,
   },
 
   // ─── Лава ────────────────────────────────────────────────────────────────────
@@ -200,8 +200,8 @@ export const GameConfig = {
      * Размер TilingSprite лавы (логические px). Было 4096² — тяжело по памяти и fill-rate на Retina;
      * 2560 достаточно при типичном viewport, позиция в `LavaSimulation` центрируется под камеру.
      */
-    tilingWidthPx: 2560,
-    tilingHeightPx: 2560,
+    tilingWidthPx: 2816,
+    tilingHeightPx: 1920,
 
     /** Скорость вылета вверх с анимацией die (px/с, игровое время). */
     deathAscentSpeedPx: 500,
@@ -214,6 +214,8 @@ export const GameConfig = {
      * 1 = как у основного геймплея; меньше 1 — чуть медленнее.
      */
     deathSceneMotionScale: 1.64,
+    /** Множитель скорости вылета призрака из кадра (применяется поверх sfxSec-расчёта). */
+    deathAscentSpeedMul: 2.5,
     /**
      * После встречи с «земным» клоном: зацикленный idle, полёт вверх в небо.
      * Скорость (px/с, игр. время), мин. длина фазы (с), высота (px над точкой встречи), лимит (с).
@@ -227,10 +229,11 @@ export const GameConfig = {
   // ─── Тайминги завершения раунда ──────────────────────────────────────────────
   round: {
     winDelayMs:       800,   // задержка после HOME перед переходом в результат, мс
-    loseDelayMs:      1000,  // задержка после LAVA перед переходом в результат, мс
+    loseDelayMs:       200,  // задержка после LAVA перед переходом в результат, мс
     /** После проигрыша в лаве: плавное «выплывание» камеры к idle (сек), затем сборка idle-сцены. 0 — сразу _returnToIdle. */
     loseIdleGlideSec: 1,
     autoplayDelayMs:  1200,  // задержка между раундами в автоплее, мс
+    minRoundGapMs:     500,  // минимальная пауза от конца раунда до следующего старта, мс
     /** Множитель «экран / глубина» для ppm — больше → дальше друг от друга символы по Y */
     depthSpreadScreenFactor: 2.6,
     /**
@@ -301,6 +304,8 @@ export const GameConfig = {
   performance: {
     /** Главный экран (idle): верхний предел FPS тикера (0 = без лимита). */
     idleMenuMaxFps: 24,
+    /** Геймплей и все фазы кроме idle: потолок FPS. 60 = стабильно на 120Hz Mac, без двойной нагрузки. */
+    gameplayMaxFps: 60,
     /** Остановка `app.ticker` при `document.visibilityState === 'hidden'`. */
     pauseTickerWhenPageHidden: true,
     /**
@@ -308,19 +313,19 @@ export const GameConfig = {
      * 1.0 = рендер в логических пикселях, нет Retina-масштаба → ~56% меньше пикселей на Mac.
      * На старых MacBook Air / Intel Mac это критичная экономия GPU.
      */
-    maxDevicePixelRatio: 1.25,
+    maxDevicePixelRatio: 1.5,
 
     /** Сколько чанков из буферной очереди собирать за один кадр (меньше — ровнее FPS, дольше «догруз»). */
-    tileWorldChunkBuildsPerFrame: 1,
+    tileWorldChunkBuildsPerFrame: 2,
 
     /** Верхний предел одновременных круглых частиц `_burst` (остальные отбрасываются). */
-    particleMax: 120,
+    particleMax: 80,
     /** Число частиц при сборе пропа (не HOME). */
-    burstCollectParticles: 5,
-    burstHomeParticles: 12,
-    burstLavaHitParticles: 6,
+    burstCollectParticles: 4,
+    burstHomeParticles: 9,
+    burstLavaHitParticles: 5,
     burstGoldBreakParticles: 1,
-    burstGoldCollectParticles: 4,
+    burstGoldCollectParticles: 3,
     /**
      * WebGL multisampling (antialias). На встроенных GPU (MacBook Air, старые Intel) даёт заметную цену кадра;
      * на дискретных Windows часто почти бесплатно — при необходимости поставьте true.
