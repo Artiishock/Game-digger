@@ -441,14 +441,11 @@
 }
 
 .ui-bet-adj {
+  position: relative;
   width: clamp(28px, 4.77vmin, 65px);
   height: clamp(29px, 4.91vmin, 67px);
 
   background-color: transparent;
-  background-image: url("../ui/plus_minus_bg.png");
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
 
   border: none;
   outline: none;
@@ -467,13 +464,54 @@
   transition: opacity 0.15s;
 }
 
+.ui-bet-adj::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("../ui/plus_minus_bg.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  transition: filter 0.15s ease;
+}
+
 .ui-bet-adj:disabled {
   opacity: 1;
+  cursor: not-allowed;
+}
+
+.ui-bet-adj:disabled::before {
+  filter: brightness(0.55) saturate(0.75);
 }
 
 .ui-bet-icon {
+  position: relative;
+  z-index: 1;
   width: clamp(14px, 2.04vmin, 28px);
   height: clamp(14px, 2.04vmin, 28px);
+  color: #f2fdff;
+  background-color: currentColor;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+  transition: color 0.15s ease;
+}
+
+.ui-bet-icon--minus {
+  mask-image: url("../ui/minus_icon.svg");
+  -webkit-mask-image: url("../ui/minus_icon.svg");
+}
+
+.ui-bet-icon--plus {
+  mask-image: url("../ui/plus_icon.svg");
+  -webkit-mask-image: url("../ui/plus_icon.svg");
+}
+
+.ui-bet-adj:disabled .ui-bet-icon {
+  color: rgba(100, 100, 100, 1);
 }
 
 .ui-bet-amount {

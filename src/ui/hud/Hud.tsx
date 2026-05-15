@@ -203,9 +203,7 @@ export const Hud: React.FC = () => {
               onClick={(event) => { event.stopPropagation(); handleMinus(); }}
               disabled={betDisabled || bet <= minBet}
             >
-              <span className="ui-bet-icon">
-                <img src={resolvePublicUrl("ui/minus_icon.svg")} alt="" />
-              </span>
+              <span className="ui-bet-icon ui-bet-icon--minus" aria-hidden="true" />
             </button>
             <span className="ui-bet-amount">{bet.toFixed(2)}</span>
             <button
@@ -213,9 +211,7 @@ export const Hud: React.FC = () => {
               onClick={(event) => { event.stopPropagation(); handlePlus(); }}
               disabled={betDisabled || bet >= maxBet}
             >
-              <span className="ui-bet-icon">
-                <img src={resolvePublicUrl("ui/plus_icon.svg")} alt="" />
-              </span>
+              <span className="ui-bet-icon ui-bet-icon--plus" aria-hidden="true" />
             </button>
           </div>
         </div>
