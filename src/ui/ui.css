@@ -1791,6 +1791,66 @@
   justify-content: center;
 }
 
+@keyframes rulesSlideBounceRight {
+  0% {
+    transform: translateX(52%);
+    opacity: 0;
+  }
+  42% {
+    transform: translateX(-4.5%);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes rulesSlideBounceLeft {
+  0% {
+    transform: translateX(-52%);
+    opacity: 0;
+  }
+  42% {
+    transform: translateX(4.5%);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes rulesTitleBounceRight {
+  0% {
+    transform: translateX(18%);
+    opacity: 0;
+  }
+  42% {
+    transform: translateX(-2.5%);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes rulesTitleBounceLeft {
+  0% {
+    transform: translateX(-18%);
+    opacity: 0;
+  }
+  42% {
+    transform: translateX(2.5%);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
 .rules-multipliers {
   position: absolute;
   inset: auto;
@@ -1806,6 +1866,14 @@
 .rules-multipliers--active {
   position: relative;
   opacity: 1;
+}
+
+.rules-slide-main--right .rules-multipliers--active {
+  animation: rulesSlideBounceRight 0.58s cubic-bezier(0.16, 0.86, 0.24, 1) both;
+}
+
+.rules-slide-main--left .rules-multipliers--active {
+  animation: rulesSlideBounceLeft 0.58s cubic-bezier(0.16, 0.86, 0.24, 1) both;
 }
 
 .rules-multipliers--places {
@@ -1836,6 +1904,14 @@
   -webkit-text-stroke: clamp(1px, 0.14vw, 2px) #000;
   paint-order: stroke fill;
   text-shadow: 0 clamp(1px, 0.14vw, 2px) 0 #000;
+}
+
+.rules-slide-main--right .rules-title {
+  animation: rulesTitleBounceRight 0.5s cubic-bezier(0.16, 0.86, 0.24, 1) both;
+}
+
+.rules-slide-main--left .rules-title {
+  animation: rulesTitleBounceLeft 0.5s cubic-bezier(0.16, 0.86, 0.24, 1) both;
 }
 
 .rules-slide-main--places .rules-title {

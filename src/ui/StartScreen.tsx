@@ -17,14 +17,17 @@ const slides = [
 export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart }) => {
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
   const [bannerSrc, setBannerSrc] = useState(resolvePublicUrl("rules/banner.svg"));
+  const [slideAnimation, setSlideAnimation] = useState<"left" | "right">("right");
 
   const goToPreviousSlide = () => {
+    setSlideAnimation("left");
     setActiveSlideIndex((currentIndex) =>
       currentIndex === 0 ? slides.length - 1 : currentIndex - 1
     );
   };
 
   const goToNextSlide = () => {
+    setSlideAnimation("right");
     setActiveSlideIndex((currentIndex) =>
       currentIndex === slides.length - 1 ? 0 : currentIndex + 1
     );
@@ -49,7 +52,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart
             <div
               className={`rules-slide-main ${
                 isPlacesSlide ? "rules-slide-main--places" : ""
-              }`}
+              } rules-slide-main--${slideAnimation}`}
             >
               <button
                 className="rules-arrow rules-arrow--left"
@@ -63,18 +66,20 @@ export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart
               <div className="rules-image-slot">
                 {slides.map((slide, index) => (
                   <img
-                    key={slide.image}
+                    key={`${slide.image}-${index === activeSlideIndex ? slideAnimation : "idle"}`}
                     className={`rules-multipliers ${
                       index === activeSlideIndex ? "rules-multipliers--active" : ""
                     } ${index === 2 ? "rules-multipliers--places" : ""}`}
                     src={slide.image}
                     alt={index === activeSlideIndex ? slide.alt : ""}
                     aria-hidden={index === activeSlideIndex ? undefined : true}
+                    draggable={false}
                   />
                 ))}
               </div>
 
               <div
+                key={`${slides[activeSlideIndex].titleKey}-${slideAnimation}`}
                 className="rules-title">
                 {t(slides[activeSlideIndex].titleKey)}
               </div>
@@ -97,7 +102,11 @@ export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart
                   type="button"
                   aria-label={`Go to slide ${index + 1}`}
                   aria-current={activeSlideIndex === index}
-                  onClick={() => setActiveSlideIndex(index)}
+                  onClick={() => {
+                    if (index === activeSlideIndex) return;
+                    setSlideAnimation(index > activeSlideIndex ? "right" : "left");
+                    setActiveSlideIndex(index);
+                  }}
                 >
                   <img
                     src={
