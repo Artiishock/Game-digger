@@ -178,7 +178,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart
               aria-label="Start game"
               onClick={onStart}
             >
-              <img src={resolvePublicUrl("rules/start_button.svg")} alt="" />
+              <span>Start</span>
             </button>
           </div>
         </div>
