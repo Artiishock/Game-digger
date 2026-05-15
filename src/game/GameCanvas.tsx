@@ -27,7 +27,7 @@ export const GameCanvas: React.FC<Props> = ({ width, height }) => {
       if (!canvasRef.current) return
       renderer = new GameRenderer(canvas, width, height)
       rendererRef.current = renderer
-      gameEngine.setRendererInstantFinish(() => renderer!.instantFinishRoundFromRoad())
+      gameEngine.setRendererInstantFinish(async () => renderer!.activateTurbo())
       renderer.ready.catch(err => {
         console.error('[GameCanvas] renderer init failed:', err)
       })
@@ -70,7 +70,7 @@ export const GameCanvas: React.FC<Props> = ({ width, height }) => {
 
   // Skip lava death cinematic on key / tap по игровому полю (не перехватываем UI — иначе гонки с кнопкой Spin на тач).
   useEffect(() => {
-    const skip = () => rendererRef.current?.skipLavaDeath()
+    const skip = () => { if (rendererRef.current?.skipLavaDeath()) gameEngine.markLavaDeathSkip() }
     const onKey = () => skip()
     const onPointerDown = (e: PointerEvent) => {
       const t = e.target

@@ -81,7 +81,7 @@ export const ResultOverlay: React.FC = () => {
     } else {
       gameAudio.stopWinPayLoop()
       gameAudio.unlock()
-      // useGameStore.getState().setPhase('IDLE') // TEMP: disabled for button testing
+      useGameStore.getState().setPhase('IDLE')
     }
   }
 

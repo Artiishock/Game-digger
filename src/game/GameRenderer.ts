@@ -1387,6 +1387,10 @@ export class GameRenderer {
   private _lavaLossResultTimerId: ReturnType<typeof setTimeout> | null = null
   /** HOME/LAVA через `_onCollect` / лава в движении — отменяется в `startRound`, иначе двойной исход после раннего спина. */
   private _terminalOutcomeTimerId: ReturnType<typeof setTimeout> | null = null
+  /** Режим ускорения x10 при повторном нажатии Spin во время RUNNING. */
+  private _turboActive = false
+  private _pendingOutcomeFn: (() => void) | null = null
+  private _pendingLossResultFn: (() => void) | null = null
   private _caveZones:   Array<{x:number; y:number; r:number}> = []  // круги всех активных пещер
   /** Позиция вдоль туннеля: длина дуги от начала path; скорость = const вдоль этой дуги */
   private _pathArcS = 0
@@ -1483,7 +1487,6 @@ export class GameRenderer {
     this.app.stage.addChild(
       this.worldBgLayer,
       this.skyLayer,
-      this._sceneryLayer,
       this.worldChunkLayer,
       this.objectsLayer,
       this.minerLayer,
@@ -1517,7 +1520,10 @@ export class GameRenderer {
     void SpineAnimator.loadHero().then(() => {
       if (!this.app) return
       const heroSpine = SpineAnimator.createHero(HERO_SPINE_SCALE)
-      if (heroSpine) this.miner.setHeroSpine(heroSpine)
+      if (heroSpine) {
+        this.miner.setHeroSpine(heroSpine)
+        SpineAnimator.setHighPriority(heroSpine, true)
+      }
     })
     SpineAnimator.loadGoldStone()
 
@@ -1536,6 +1542,8 @@ export class GameRenderer {
       // Маска skyLayer требует инициализированного AlphaMaskPipe — только после init()
       this.app.stage.addChild(this._worldMask)
       this.skyLayer.mask = this._worldMask
+      // _sceneryLayer (лес + деревья) живёт внутри skyLayer — наследует маску и не просвечивает через туннель
+      this.skyLayer.addChild(this._sceneryLayer)
       this._lastWorldMaskGrassTop = Infinity  // сброс кэша, чтобы _updateWorldMask точно отрисовал
       this._updateWorldMask(this.W, this.H)
       this.app.ticker.add(this._tick.bind(this))
@@ -1871,8 +1879,6 @@ export class GameRenderer {
     this._cloudT += dt
     const camDx = this._cloudPrevCamX === null ? 0 : (this.camX - this._cloudPrevCamX)
     this._cloudPrevCamX = this.camX
-    // Скорость камеры вправо (px/сек в масштабе dt): усиливаем дрейф облаков на эту величину
-    const camVxRight = dt > 1e-9 ? Math.max(0, camDx / dt) : 0
     const top = Math.max(0, Math.min(this.H, -this.camY))
     const rock = this.skyLayer.getChildByName('rockSprite') as PIXI.Sprite | null
     if (rock) {
@@ -1884,7 +1890,7 @@ export class GameRenderer {
       if (!name.startsWith('cloud')) continue
       const c = ch as PIXI.Sprite & { _drift?: number; _topDy?: number }
       const drift = c._drift ?? CLOUD_DRIFT_PX_S
-      c.x += (drift + camVxRight) * dt - camDx
+      c.x += drift * dt
       c.y = top + (c._topDy ?? c.y - top)
       const half = (c.texture?.width ?? 100) * 0.5 * Math.abs(c.scale.x)
       if (c.x > this.W + half + 20) {
@@ -2015,6 +2021,9 @@ export class GameRenderer {
       clearTimeout(this._lavaLossResultTimerId)
       this._lavaLossResultTimerId = null
     }
+    this._pendingOutcomeFn = null
+    this._pendingLossResultFn = null
+    this._turboActive = false
     this.multiplier=0;this.depth=0;this.distance=0
     this.particles=[]
     this.floatTexts=[]
@@ -2518,7 +2527,7 @@ export class GameRenderer {
     const offTopPx = TILE * 2 + HERO_MAX_SIDE_PX * 0.42
     this._lavaDeathExitWorldY = this._lavaFrozenCamY - offTopPx
     const distPx = Math.max(TILE, this._lavaDeathRootY - this._lavaDeathExitWorldY)
-    this._lavaDeathAscentSpeedPx = distPx / denom
+    this._lavaDeathAscentSpeedPx = distPx / denom * (GameConfig.lava.deathAscentSpeedMul ?? 1)
 
     this._lavaExitFlightActive = true
     this.miner.root.visible = true
@@ -2530,18 +2539,21 @@ export class GameRenderer {
   private _scheduleLavaLossResult(): void {
     if (this._lavaLossTimeoutPending) return
     this._lavaLossTimeoutPending = true
-    this._lavaLossResultTimerId = setTimeout(() => {
+    const cb = () => {
       this._lavaLossTimeoutPending = false
       this._lavaLossResultTimerId = null
+      this._pendingLossResultFn = null
       gameEngine.onRoundComplete(0, false)
       this._startLavaLossIdleGlideOrIdle()
-    }, GameConfig.round.loseDelayMs)
+    }
+    this._pendingLossResultFn = cb
+    this._lavaLossResultTimerId = setTimeout(cb, this._turboActive ? 0 : GameConfig.round.loseDelayMs)
   }
 
-  /** Skip the lava death cinematic on any user input. */
-  skipLavaDeath(): void {
+  /** Skip the lava death cinematic on any user input. Returns true if something was skipped. */
+  skipLavaDeath(): boolean {
     const active = this._lavaDeathCinematic || this._lavaLossIdleGlideActive || this._lavaLossTimeoutPending
-    if (!active) return
+    if (!active) return false
 
     const needsRoundComplete = this._lavaDeathCinematic
 
@@ -2549,12 +2561,38 @@ export class GameRenderer {
       clearTimeout(this._lavaLossResultTimerId)
       this._lavaLossResultTimerId = null
     }
+    this._pendingLossResultFn = null
     this._lavaLossTimeoutPending = false
     this._lavaLossIdleGlideActive = false
     this._returnToIdle()
 
     if (needsRoundComplete) {
       void gameEngine.onRoundComplete(0, false)
+    }
+    return true
+  }
+
+  /**
+   * Повторный Spin во время RUNNING: ускоряем анимацию до x10 скорости.
+   * Если уже в turbo-режиме — игнорируем.
+   */
+  activateTurbo(): void {
+    if (this._turboActive) return
+    if (!this.running || this._ended || this.idleActive) return
+    this._turboActive = true
+    if (this._terminalOutcomeTimerId !== null && this._pendingOutcomeFn) {
+      clearTimeout(this._terminalOutcomeTimerId)
+      this._terminalOutcomeTimerId = null
+      const fn = this._pendingOutcomeFn
+      this._pendingOutcomeFn = null
+      setTimeout(fn, 0)
+    }
+    if (this._lavaLossResultTimerId !== null && this._pendingLossResultFn) {
+      clearTimeout(this._lavaLossResultTimerId)
+      this._lavaLossResultTimerId = null
+      const fn = this._pendingLossResultFn
+      this._pendingLossResultFn = null
+      setTimeout(fn, 0)
     }
   }
 
@@ -2582,6 +2620,8 @@ export class GameRenderer {
       clearTimeout(this._terminalOutcomeTimerId)
       this._terminalOutcomeTimerId = null
     }
+    this._pendingOutcomeFn = null
+    this._pendingLossResultFn = null
     this._lavaLossTimeoutPending = false
 
     this._ended = true
@@ -2724,7 +2764,7 @@ export class GameRenderer {
     // gameDt — масштабированное время: вся игровая логика использует его,
     // чтобы spd=2 ускорял буквально всё (движение, анимации, таймеры, частицы).
     // Камера тоже использует gameDt — при высокой скорости она должна быть отзывчивее.
-    const gameDt = dt * spd
+    const gameDt = dt * (this._turboActive ? Math.max(10, spd) : spd)
 
     if(this.idleActive){
       if(this.tunnelActive) this._hideTunnel()
@@ -2784,7 +2824,7 @@ export class GameRenderer {
       // Коллизии остаются выключены, т.к. running=false.F
       if (this.spawner) this.spawner.update(this.charY, this.camX, this.camY, this.W, this.H)
       this.miner.update(gameDt, 1, true)
-      this._pUpdate(gameDt, dt)
+      this._pUpdate(gameDt)
       this.miner.syncStartCarveLatchAfterSpineTick()
       this._perfPushSceneSnapshot()
       if (this._startTunnelCarveDelaySec <= 0) {
@@ -3168,11 +3208,14 @@ export class GameRenderer {
           clearTimeout(this._terminalOutcomeTimerId)
           this._terminalOutcomeTimerId = null
         }
-        this._terminalOutcomeTimerId = setTimeout(() => {
+        const cbLavaCatch = () => {
           this._terminalOutcomeTimerId = null
+          this._pendingOutcomeFn = null
           gameEngine.onRoundComplete(0, false)
           this._returnToIdle()
-        }, GameConfig.round.loseDelayMs)
+        }
+        this._pendingOutcomeFn = cbLavaCatch
+        this._terminalOutcomeTimerId = setTimeout(cbLavaCatch, this._turboActive ? 0 : GameConfig.round.loseDelayMs)
       }
     }
 
@@ -3483,18 +3526,24 @@ export class GameRenderer {
         this._terminalOutcomeTimerId = null
       }
       if (won) {
-        this._terminalOutcomeTimerId = setTimeout(() => {
+        const cbWin = () => {
           this._terminalOutcomeTimerId = null
+          this._pendingOutcomeFn = null
           gameEngine.onRoundComplete(this.multiplier, true)
           this._returnToIdle()
-        }, GameConfig.round.winDelayMs)
+        }
+        this._pendingOutcomeFn = cbWin
+        this._terminalOutcomeTimerId = setTimeout(cbWin, this._turboActive ? 0 : GameConfig.round.winDelayMs)
       } else {
         if (!this._tryStartLavaDeathCinematic()) {
-          this._terminalOutcomeTimerId = setTimeout(() => {
+          const cbLose = () => {
             this._terminalOutcomeTimerId = null
+            this._pendingOutcomeFn = null
             gameEngine.onRoundComplete(0, false)
             this._returnToIdle()
-          }, GameConfig.round.loseDelayMs)
+          }
+          this._pendingOutcomeFn = cbLose
+          this._terminalOutcomeTimerId = setTimeout(cbLose, this._turboActive ? 0 : GameConfig.round.loseDelayMs)
         }
       }
     }else{
@@ -3729,6 +3778,9 @@ export class GameRenderer {
     this.goldBreakTickTimer = 0
     this.goldBreakDisplayMult = 0
     this._goldCrashPlayed = false
+    this._turboActive = false
+    this._pendingOutcomeFn = null
+    this._pendingLossResultFn = null
     this.idleActive = true
     this._awaitingStartAnim = false
     this.miner.setIdleMode(true)

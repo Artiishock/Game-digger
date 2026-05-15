@@ -1823,6 +1823,8 @@ export class SpineAnimator {
   /** Накопленное время для троттлинга tick() до 30fps: экономит CPU на матрицах костей. */
   private static _spineAccumDt = 0
   private static readonly _SPINE_INTERVAL = 1 / 30
+  /** Инстансы с полным 60fps (герой): обновляются каждый кадр, минуя троттл пикапов. */
+  private static _highPriorityInstances: Set<Spine> = new Set()
 
   // Кеш ссылок на кости/слоты для _applyCoinConstraint — строится один раз при первом вызове
   private static _coinCache: Map<Spine, {
@@ -2126,10 +2128,25 @@ export class SpineAnimator {
     if (i >= 0) { arr[i] = arr[arr.length - 1]!; arr.pop(); }
     this._instanceNullSlots.delete(inst);
     this._coinCache.delete(inst);
+    this._highPriorityInstances.delete(inst);
   }
 
-  /** Тикать все инстансы. Вызывать каждый кадр, dt в секундах. Апдейт скелетов — не чаще 30fps. */
+  /** Пометить инстанс как высокоприоритетный (true = 60fps, false = 30fps). Герой — true. */
+  static setHighPriority(inst: Spine | null, hp: boolean): void {
+    if (!inst) return
+    if (hp) this._highPriorityInstances.add(inst)
+    else this._highPriorityInstances.delete(inst)
+  }
+
+  /** Тикать все инстансы. Герой (highPriority) — 60fps каждый кадр; пикапы — 30fps через накопление. */
   static tick(dt: number): void {
+    // Герой и idle — полный 60fps
+    for (const inst of this._highPriorityInstances) {
+      if (!inst || (inst as any).destroyed || (inst as any).sleeping) continue
+      try { inst.update(dt) } catch { /* ignore */ }
+    }
+
+    // Пикапы — throttle до 30fps
     this._spineAccumDt += dt
     if (this._spineAccumDt < this._SPINE_INTERVAL) return
     const spineDt = this._spineAccumDt
@@ -2146,6 +2163,7 @@ export class SpineAnimator {
         continue;
       }
       if ((inst as any).sleeping) continue;
+      if (this._highPriorityInstances.has(inst)) continue;
       try {
         inst.update(spineDt);
 

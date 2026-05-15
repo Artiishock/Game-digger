@@ -23,6 +23,8 @@ class GameEngine {
   private _rendererInstantFinish: (() => Promise<void>) | null = null
   /** performance.now() момента когда последний раунд завершился (WIN/LOSE). */
   private _roundEndTime = 0
+  /** performance.now() до которого нельзя стартовать новый раунд после пропуска анимации лавы. */
+  private _postSkipProtectionUntil = 0
 
   private _setPhase(store: ReturnType<typeof useGameStore.getState>, phase: GamePhase): void {
     GameLogger.phaseChange(useGameStore.getState().phase, phase)
@@ -116,6 +118,11 @@ class GameEngine {
     this._setPhase(store, 'RUNNING')
   }
 
+  /** Вызывается из GameCanvas когда пользователь пропустил анимацию лавы. */
+  markLavaDeathSkip(): void {
+    this._postSkipProtectionUntil = performance.now() + 300
+  }
+
   /** Регистрируется из `GameCanvas` при создании `GameRenderer`. */
   setRendererInstantFinish(fn: (() => Promise<void>) | null): void {
     this._rendererInstantFinish = fn
@@ -135,6 +142,7 @@ class GameEngine {
   async startRound(): Promise<void> {
     let store = useGameStore.getState()
     if (store.phase === 'BETTING' || store.phase === 'RUNNING') return
+    if (performance.now() < this._postSkipProtectionUntil) return
 
     performance.mark('dr-round-click')
     // Один кадр перед BETTING: на тач-устройствах иначе иногда «съедается» жест вместе с обновлением React.
