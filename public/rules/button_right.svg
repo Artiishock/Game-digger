@@ -1,14 +1,78 @@
-<svg width="63" height="74" viewBox="0 0 63 74" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M60.6465 32.333C60.6465 29.8957 59.2826 27.6637 57.1143 26.5508L9.51172 2.11719C5.74007 0.181299 1.28894 3.06019 1.50782 7.29394L4.57617 66.6006C4.75172 69.9934 7.97769 72.4749 11.3496 71.373C16.0309 69.8431 23.9387 66.8595 33.8037 61.5977C46.0096 55.0873 54.7815 48.4104 58.3535 45.5244C59.8443 44.32 60.6465 42.5161 60.6465 40.6504L60.6465 32.333Z" fill="#9C3E0A" stroke="#5E1205" stroke-width="3" stroke-miterlimit="1.8118"/>
-<path d="M56.8711 33.9971C58.8576 32.6577 58.6616 29.713 56.4941 28.6064L8.54492 4.13183C6.30433 2.9882 3.66952 4.7147 3.82324 7.22558L6.78027 55.5254C6.90351 57.5383 8.76167 58.8506 10.6084 58.248C15.1748 56.758 22.9782 53.8218 32.7451 48.6123C42.5777 43.3678 51.483 37.6298 56.8711 33.9971Z" fill="url(#paint0_linear_1171_38163)" stroke="url(#paint1_linear_1171_38163)" stroke-width="1.5" stroke-miterlimit="1.8118"/>
-<defs>
-<linearGradient id="paint0_linear_1171_38163" x1="62.6465" y1="30.2793" x2="2.64648" y2="30.2793" gradientUnits="userSpaceOnUse">
-<stop stop-color="#FFE713"/>
-<stop offset="1" stop-color="#E18A08"/>
-</linearGradient>
-<linearGradient id="paint1_linear_1171_38163" x1="32.6465" y1="3.7793" x2="32.6465" y2="52.2793" gradientUnits="userSpaceOnUse">
-<stop offset="0.442225" stop-color="#E18909" stop-opacity="0"/>
-<stop offset="0.853492" stop-color="#5E1205"/>
-</linearGradient>
-</defs>
+<svg width="62" height="72" viewBox="0 0 62 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .hit-shape {
+      fill: transparent;
+      pointer-events: visiblePainted;
+      cursor: pointer;
+    }
+
+    .state {
+      transform-box: fill-box;
+      transform-origin: center;
+      transition: opacity 220ms cubic-bezier(0.22, 1, 0.36, 1);
+      will-change: opacity;
+      pointer-events: none;
+    }
+
+    .state-default { opacity: 1; }
+    .state-hover,
+    .state-pushed { opacity: 0; }
+
+    .hit-shape:hover ~ .state-default { opacity: 0; }
+    .hit-shape:hover ~ .state-hover { opacity: 1; }
+    .hit-shape:hover ~ .state-pushed { opacity: 0; }
+
+    .hit-shape:active ~ .state-default,
+    .hit-shape:active ~ .state-hover { opacity: 0; }
+    .hit-shape:active ~ .state-pushed { opacity: 1; }
+  </style>
+
+  <g transform="translate(62 0) scale(-1 1)">
+
+  <path class="hit-shape" d="M2.5 32.0537C2.50003 29.804 3.75841 27.7432 5.75976 26.7158L53.3633 2.28222C56.7921 0.522426 60.8388 3.14032 60.6396 6.98926L57.5713 66.2959C57.4113 69.3851 54.4875 71.6101 51.4521 70.6182C46.7951 69.0961 38.9146 66.1235 29.0781 60.877C16.9076 54.3854 8.16162 47.7288 4.60644 44.8564C3.2397 43.7522 2.5 42.0944 2.5 40.3711L2.5 32.0537Z" />
+
+  <g class="state state-default">
+    <path d="M2.5 32.0537C2.50003 29.804 3.75841 27.7432 5.75976 26.7158L53.3633 2.28222C56.7921 0.522426 60.8388 3.14032 60.6396 6.98926L57.5713 66.2959C57.4113 69.3851 54.4875 71.6101 51.4521 70.6182C46.7951 69.0961 38.9146 66.1235 29.0781 60.877C16.9076 54.3854 8.16162 47.7288 4.60644 44.8564C3.2397 43.7522 2.5 42.0944 2.5 40.3711L2.5 32.0537Z" fill="#9C3E0A" stroke="#5E1205" stroke-width="2" stroke-miterlimit="1.8118"/>
+    <path d="M5.77539 33.7178C3.78884 32.3784 3.9849 29.4337 6.15234 28.3271L54.1016 3.85254C56.3422 2.7089 58.977 4.4354 58.8232 6.94629L55.8662 55.2461C55.743 57.259 53.8848 58.5713 52.0381 57.9687C47.4717 56.4787 39.6683 53.5425 29.9014 48.333C20.0688 43.0885 11.1635 37.3505 5.77539 33.7178Z" fill="url(#default-fill)" stroke="url(#default-stroke)" stroke-width="1.5" stroke-miterlimit="1.8118"/>
+  </g>
+
+  <g class="state state-hover">
+    <path d="M2.5 32.0537C2.50003 29.804 3.75841 27.7432 5.75976 26.7158L53.3633 2.28222C56.7921 0.522426 60.8388 3.14032 60.6396 6.98926L57.5713 66.2959C57.4113 69.3851 54.4875 71.6101 51.4521 70.6182C46.7951 69.0961 38.9146 66.1235 29.0781 60.877C16.9076 54.3854 8.16162 47.7288 4.60644 44.8564C3.2397 43.7522 2.5 42.0944 2.5 40.3711L2.5 32.0537Z" fill="#9C3E0A" stroke="#5E1205" stroke-width="2" stroke-miterlimit="1.8118"/>
+    <path d="M5.77539 33.7178C3.78884 32.3784 3.9849 29.4337 6.15234 28.3271L54.1016 3.85254C56.3422 2.7089 58.977 4.4354 58.8232 6.94629L55.8662 55.2461C55.743 57.259 53.8848 58.5713 52.0381 57.9687C47.4717 56.4787 39.6683 53.5425 29.9014 48.333C20.0688 43.0885 11.1635 37.3505 5.77539 33.7178Z" fill="url(#hover-fill)" stroke="url(#hover-stroke)" stroke-width="1.5" stroke-miterlimit="1.8118"/>
+  </g>
+
+  <g class="state state-pushed">
+    <path d="M2.5 37.0537C2.50003 34.804 3.75841 32.7432 5.75976 31.7158L53.335 7.29687C56.7715 5.53296 60.825 8.16659 60.6103 12.0234L57.5889 66.3193C57.4174 69.4002 54.4975 71.6129 51.4697 70.624C46.8149 69.1037 38.9272 66.1302 29.0781 60.877C16.9076 54.3854 8.16162 47.7288 4.60644 44.8564C3.2397 43.7522 2.5 42.0944 2.5 40.3711L2.5 37.0537Z" fill="#9C3E0A" stroke="#5E1205" stroke-width="2" stroke-miterlimit="1.8118"/>
+    <path d="M5.77539 38.7178C3.78884 37.3784 3.9849 34.4337 6.15234 33.3271L54.1016 8.85254C56.3422 7.7089 58.977 9.4354 58.8232 11.9463L55.8662 60.2461C55.743 62.259 53.8848 63.5713 52.0381 62.9687C47.4717 61.4787 39.6683 58.5425 29.9014 53.333C20.0688 48.0885 11.1635 42.3505 5.77539 38.7178Z" fill="url(#pushed-fill)" stroke="url(#pushed-stroke)" stroke-width="1.5" stroke-miterlimit="1.8118"/>
+  </g>
+
+  <defs>
+    <linearGradient id="default-fill" x1="0" y1="30" x2="60" y2="30" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE713"/>
+      <stop offset="1" stop-color="#E18A08"/>
+    </linearGradient>
+    <linearGradient id="default-stroke" x1="30" y1="3.5" x2="30" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0.442225" stop-color="#E18909" stop-opacity="0"/>
+      <stop offset="0.853492" stop-color="#5E1205"/>
+    </linearGradient>
+
+    <linearGradient id="hover-fill" x1="0" y1="30" x2="102" y2="30" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE713"/>
+      <stop offset="1" stop-color="#E18A08"/>
+    </linearGradient>
+    <linearGradient id="hover-stroke" x1="30" y1="3.5" x2="30" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0.442225" stop-color="#E18909" stop-opacity="0"/>
+      <stop offset="0.853492" stop-color="#5E1205"/>
+    </linearGradient>
+
+    <linearGradient id="pushed-fill" x1="0" y1="35" x2="60" y2="35" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E18A08"/>
+      <stop offset="1" stop-color="#AF580A"/>
+    </linearGradient>
+    <linearGradient id="pushed-stroke" x1="30" y1="8.5" x2="30" y2="57" gradientUnits="userSpaceOnUse">
+      <stop offset="0.442225" stop-color="#E18909" stop-opacity="0"/>
+      <stop offset="0.853492" stop-color="#5E1205"/>
+    </linearGradient>
+  </defs>
+  </g>
 </svg>
