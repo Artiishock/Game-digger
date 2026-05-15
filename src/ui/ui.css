@@ -646,6 +646,7 @@
   justify-content: center;
 }
 
+
 /* ═══════════════════════════════════════════════════════
    MODAL (общая карточка)
    ═══════════════════════════════════════════════════════ */
@@ -668,15 +669,18 @@
 }
 
 .ui-menu-modal {
-  width: 1000px;
+  width: clamp(600px, 52vw, 1000px);
   max-width: calc(100vw - 80px);
-  height: 720px;
-  min-height: 720px;
-  max-height: 720px;
-  margin-top: 70px;
+  height: clamp(420px, 66.7vmin, 720px);
+  min-height: clamp(420px, 66.7vmin, 720px);
+  max-height: clamp(420px, 66.7vmin, 720px);
+  margin-top: max(
+    clamp(40px, 6.5vmin, 70px),
+    calc(clamp(22px, 3.7vmin, 40px) + clamp(28px, 4.4vmin, 48px) + 8px)
+  );
   border: 1px solid #9f9f9f;
   box-shadow: inset 0 10px 0 rgba(0, 0, 0, 0.15);
-  border-radius: 12px;
+  border-radius: clamp(6px, 1.1vmin, 12px);
   background: rgba(6, 6, 6, 0.5);
   align-items: stretch;
   justify-content: flex-start;
@@ -691,6 +695,7 @@
   border-radius: var(--radius-lg);
   max-height: none;
   overflow: visible;
+  animation: balance-bet-modal-in 0.2s ease-out both;
 }
 
 .ui-modal-header {
@@ -706,13 +711,13 @@
 
 .ui-menu-modal .ui-modal-header {
   width: min(1920px, calc(100vw - 80px));
-  height: 48px;
+  height: clamp(28px, 4.4vmin, 48px);
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  grid-template-columns: clamp(28px, 4.4vmin, 48px) minmax(0, 1fr) clamp(28px, 4.4vmin, 48px);
   align-items: center;
   padding: 0;
   position: fixed;
-  top: 40px;
+  top: clamp(22px, 3.7vmin, 40px);
   left: 50%;
   right: auto;
   transform: translateX(-50%);
@@ -721,7 +726,7 @@
 .ui-menu-modal .ui-modal-title {
   grid-column: 2;
   justify-self: center;
-  font-size: 52px;
+  font-size: clamp(28px, 4.8vmin, 52px);
   line-height: 100%;
   color: #facb32;
   font-weight: 800;
@@ -784,6 +789,8 @@
   display: flex;
   align-items: center;
   justify-content: flex-start;
+  padding: clamp(20px, 2.2vmin, 30px) clamp(40px, 5vw, 55px);
+  box-sizing: border-box;
 }
 
 .ui-menu-modal .ui-modal-body::-webkit-scrollbar {
@@ -815,8 +822,8 @@
 }
 
 .ui-tab {
-  width: 300px;
-  height: 90px;
+  width: clamp(180px, 27.8vmin, 300px);
+  height: clamp(52px, 8.3vmin, 90px);
   border: none;
   background: transparent;
   color: #a0a0b2;
@@ -824,10 +831,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 15px;
+  gap: clamp(8px, 1.4vmin, 15px);
   padding: 0;
   font-family: Inter, var(--font-body), sans-serif;
-  font-size: 24px;
+  font-size: clamp(14px, 2.2vmin, 24px);
   line-height: 100%;
   font-weight: 900;
   letter-spacing: 0;
@@ -840,14 +847,14 @@
 .ui-tab:hover,
 .ui-tab--active {
   color: #f2fdff;
-  font-size: 31px;
+  font-size: clamp(18px, 2.9vmin, 31px);
   font-weight: 900;
 }
 
 .ui-tab-icon {
   display: block;
-  width: 25px;
-  height: 25px;
+  width: clamp(14px, 2.3vmin, 25px);
+  height: clamp(14px, 2.3vmin, 25px);
   flex-shrink: 0;
   background-color: currentColor;
 
@@ -866,8 +873,8 @@
 
 .ui-tab:hover .ui-tab-icon,
 .ui-tab--active .ui-tab-icon {
-  width: 32px;
-  height: 32px;
+  width: clamp(18px, 3vmin, 32px);
+  height: clamp(18px, 3vmin, 32px);
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -1582,6 +1589,17 @@
   cursor: pointer;
 }
 
+@keyframes balance-bet-modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 .balance-bet-modal {
   position: absolute;
   right: 0;
@@ -1598,6 +1616,8 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  transform-origin: bottom right;
+  animation: balance-bet-modal-in 0.18s ease-out both;
 }
 
 .balance-bet-modal__header {
@@ -2336,10 +2356,11 @@
 }
 
 .ui-result-win-info {
-  position: relative;
-  bottom: -300px;
+  position: absolute;
+  bottom: calc(9.72vmin + 3.5vh + 12px);
+  left: 0;
+  right: 0;
   z-index: 2;
-  margin-top: 16px;
   text-align: center;
   animation: uiWinCelebratePop 0.6s cubic-bezier(0.2, 0.85, 0.25, 1) 0.15s both;
   transform-origin: center center;
@@ -2352,15 +2373,13 @@
 }
 .ui-result-win-amt {
   font-family: var(--font-display);
-  font-size: clamp(28px, 6vw, 52px);
+  font-size: clamp(18px, 3.5vw, 32px);
   color: var(--gold);
   letter-spacing: 0.04em;
   text-shadow: 0 0 30px rgba(255, 184, 48, 0.4);
 }
 .ui-result-win-mult {
-  font-size: 15px;
-  color: var(--text-muted);
-  margin-top: 4px;
+  display: none;
 }
 .ui-result-lose-sub {
   margin-top: 12px;
@@ -2378,6 +2397,107 @@
   letter-spacing: 0.1em;
   text-transform: uppercase;
   animation: pulse 2s ease infinite;
+}
+
+.ui-result-claim-wrap {
+  --btn-w: min(267px, 24.72vmin);
+  position: absolute;
+  bottom: clamp(16px, 3.5vh, 40px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+}
+
+.ui-result-claim-btn {
+  position: relative;
+  width: var(--btn-w);
+  height: calc(var(--btn-w) * 105 / 267);
+  background: #9C3E0A;
+  border: 3px solid #5E1205;
+  border-radius: calc(var(--btn-w) * 18 / 267);
+  cursor: pointer;
+  padding: 0 0 calc(var(--btn-w) * 15 / 267) 0;
+  overflow: hidden;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  animation: uiWinCelebratePop 0.5s cubic-bezier(0.2, 0.85, 0.25, 1) 0.4s both;
+  transform-origin: center bottom;
+}
+
+/* Button_inner — gradient face, leaves dark base at bottom */
+.ui-result-claim-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: calc(100% - var(--btn-w) * 15 / 267);
+  background: linear-gradient(180deg, #FFE713 0%, #E18A08 100%);
+  border-radius: calc(var(--btn-w) * 15 / 267);
+  transition: top 0.08s ease;
+}
+
+/* Background — inner glare on face */
+.ui-result-claim-btn::after {
+  content: '';
+  position: absolute;
+  width: calc(var(--btn-w) * 245 / 267);
+  height: calc(var(--btn-w) * 70 / 267);
+  top: calc(var(--btn-w) * 9 / 267);
+  left: calc(50% - var(--btn-w) * 121.25 / 267);
+  border-radius: calc(var(--btn-w) * 18 / 267);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0) 100%);
+  pointer-events: none;
+  transition: top 0.08s ease;
+}
+
+/* Name */
+.ui-result-claim-btn span {
+  position: relative;
+  z-index: 1;
+  width: calc(var(--btn-w) * 245 / 267);
+  height: calc(var(--btn-w) * 70 / 267);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: calc(var(--btn-w) * 8 / 267);
+  font-family: 'Inter', sans-serif;
+  font-weight: 900;
+  font-size: calc(var(--btn-w) * 48 / 267);
+  line-height: 1;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #9C3E0A;
+  text-shadow: 0 calc(var(--btn-w) * 1.5 / 267) 0 #FFEE16;
+}
+
+.ui-result-claim-btn span::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: calc(var(--btn-w) * 8 / 267);
+  padding: 1.5px;
+  background: linear-gradient(#E6980A 38.09%, #FFEE16 59.71%);
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.ui-result-claim-btn:active::before {
+  top: calc(var(--btn-w) * 8 / 267);
+}
+
+.ui-result-claim-btn:active::after {
+  top: calc(var(--btn-w) * 17 / 267);
 }
 
 /* Не начинать с scale(0): у детей getBoundingClientRect() ≈ 0 → Pixi инициализируется 1×1 и клип не виден. */
@@ -3268,16 +3388,16 @@
 
 .ui-menu-modal .ui-modal-scrollbar {
   position: absolute;
-  top: 90px;
+  top: clamp(52px, 8.3vmin, 90px);
   right: 0;
-  bottom: 30px;
-  width: 12px;
+  bottom: clamp(16px, 2.8vmin, 30px);
+  width: clamp(6px, 1.1vmin, 12px);
   pointer-events: auto;
 }
 
 .ui-menu-modal .ui-modal-scrollbar-thumb {
-  width: 12px;
-  height: 110px;
+  width: clamp(6px, 1.1vmin, 12px);
+  height: clamp(60px, 10.2vmin, 110px);
   border-radius: 2px;
   background: #a0a0b2;
   cursor: grab;
@@ -3346,20 +3466,20 @@
   .ui-menu-modal {
     width: 705px;
     max-width: calc(100vw - 38px);
-    height: 705px;
-    min-height: 705px;
-    max-height: 705px;
-    margin-top: 185px;
+    height: min(705px, calc(100vh - 255px));
+    min-height: min(705px, calc(100vh - 255px));
+    max-height: min(705px, calc(100vh - 255px));
+    margin-top: clamp(150px, 19.3vh, 185px);
   }
 
   .ui-menu-modal .ui-modal-header {
     width: 705px;
     max-width: calc(100vw - 38px);
-    height: 130px;
+    height: clamp(100px, 13.5vh, 130px);
     display: block;
     padding: 0;
     position: fixed;
-    top: 28px;
+    top: clamp(18px, 2.9vh, 28px);
     left: 50%;
     right: auto;
     transform: translateX(-50%);
@@ -3369,7 +3489,7 @@
 
   .ui-menu-modal .ui-modal-title {
     position: absolute;
-    top: 65px;
+    top: clamp(50px, 6.8vh, 65px);
     left: 50%;
     transform: translateX(-50%);
   }
@@ -3377,15 +3497,15 @@
   .ui-menu-modal .ui-modal-close {
     position: absolute;
     top: 0;
-    right: 20px;
+    right: clamp(12px, 2.7vw, 20px);
     padding: 0;
     pointer-events: auto;
   }
 
   .ui-menu-modal .ui-modal-body {
     justify-content: center;
-    padding-left: 78px;
-    padding-right: 78px;
+    padding-left: clamp(58px, 10.5vw, 78px);
+    padding-right: clamp(58px, 10.5vw, 78px);
     box-sizing: border-box;
   }
 
@@ -3399,12 +3519,12 @@
     padding-left: 0;
     padding-right: 0;
     box-sizing: border-box;
-    margin: 20px 0;
+    margin: clamp(14px, 2.7vw, 20px) 0;
   }
 
   .ui-menu-modal .ui-tab {
-    width: 120px;
-    height: 60px;
+    width: clamp(90px, 16.1vw, 120px);
+    height: clamp(45px, 8.1vw, 60px);
     gap: 0;
     font-size: 0;
   }
@@ -3419,14 +3539,14 @@
   }
 
   .ui-menu-modal .ui-tab-icon {
-    width: 32px;
-    height: 32px;
+    width: clamp(24px, 4.3vw, 32px);
+    height: clamp(24px, 4.3vw, 32px);
   }
 
   .ui-menu-modal .ui-tab:hover .ui-tab-icon,
   .ui-menu-modal .ui-tab--active .ui-tab-icon {
-    width: 48px;
-    height: 48px;
+    width: clamp(36px, 6.5vw, 48px);
+    height: clamp(36px, 6.5vw, 48px);
   }
 
   .ui-menu-modal .sys-settings,
@@ -3562,12 +3682,12 @@
     width: min(365px, calc(100vw - 16px));
     max-width: calc(100vw - 16px);
 
-    height: min(522px, calc(100vh - 210px));
-    min-height: min(522px, calc(100vh - 210px));
-    max-height: min(522px, calc(100vh - 210px));
+    height: min(600px, calc(100vh - 70px));
+    min-height: min(600px, calc(100vh - 70px));
+    max-height: min(600px, calc(100vh - 70px));
 
-    margin-top: clamp(150px, 17.8vh, 164px);
-    overflow: visible;
+    margin-top: 54px;
+    overflow: hidden;
   }
 
   .ui-menu-modal .ui-modal-header {
@@ -3612,23 +3732,18 @@
   }
 
   .ui-menu-modal .ui-tabs {
-    position: absolute;
-    top: -82px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 230;
-
-    width: auto;
+    width: 100%;
     display: flex;
     justify-content: center;
     align-items: center;
     gap: 10px;
     padding: 0;
+    flex-shrink: 0;
   }
 
   .ui-menu-modal .ui-tab {
-    width: 120px;
-    height: 60px;
+    width: clamp(90px, 30vw, 120px);
+    height: clamp(45px, 15vw, 60px);
     padding: 0;
 
     display: flex;
@@ -3647,19 +3762,20 @@
   }
 
   .ui-menu-modal .ui-tab-icon {
-    width: 32px;
-    height: 32px;
+    width: clamp(24px, 8vw, 32px);
+    height: clamp(24px, 8vw, 32px);
   }
 
   .ui-menu-modal .ui-tab:hover .ui-tab-icon,
   .ui-menu-modal .ui-tab--active .ui-tab-icon {
-    width: 48px;
-    height: 48px;
+    width: clamp(36px, 12vw, 48px);
+    height: clamp(36px, 12vw, 48px);
   }
 
   .ui-menu-modal .ui-modal-body {
-    height: 100%;
-    padding: 42px 44px 42px;
+    flex: 1;
+    min-height: 0;
+    padding: clamp(20px, 7vw, 42px) clamp(32px, 11vw, 44px);
     box-sizing: border-box;
     align-items: center;
     justify-content: center;
@@ -3808,7 +3924,7 @@
   }
 
   .ui-menu-modal .ui-modal-scrollbar {
-    top: 42px;
+    top: clamp(45px, 15vw, 60px);
     right: 0;
     bottom: 15px;
   }
@@ -3819,7 +3935,7 @@
 
   .ui-menu-modal:has(.info-panel) .ui-modal-scrollbar {
     display: block;
-    top: calc(90px + clamp(16px, 2.688vh, 20px));
+    top: calc(clamp(45px, 15vw, 60px) + clamp(16px, 2.688vh, 20px));
     bottom: 30px;
   }
 
@@ -3933,7 +4049,7 @@
 
   .ui-menu-modal:has(.replay-panel--filled) .ui-modal-scrollbar {
     display: block;
-    top: clamp(10px, 3.75vw, 15px);
+    top: clamp(45px, 15vw, 60px);
     bottom: clamp(32px, 10vw, 40px);
   }
 
@@ -3972,7 +4088,7 @@
   .ui-menu-modal .ui-modal-header {
     width: min(1068px, calc(100vw - 82px));
     max-width: calc(100vw - 82px);
-    height: 142px;
+    height: clamp(110px, 19.1vh, 142px);
     display: block;
     padding: 0;
     position: fixed;
@@ -4008,31 +4124,30 @@
 
   .ui-menu-modal .ui-tab {
     width: calc((100% - 20px) / 3);
-    height: 90px;
-    font-size: 24px;
+    height: clamp(60px, 12.1vh, 90px);
+    font-size: clamp(14px, 3.2vh, 24px);
     font-weight: 900;
   }
 
   .ui-menu-modal .ui-tab:hover,
   .ui-menu-modal .ui-tab--active {
-    font-size: 31px;
+    font-size: clamp(18px, 4.2vh, 31px);
     font-weight: 900;
   }
 
   .ui-menu-modal .ui-tab-icon {
-    width: 25px;
-    height: 25px;
+    width: clamp(15px, 3.4vh, 25px);
+    height: clamp(15px, 3.4vh, 25px);
   }
 
   .ui-menu-modal .ui-tab:hover .ui-tab-icon,
   .ui-menu-modal .ui-tab--active .ui-tab-icon {
-    width: 32px;
-    height: 32px;
+    width: clamp(20px, 4.3vh, 32px);
+    height: clamp(20px, 4.3vh, 32px);
   }
 
   .ui-menu-modal .ui-modal-body {
-    padding-left: clamp(26px, 5.6vw, 64px);
-    padding-right: clamp(26px, 5.6vw, 64px);
+    padding: clamp(16px, 3vh, 24px) clamp(26px, 5.6vw, 64px);
     box-sizing: border-box;
     justify-content: center;
   }
@@ -4189,23 +4304,23 @@
     width: min(860px, calc(100vw - 40px));
     max-width: calc(100vw - 40px);
 
-    height: min(245px, calc(100vh - 155px));
-    min-height: min(245px, calc(100vh - 155px));
-    max-height: min(245px, calc(100vh - 155px));
+    height: min(320px, calc(100vh - 80px));
+    min-height: min(320px, calc(100vh - 80px));
+    max-height: min(320px, calc(100vh - 80px));
 
-    margin-top: 124px;
-    overflow: visible;
+    margin-top: calc(clamp(8px, 3vh, 12px) + clamp(28px, 10vh, 40px) + 8px);
+    overflow: hidden;
   }
 
   .ui-menu-modal .ui-modal-header {
     width: min(860px, calc(100vw - 40px));
-    height: 40px;
+    height: clamp(28px, 10vh, 40px);
     display: grid;
     grid-template-columns: 24px minmax(0, 1fr) 24px;
     align-items: center;
 
     position: fixed;
-    top: 12px;
+    top: clamp(8px, 3vh, 12px);
     left: 50%;
     right: auto;
     transform: translateX(-50%);
@@ -4237,23 +4352,18 @@
   }
 
   .ui-menu-modal .ui-tabs {
-    position: absolute;
-    top: -72px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 230;
-
-    width: auto;
+    width: 100%;
     display: flex;
     justify-content: center;
     align-items: center;
     gap: 10px;
     padding: 0;
+    flex-shrink: 0;
   }
 
   .ui-menu-modal .ui-tab {
-    width: 120px;
-    height: 60px;
+    width: clamp(80px, 13.3vw, 120px);
+    height: clamp(40px, 15vh, 60px);
     padding: 0;
 
     display: flex;
@@ -4272,19 +4382,20 @@
   }
 
   .ui-menu-modal .ui-tab-icon {
-    width: 32px;
-    height: 32px;
+    width: clamp(22px, 8vh, 32px);
+    height: clamp(22px, 8vh, 32px);
   }
 
   .ui-menu-modal .ui-tab:hover .ui-tab-icon,
   .ui-menu-modal .ui-tab--active .ui-tab-icon {
-    width: 48px;
-    height: 48px;
+    width: clamp(32px, 12vh, 48px);
+    height: clamp(32px, 12vh, 48px);
   }
 
   .ui-menu-modal .ui-modal-body {
-    height: 100%;
-    padding: 14px 24px;
+    flex: 1;
+    min-height: 0;
+    padding: clamp(8px, 2.5vh, 14px) clamp(16px, 2.7vw, 24px);
     box-sizing: border-box;
     align-items: center;
     justify-content: center;
@@ -4293,10 +4404,10 @@
   }
 
   .ui-menu-modal:has(.info-panel) .ui-modal-body {
-    padding-top: clamp(12px, 1.667vh, 15px);
+    padding-top: clamp(8px, 2vh, 12px);
     padding-left: clamp(12px, 3.75vw, 15px);
     padding-right: clamp(12px, 3.75vw, 15px);
-    padding-bottom: clamp(20px, 2.667vh, 24px);
+    padding-bottom: clamp(12px, 2.667vh, 20px);
   }
 
   .ui-menu-modal .sys-settings {
@@ -4411,7 +4522,7 @@
   }
 
   .ui-menu-modal .ui-modal-scrollbar {
-    top: 36px;
+    top: clamp(40px, 15vh, 60px);
     bottom: 15px;
   }
 
@@ -4423,8 +4534,8 @@
 
   .ui-menu-modal:has(.info-panel) .ui-modal-scrollbar {
     display: block;
-    top: clamp(12px, 1.667vh, 15px);
-    bottom: clamp(20px, 2.667vh, 24px);
+    top: calc(clamp(40px, 15vh, 60px) + clamp(8px, 2vh, 12px));
+    bottom: clamp(12px, 2.667vh, 20px);
   }
 
   .ui-menu-modal:has(.replay-panel--filled) .ui-modal-body {
@@ -4513,7 +4624,7 @@
 
   .ui-menu-modal:has(.replay-panel--filled) .ui-modal-scrollbar {
     display: block;
-    top: 15px;
+    top: clamp(40px, 15vh, 60px);
     bottom: 15px;
   }
 
@@ -5298,7 +5409,7 @@
     position: static;
     right: auto;
     bottom: auto;
-    transform: none;
+    transform-origin: center;
 
     width: min(var(--balance-bet-modal-width), calc(100vw - (var(--balance-bet-modal-edge) * 2)));
     min-height: var(--balance-bet-modal-min-height);

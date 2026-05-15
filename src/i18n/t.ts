@@ -36,6 +36,7 @@ const en: PhraseMap = {
   'token':                           'token',
 
   // ── overlays ────────────────────────────────────────────────────────────────
+  'claim':                           'Claim',
   'press anywhere to close':         'Press anywhere to close',
   'press anywhere to continue':      'Press anywhere to continue',
   'loss':                            'loss',
@@ -158,6 +159,7 @@ const es: PhraseMap = {
   'token':                           'ficha',
 
   // ── overlays ────────────────────────────────────────────────────────────────
+  'claim':                           'Reclamar',
   'press anywhere to close':         'Toca en cualquier lugar para cerrar',
   'press anywhere to continue':      'Toca en cualquier lugar para continuar',
   'loss':                            'pérdida',
@@ -280,6 +282,7 @@ const de: PhraseMap = {
   'token':                           'Token',
 
   // ── overlays ────────────────────────────────────────────────────────────────
+  'claim':                           'Einfordern',
   'press anywhere to close':         'Tippe irgendwo, um zu schließen',
   'press anywhere to continue':      'Tippe irgendwo, um fortzufahren',
   'loss':                            'verlust',
@@ -402,6 +405,7 @@ const ru: PhraseMap = {
   'token':                           'жетон',
 
   // ── overlays ────────────────────────────────────────────────────────────────
+  'claim':                           'Забрать',
   'press anywhere to close':         'Нажмите в любое место, чтобы закрыть',
   'press anywhere to continue':      'Нажмите в любое место, чтобы продолжить',
   'loss':                            'проигрыш',
@@ -524,6 +528,7 @@ const tr: PhraseMap = {
   'token':                           'jeton',
 
   // ── overlays ────────────────────────────────────────────────────────────────
+  'claim':                           'Al',
   'press anywhere to close':         'Kapatmak için herhangi bir yere dokunun',
   'press anywhere to continue':      'Devam etmek için herhangi bir yere dokunun',
   'loss':                            'kayıp',

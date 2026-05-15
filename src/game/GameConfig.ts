@@ -302,6 +302,8 @@ export const GameConfig = {
   performance: {
     /** Главный экран (idle): верхний предел FPS тикера (0 = без лимита). */
     idleMenuMaxFps: 24,
+    /** Геймплей и все фазы кроме idle: потолок FPS. 60 = стабильно на 120Hz Mac, без двойной нагрузки. */
+    gameplayMaxFps: 60,
     /** Остановка `app.ticker` при `document.visibilityState === 'hidden'`. */
     pauseTickerWhenPageHidden: true,
     /**
@@ -326,7 +328,7 @@ export const GameConfig = {
      * WebGL multisampling (antialias). На встроенных GPU (MacBook Air, старые Intel) даёт заметную цену кадра;
      * на дискретных Windows часто почти бесплатно — при необходимости поставьте true.
      */
-    webglAntialias: true,
+    webglAntialias: false,
   },
 
   // ─── Коллизии ────────────────────────────────────────────────────────────────

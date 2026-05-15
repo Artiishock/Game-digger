@@ -3960,21 +3960,26 @@ export class GameRenderer {
     document.addEventListener('visibilitychange', this._onPageVisibility)
   }
 
-  /** Лимит FPS в главном меню; в фоновой вкладке тикер уже остановлен обработчиком visibility. */
+  /** Лимит FPS: idle-меню → idleMenuMaxFps, геймплей → gameplayMaxFps (60). Снижает нагрузку на 120Hz Mac вдвое. */
   private _syncTickerPowerSave(): void {
     if (!this.app) return
     const cfg = GameConfig.performance
     if (cfg.pauseTickerWhenPageHidden && typeof document !== 'undefined' && document.visibilityState === 'hidden') {
       return
     }
-    const cap = cfg.idleMenuMaxFps ?? 0
+    const idleCap = cfg.idleMenuMaxFps ?? 0
+    const gameplayCap = cfg.gameplayMaxFps ?? 60
     const idleMenuOnly =
       this.idleActive &&
       !this.running &&
       !this._awaitingStartAnim &&
       !this._lavaDeathCinematic &&
       !this._lavaLossIdleGlideActive
-    this.app.ticker.maxFPS = idleMenuOnly && cap > 0 ? cap : 0
+    if (idleMenuOnly && idleCap > 0) {
+      this.app.ticker.maxFPS = idleCap
+    } else {
+      this.app.ticker.maxFPS = gameplayCap > 0 ? gameplayCap : 0
+    }
   }
 
   resize(w:number,h:number){

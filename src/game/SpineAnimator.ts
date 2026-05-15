@@ -1820,6 +1820,10 @@ export class SpineAnimator {
   private static _instanceNullSlots: Map<Spine, any[]> = new Map();
   private static _coinDebugFrame = 0;
 
+  /** Накопленное время для троттлинга tick() до 30fps: экономит CPU на матрицах костей. */
+  private static _spineAccumDt = 0
+  private static readonly _SPINE_INTERVAL = 1 / 30
+
   // Кеш ссылок на кости/слоты для _applyCoinConstraint — строится один раз при первом вызове
   private static _coinCache: Map<Spine, {
     ctrl: any; frontScale: any; backScale: any
@@ -2124,8 +2128,13 @@ export class SpineAnimator {
     this._coinCache.delete(inst);
   }
 
-  /** Тикать все инстансы. Вызывать каждый кадр, dt в секундах. */
+  /** Тикать все инстансы. Вызывать каждый кадр, dt в секундах. Апдейт скелетов — не чаще 30fps. */
   static tick(dt: number): void {
+    this._spineAccumDt += dt
+    if (this._spineAccumDt < this._SPINE_INTERVAL) return
+    const spineDt = this._spineAccumDt
+    this._spineAccumDt = 0
+
     const arr = this._instances;
     let i = arr.length;
     while (i-- > 0) {
@@ -2138,7 +2147,7 @@ export class SpineAnimator {
       }
       if ((inst as any).sleeping) continue;
       try {
-        inst.update(dt);
+        inst.update(spineDt);
 
         // Принудительно обнуляем слоты чужих объектов которые Spine восстанавливает при loop
         const nullSlots = this._instanceNullSlots.get(inst);
