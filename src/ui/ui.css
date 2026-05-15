@@ -2406,6 +2406,14 @@
   left: 50%;
   transform: translateX(-50%);
   z-index: 2;
+  height: calc(var(--btn-w) * 105 / 267);
+  transition: height 0.08s ease;
+  display: flex;
+  align-items: flex-start;
+}
+
+.ui-result-claim-wrap:has(.ui-result-claim-btn:active) {
+  height: calc(var(--btn-w) * 94 / 267);
 }
 
 .ui-result-claim-btn {
@@ -2413,7 +2421,7 @@
   width: var(--btn-w);
   height: calc(var(--btn-w) * 105 / 267);
   background: #9C3E0A;
-  border: 3px solid #5E1205;
+  box-shadow: 0 0 0 3px #5E1205;
   border-radius: calc(var(--btn-w) * 18 / 267);
   cursor: pointer;
   padding: 0 0 calc(var(--btn-w) * 15 / 267) 0;
@@ -2425,6 +2433,7 @@
 
   animation: uiWinCelebratePop 0.5s cubic-bezier(0.2, 0.85, 0.25, 1) 0.4s both;
   transform-origin: center bottom;
+  transition: filter 0.15s ease, box-shadow 0.15s ease, height 0.08s ease;
 }
 
 /* Button_inner — gradient face, leaves dark base at bottom */
@@ -2436,8 +2445,8 @@
   right: 0;
   height: calc(100% - var(--btn-w) * 15 / 267);
   background: linear-gradient(180deg, #FFE713 0%, #E18A08 100%);
-  border-radius: calc(var(--btn-w) * 15 / 267);
-  transition: top 0.08s ease;
+  border-radius: calc(var(--btn-w) * 18 / 267);
+  transition: top 0.08s ease, height 0.08s ease;
 }
 
 /* Background — inner glare on face */
@@ -2451,7 +2460,7 @@
   border-radius: calc(var(--btn-w) * 18 / 267);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0) 100%);
   pointer-events: none;
-  transition: top 0.08s ease;
+  transition: top 0.02s ease;
 }
 
 /* Name */
@@ -2472,6 +2481,7 @@
   text-transform: uppercase;
   color: #9C3E0A;
   text-shadow: 0 calc(var(--btn-w) * 1.5 / 267) 0 #FFEE16;
+  transition: transform 0.08s ease, color 0.08s ease, text-shadow 0.08s ease;
 }
 
 .ui-result-claim-btn span::before {
@@ -2492,12 +2502,28 @@
   pointer-events: none;
 }
 
-.ui-result-claim-btn:active::before {
-  top: calc(var(--btn-w) * 8 / 267);
+.ui-result-claim-btn:hover {
+  filter: brightness(1.12);
 }
 
-.ui-result-claim-btn:active::after {
-  top: calc(var(--btn-w) * 17 / 267);
+.ui-result-claim-btn:hover::before {
+  background: linear-gradient(180deg, #FFF040 0%, #F09B10 100%);
+}
+
+.ui-result-claim-btn:active {
+  filter: brightness(0.88);
+  box-shadow: 0 0 0 3px #3D0A03;
+  background: #7A2E06;
+  height: calc(var(--btn-w) * 94 / 267);
+}
+
+.ui-result-claim-btn:active::before {
+  height: calc(var(--btn-w) * 90 / 267);
+  background: linear-gradient(180deg, #E18A08 0%, #AF580A 100%);
+}
+
+.ui-result-claim-btn:active span::before {
+  background: linear-gradient(142.97deg, #E6980A 38.09%, #E18A08 59.71%);
 }
 
 /* Не начинать с scale(0): у детей getBoundingClientRect() ≈ 0 → Pixi инициализируется 1×1 и клип не виден. */
