@@ -1965,7 +1965,16 @@
   cursor: pointer;
 
   transform: translateY(-50%);
+  transition: transform 0.1s ease;
   z-index: 4;
+}
+
+.rules-arrow:hover {
+  transform: translateY(-50%) scale(1.1);
+}
+
+.rules-arrow:active {
+  transform: translateY(-50%) scale(0.9);
 }
 
 .rules-arrow--left {
@@ -1976,9 +1985,7 @@
   left: calc(50% + var(--arrow-center-offset) - var(--arrow-size) / 2);
 }
 
-.rules-arrow img,
-.rules-inline-svg,
-.rules-inline-svg svg {
+.rules-arrow img {
   width: 100%;
   height: 100%;
   display: block;
@@ -2035,7 +2042,7 @@
 
   transform: translateX(-50%);
   transform-origin: center bottom;
-  transition: filter 0.15s ease, box-shadow 0.15s ease, height 0.08s ease;
+  transition: box-shadow 0.15s ease, height 0.08s ease;
 }
 
 .rules-start-btn::before {
@@ -2047,7 +2054,7 @@
   height: calc(100% - var(--btn-w) * 15 / 267);
   background: linear-gradient(180deg, #FFE713 0%, #E18A08 100%);
   border-radius: calc(var(--btn-w) * 18 / 267);
-  transition: top 0.08s ease, height 0.08s ease;
+  transition: top 0.08s ease, height 0.08s ease, background 0.15s ease;
 }
 
 .rules-start-btn::after {
@@ -2101,16 +2108,11 @@
   pointer-events: none;
 }
 
-.rules-start-btn:hover {
-  filter: brightness(1.12);
-}
-
 .rules-start-btn:hover::before {
   background: linear-gradient(180deg, #FFF040 0%, #F09B10 100%);
 }
 
 .rules-start-btn:active {
-  filter: brightness(0.88);
   box-shadow: 0 0 0 3px #3D0A03;
   background: #7A2E06;
   height: calc(var(--btn-w) * 94 / 267);
