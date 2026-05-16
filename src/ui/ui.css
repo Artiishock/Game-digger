@@ -2606,8 +2606,12 @@
   position: relative;
   width: var(--btn-w);
   height: calc(var(--btn-w) * 105 / 267);
+  border: 0;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
   background: #9C3E0A;
-  box-shadow: 0 0 0 3px #5E1205;
+  box-shadow: none;
   border-radius: calc(var(--btn-w) * 18 / 267);
   cursor: pointer;
   padding: 0 0 calc(var(--btn-w) * 15 / 267) 0;
@@ -2698,7 +2702,7 @@
 
 .ui-result-claim-btn:active {
   filter: brightness(0.88);
-  box-shadow: 0 0 0 3px #3D0A03;
+  box-shadow: none;
   background: #7A2E06;
   height: calc(var(--btn-w) * 94 / 267);
 }
