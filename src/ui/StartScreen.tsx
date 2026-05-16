@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { t } from "../i18n/t";
 import { resolvePublicUrl } from "../utils/publicUrl";
 
@@ -6,6 +6,7 @@ interface StartScreenProps {
   width: number;
   height: number;
   onStart: () => void;
+  onReady?: () => void;
 }
 
 const slides = [
@@ -14,11 +15,23 @@ const slides = [
   { image: resolvePublicUrl("rules/places.png"),      alt: "Places",      titleKey: "get to safe place" },
 ];
 
+const criticalImageUrls = [
+  resolvePublicUrl("rules/background.png"),
+  resolvePublicUrl("rules/logo_magnetic.svg"),
+  resolvePublicUrl("rules/banner.svg"),
+  resolvePublicUrl("rules/button_left.svg"),
+  resolvePublicUrl("rules/button_right.svg"),
+  resolvePublicUrl("rules/point.svg"),
+  resolvePublicUrl("rules/point_active.svg"),
+  ...slides.map((slide) => slide.image),
+] as const;
+
 interface RulesArrowButtonProps {
   className: string;
   ariaLabel: string;
   src: string;
   onActivate: () => void;
+  onReady: () => void;
 }
 
 const RulesArrowButton: React.FC<RulesArrowButtonProps> = ({
@@ -26,14 +39,33 @@ const RulesArrowButton: React.FC<RulesArrowButtonProps> = ({
   ariaLabel,
   src,
   onActivate,
+  onReady,
 }) => {
+  const readySentRef = useRef(false);
+
+  const markReady = useCallback(() => {
+    if (readySentRef.current) return;
+    readySentRef.current = true;
+    onReady();
+  }, [onReady]);
+
+  useEffect(() => {
+    const fallbackId = window.setTimeout(markReady, 800);
+    return () => {
+      window.clearTimeout(fallbackId);
+    };
+  }, [markReady]);
+
   const handleObjectLoad = useCallback(
     (event: React.SyntheticEvent<HTMLObjectElement>) => {
       const objectElement = event.currentTarget;
       const svgDocument = objectElement.contentDocument;
       const svgElement = svgDocument?.documentElement;
 
-      if (!svgElement) return;
+      if (!svgElement) {
+        markReady();
+        return;
+      }
 
       svgElement.setAttribute("role", "button");
       svgElement.setAttribute("aria-label", ariaLabel);
@@ -50,8 +82,9 @@ const RulesArrowButton: React.FC<RulesArrowButtonProps> = ({
         () => svgElement.removeEventListener("click", handleClick),
         { once: true }
       );
+      markReady();
     },
-    [ariaLabel, onActivate]
+    [ariaLabel, markReady, onActivate]
   );
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLObjectElement>) => {
@@ -75,10 +108,63 @@ const RulesArrowButton: React.FC<RulesArrowButtonProps> = ({
   );
 };
 
-export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart }) => {
+export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart, onReady }) => {
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
   const [bannerSrc, setBannerSrc] = useState(resolvePublicUrl("rules/banner.svg"));
-  const [slideAnimation, setSlideAnimation] = useState<"left" | "right">("right");
+  const [slideAnimation, setSlideAnimation] = useState<"left" | "right" | null>(null);
+  const [loadedArrowObjects, setLoadedArrowObjects] = useState(0);
+  const backgroundImage = `url("${resolvePublicUrl("rules/background.png")}")`;
+
+  const handleArrowReady = useCallback(() => {
+    setLoadedArrowObjects((current) => Math.min(2, current + 1));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let firstRafId = 0;
+    let secondRafId = 0;
+
+    const decodeImage = (url: string) =>
+      new Promise<void>((resolve) => {
+        const image = new Image();
+        image.decoding = "async";
+        image.onload = () => {
+          if (!image.decode) {
+            resolve();
+            return;
+          }
+
+          void image.decode().then(
+            () => resolve(),
+            () => resolve()
+          );
+        };
+        image.onerror = () => resolve();
+        image.src = url;
+      });
+
+    void (async () => {
+      await Promise.all(criticalImageUrls.map(decodeImage));
+      await Promise.race([
+        document.fonts?.ready ?? Promise.resolve(),
+        new Promise((resolve) => window.setTimeout(resolve, 350)),
+      ]);
+      if (loadedArrowObjects < 2) return;
+      if (cancelled) return;
+
+      firstRafId = window.requestAnimationFrame(() => {
+        secondRafId = window.requestAnimationFrame(() => {
+          if (!cancelled) onReady?.();
+        });
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(firstRafId);
+      window.cancelAnimationFrame(secondRafId);
+    };
+  }, [loadedArrowObjects, onReady]);
 
   const goToPreviousSlide = () => {
     setSlideAnimation("left");
@@ -97,14 +183,22 @@ export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart
   const isPlacesSlide = activeSlideIndex === 2;
 
   return (
-    <div className="rules-start-screen" style={{ width, height }}>
-      <img className="rules-logo" src={resolvePublicUrl("rules/logo_magnetic.svg")} alt="Magnetic" />
+    <div className="rules-start-screen" style={{ width, height, backgroundImage }}>
+      <img
+        className="rules-logo"
+        src={resolvePublicUrl("rules/logo_magnetic.svg")}
+        alt="Magnetic"
+        loading="eager"
+        decoding="sync"
+      />
 
       <div className="rules-content">
         <img
           className="rules-banner"
           src={bannerSrc}
           alt="Deep Rush"
+          loading="eager"
+          decoding="sync"
           onError={() => setBannerSrc(resolvePublicUrl("rules/logo_magnetic.svg"))}
         />
 
@@ -113,13 +207,14 @@ export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart
             <div
               className={`rules-slide-main ${
                 isPlacesSlide ? "rules-slide-main--places" : ""
-              } rules-slide-main--${slideAnimation}`}
+              } ${slideAnimation ? `rules-slide-main--${slideAnimation}` : ""}`}
             >
               <RulesArrowButton
                 className="rules-arrow--left"
                 ariaLabel="Previous slide"
                 src={resolvePublicUrl("rules/button_left.svg")}
                 onActivate={goToPreviousSlide}
+                onReady={handleArrowReady}
               />
 
               <div className="rules-image-slot">
@@ -132,6 +227,8 @@ export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart
                     src={slide.image}
                     alt={index === activeSlideIndex ? slide.alt : ""}
                     aria-hidden={index === activeSlideIndex ? undefined : true}
+                    loading="eager"
+                    decoding={index === activeSlideIndex ? "sync" : "async"}
                     draggable={false}
                   />
                 ))}
@@ -148,6 +245,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart
                 ariaLabel="Next slide"
                 src={resolvePublicUrl("rules/button_right.svg")}
                 onActivate={goToNextSlide}
+                onReady={handleArrowReady}
               />
             </div>
 
@@ -172,6 +270,8 @@ export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart
                         : resolvePublicUrl("rules/point.svg")
                     }
                     alt=""
+                    loading="eager"
+                    decoding="sync"
                   />
                 </button>
               ))}

@@ -1,6 +1,7 @@
 import * as PIXI from 'pixi.js'
 import { Assets } from 'pixi.js'
 import { SpineAnimator } from './SpineAnimator'
+import { resolvePublicUrl } from '../utils/publicUrl'
 
 /**
  * Пути к PNG в public/assets (Vite отдаёт как /assets/...).
@@ -33,7 +34,45 @@ export const GameAssets = {
   home: './assets/home.png',
 } as const
 
+const StartScreenAssets = [
+  'rules/background.png',
+  'rules/banner.svg',
+  'rules/logo_magnetic.svg',
+  'rules/multipliers.png',
+  'rules/treats.png',
+  'rules/places.png',
+  'rules/button_left.svg',
+  'rules/button_right.svg',
+  'rules/point.svg',
+  'rules/point_active.svg',
+] as const
+
 let _startupPreloadPromise: Promise<void> | null = null
+
+function preloadDomImage(url: string): Promise<void> {
+  if (typeof Image === 'undefined') return Promise.resolve()
+
+  return new Promise((resolve) => {
+    const image = new Image()
+    image.decoding = 'async'
+    image.onload = () => {
+      if (!image.decode) {
+        resolve()
+        return
+      }
+
+      void image.decode().then(
+        () => resolve(),
+        () => resolve(),
+      )
+    }
+    image.onerror = () => {
+      console.warn(`[preload] failed dom image: ${url}`)
+      resolve()
+    }
+    image.src = url
+  })
+}
 
 /**
  * Предзагрузка ассетов перед показом игры.
@@ -50,8 +89,11 @@ export function preloadStartupAssets(): Promise<void> {
         console.warn(`[preload] failed texture: ${url}`)
       }
     })
+    const startScreenLoads = StartScreenAssets.map((url) => preloadDomImage(resolvePublicUrl(url)))
+
     await Promise.all([
       ...textureLoads,
+      ...startScreenLoads,
       SpineAnimator.load(),
       SpineAnimator.loadHero(),
       SpineAnimator.loadGoldStone(),

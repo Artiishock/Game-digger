@@ -3,16 +3,25 @@ import { GameRenderer } from './GameRenderer'
 import { gameEngine } from './GameEngine'
 import { useGameStore } from '../store/gameStore'
 
-interface Props { width: number; height: number }
+interface Props {
+  width: number;
+  height: number;
+  onReady?: () => void;
+}
 
-export const GameCanvas: React.FC<Props> = ({ width, height }) => {
+export const GameCanvas: React.FC<Props> = ({ width, height, onReady }) => {
   const canvasRef   = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<GameRenderer | null>(null)
   const startRafRef = useRef<number | null>(null)
+  const onReadyRef  = useRef(onReady)
 
   const phase  = useGameStore(s => s.phase)
   const events = useGameStore(s => s.events)
   const speed  = useGameStore(s => s.speed)
+
+  useEffect(() => {
+    onReadyRef.current = onReady
+  }, [onReady])
 
   // Mount / unmount
   // rAF delay: lets browser paint the canvas and attach a fresh WebGL context
@@ -23,17 +32,23 @@ export const GameCanvas: React.FC<Props> = ({ width, height }) => {
     if (!canvas) return
 
     let renderer: GameRenderer | null = null
+    let destroyed = false
     const rafId = requestAnimationFrame(() => {
       if (!canvasRef.current) return
       renderer = new GameRenderer(canvas, width, height)
       rendererRef.current = renderer
       gameEngine.setRendererInstantFinish(async () => renderer!.activateTurbo())
-      renderer.ready.catch(err => {
-        console.error('[GameCanvas] renderer init failed:', err)
-      })
+      renderer.ready
+        .then(() => {
+          if (!destroyed) onReadyRef.current?.()
+        })
+        .catch(err => {
+          console.error('[GameCanvas] renderer init failed:', err)
+        })
     })
 
     return () => {
+      destroyed = true
       cancelAnimationFrame(rafId)
       if (startRafRef.current !== null) {
         cancelAnimationFrame(startRafRef.current)

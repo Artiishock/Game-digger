@@ -1756,7 +1756,10 @@
 .rules-start-screen {
   position: relative;
   overflow: hidden;
-  background: #1a0e08 url("../rules/background.png") center / cover no-repeat;
+  background-color: #1a0e08;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
   font-family: Inter, sans-serif;
 }
 
@@ -1954,6 +1957,13 @@
 
 .rules-arrow:active {
   transform: translateY(-50%);
+}
+
+.rules-arrow img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
 }
 
 .rules-arrow--left {

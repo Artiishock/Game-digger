@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { GameCanvas } from "./game/GameCanvas";
 import { Hud } from "./ui/hud/Hud";
 import { DigButton } from "./ui/controls/DigButton";
@@ -33,8 +33,58 @@ export const App: React.FC = () => {
   const prevPhase = useRef<string>('')
   const [assetsReady, setAssetsReady] = useState(false)
   const [gameStarted, setGameStarted] = useState(() => isReplayMode())
+  const [gameCanvasReady, setGameCanvasReady] = useState(() => isReplayMode())
+  const [startScreenReady, setStartScreenReady] = useState(() => isReplayMode())
+  const [startTransitionRequested, setStartTransitionRequested] = useState(false)
   const [startDismissing, setStartDismissing] = useState(false)
   const [startScreenGone, setStartScreenGone] = useState(() => isReplayMode())
+  const gameSurfaceMounted = assetsReady && phase !== "BOOT"
+  const showBootOverlay = !assetsReady || phase === "BOOT" || (!startScreenGone && !startScreenReady)
+  const handleGameCanvasReady = useCallback(() => setGameCanvasReady(true), [])
+  const handleStartScreenReady = useCallback(() => setStartScreenReady(true), [])
+
+  useEffect(() => {
+    if (!startTransitionRequested || startDismissing) return;
+    if (!gameCanvasReady) return;
+
+    let firstRafId = 0;
+    let secondRafId = 0;
+
+    firstRafId = window.requestAnimationFrame(() => {
+      secondRafId = window.requestAnimationFrame(() => {
+        setStartDismissing(true);
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(firstRafId);
+      window.cancelAnimationFrame(secondRafId);
+    };
+  }, [startTransitionRequested, gameCanvasReady, startDismissing]);
+
+  useEffect(() => {
+    if (!startTransitionRequested || startDismissing || startScreenGone || gameCanvasReady) return;
+
+    const fallbackId = window.setTimeout(() => {
+      setStartDismissing(true);
+    }, 120);
+
+    return () => {
+      window.clearTimeout(fallbackId);
+    };
+  }, [startTransitionRequested, startDismissing, startScreenGone, gameCanvasReady]);
+
+  useEffect(() => {
+    if (!startDismissing || startScreenGone) return;
+
+    const fallbackId = window.setTimeout(() => {
+      setStartScreenGone(true);
+    }, 700);
+
+    return () => {
+      window.clearTimeout(fallbackId);
+    };
+  }, [startDismissing, startScreenGone]);
 
   // ── Boot ─────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -126,7 +176,7 @@ ${d.toLocaleTimeString("en-GB", {
   }, [phase]);
 
   if (phase === "ERROR") return <ErrorScreen />;
-  if (!assetsReady || phase === "BOOT") {
+  if (!assetsReady) {
     return (
       <div
         style={{
@@ -157,22 +207,55 @@ ${d.toLocaleTimeString("en-GB", {
         fontFamily: "'Barlow', sans-serif",
       }}
     >
-      {/* ── PixiJS canvas ── */}
-      {gameStarted && <GameCanvas width={width} height={height} />}
+      {gameSurfaceMounted && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            opacity: startScreenGone || startDismissing ? 1 : 0,
+            transition: startDismissing ? "opacity 0.6s ease" : "none",
+            pointerEvents: startScreenGone || startDismissing ? "auto" : "none",
+          }}
+        >
+          {/* ── PixiJS canvas ── */}
+          <GameCanvas
+            width={width}
+            height={height}
+            onReady={handleGameCanvasReady}
+          />
 
-      {/* ── HUD (bottom bar) ── */}
-      {gameStarted && <Hud />}
+          {/* ── HUD (bottom bar) ── */}
+          {gameStarted && <Hud />}
 
-      {/* ── DIG button + Autoplay button ── */}
-      {gameStarted && !isReplayMode() && <DigButton />}
+          {/* ── DIG button + Autoplay button ── */}
+          {gameStarted && !isReplayMode() && <DigButton />}
 
-      {/* ── Top-right controls ── */}
-      {gameStarted && <TopBar />}
+          {/* ── Top-right controls ── */}
+          {gameStarted && <TopBar />}
 
-      {/* ── Overlays ── */}
-      {gameStarted && <ResultOverlay />}
-      {gameStarted && <AutoplayModal />}
-      {gameStarted && <BurgerMenu />}
+          {/* ── Overlays ── */}
+          {gameStarted && <ResultOverlay />}
+          {gameStarted && <AutoplayModal />}
+          {gameStarted && <BurgerMenu />}
+        </div>
+      )}
+
+      {showBootOverlay && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 30,
+            background: "#1A0E08",
+            fontFamily: "'Barlow', sans-serif",
+          }}
+        >
+          <div className="ui-boot">
+            <div className="ui-boot-spinner" />
+            <div className="ui-boot-title">DEEP RUSH</div>
+          </div>
+        </div>
+      )}
 
       {/* ── Rules/Start overlay: фейдится поверх канваса, пока Pixi прогревается ── */}
       {!startScreenGone && (
@@ -185,15 +268,19 @@ ${d.toLocaleTimeString("en-GB", {
             transition: startDismissing ? "opacity 0.6s ease" : "none",
             pointerEvents: startDismissing ? "none" : "auto",
           }}
-          onTransitionEnd={() => setStartScreenGone(true)}
+          onTransitionEnd={(event) => {
+            if (event.currentTarget !== event.target || event.propertyName !== "opacity") return;
+            setStartScreenGone(true);
+          }}
         >
           <StartScreen
             width={width}
             height={height}
+            onReady={handleStartScreenReady}
             onStart={() => {
               gameAudio.unlock();
               setGameStarted(true);
-              setStartDismissing(true);
+              setStartTransitionRequested(true);
             }}
           />
         </div>
