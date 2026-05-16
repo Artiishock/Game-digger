@@ -1137,9 +1137,8 @@ class ObjectSpawner {
   private _attachMarker(obj: SpawnedObj): void {
     const m = new PIXI.Graphics()
     m.x = obj.worldX; m.y = obj.worldY
-    m.lineStyle(3, 0xFFD700, 1)
     const r = Math.max(obj.width, obj.height) * 0.55 + 10
-    m.drawCircle(0, 0, r)
+    m.circle(0, 0, r).stroke({ width: 3, color: 0xFFD700, alpha: 1 })
     this.layer.addChild(m)
     obj.roadMarker = m
   }
@@ -1167,7 +1166,7 @@ class ObjectSpawner {
     const dist = Math.hypot(dx, dy)
     const angle = dist > 0 ? Math.atan2(dy, dx) : 0
     const tier = cfg.tiers[`${obj.type}:${value}`] ?? cfg.fallback
-    const label = new PIXI.Text(`${prefix}${value}`, {
+    const label = new PIXI.Text({ text: `${prefix}${value}`, style: {
       fontFamily:  cfg.fontFamily,
       fontSize:    tier.fontSize,
       fontWeight:  cfg.fontWeight as PIXI.TextStyleFontWeight,
@@ -1175,7 +1174,7 @@ class ObjectSpawner {
       stroke:      { color: cfg.strokeColor, width: cfg.strokeThickness },
       align:       'center',
       dropShadow:  sh.enabled ? { color: sh.color, angle, distance: dist, blur: sh.blur, alpha: sh.alpha } : undefined,
-    })
+    }})
     label.anchor.set(0.5, 0.5)
     label.rotation = (cfg.rotationDeg * Math.PI) / 180
     label.x = obj.worldX + size * cfg.offsetXFactor
@@ -1262,22 +1261,22 @@ export class GameRenderer {
   private minerLayer:   PIXI.Container = new PIXI.Container()
   private miner: SpriteCharacter
   private liveWinBadge: PIXI.Container = new PIXI.Container()
-  private liveWinTitleText: PIXI.Text = new PIXI.Text('MULTIPLIER', {
+  private liveWinTitleText: PIXI.Text = new PIXI.Text({ text: 'MULTIPLIER', style: {
     fontFamily: 'Arial Black, Arial, sans-serif',
     fontSize: 14,
     fontWeight: '800',
     fill: 0xFFFFFF,
     stroke: { color: 0x000000, width: 2 },
     align: 'center',
-  })
-  private liveWinAmountText: PIXI.Text = new PIXI.Text('', {
+  }})
+  private liveWinAmountText: PIXI.Text = new PIXI.Text({ text: '', style: {
     fontFamily: 'Arial Black, Arial, sans-serif',
     fontSize: 25,
     fontWeight: '900',
     fill: 0xFACB32,
     stroke: { color: 0x000000, width: 2 },
     align: 'center',
-  })
+  }})
   private liveWinAmountCached = ''
   private _liveWinBadgeFading = false
   private _liveWinBadgeFadeT = 1
@@ -1290,6 +1289,7 @@ export class GameRenderer {
   private _lastWorldMaskW = 0
   private _particleTexture: PIXI.Texture = PIXI.Texture.EMPTY
   private _forestSprite: PIXI.TilingSprite | null = null
+  private _forestMask: PIXI.Graphics | null = null
   private _prevScrollCamX = NaN
   private _prevScrollCamY = NaN
   private _lastSentDepth = -1
@@ -1474,14 +1474,14 @@ export class GameRenderer {
     this.worldChunkLayer = new PIXI.Container()
     this.objectsLayer= new PIXI.Container()
 
-    this.worldBgLayer.name = 'worldBgLayer'
-    this.skyLayer.name = 'skyLayer'
-    this._skyCloudLayer.name = 'skyCloudLayer'
-    this._sceneryLayer.name = 'sceneryLayer'
-    this.worldChunkLayer.name = 'worldChunkLayer'
-    this.objectsLayer.name = 'objectsLayer'
-    this.minerLayer.name = 'minerLayer'
-    this._worldMask.name = 'worldMask'
+    this.worldBgLayer.label = 'worldBgLayer'
+    this.skyLayer.label = 'skyLayer'
+    this._skyCloudLayer.label = 'skyCloudLayer'
+    this._sceneryLayer.label = 'sceneryLayer'
+    this.worldChunkLayer.label = 'worldChunkLayer'
+    this.objectsLayer.label = 'objectsLayer'
+    this.minerLayer.label = 'minerLayer'
+    this._worldMask.label = 'worldMask'
 
     // app.stage — class field в v8, доступен до init()
     this.app.stage.addChild(
@@ -1493,7 +1493,7 @@ export class GameRenderer {
     )
 
     this._worldMask = new PIXI.Graphics()
-    this._worldMask.name = 'worldMask'
+    this._worldMask.label = 'worldMask'
     // addChild и mask= переносим в .then() — до init() AlphaMaskPipe не инициализирован
     this._updateWorldMask(w, h)
 
@@ -1727,18 +1727,18 @@ export class GameRenderer {
     if (bgTex) {
       const bgH = this.H * 0.70
       const sc = bgH / bgTex.height
-      const spr = new PIXI.TilingSprite(bgTex, this.W, bgH)
+      const spr = new PIXI.TilingSprite({ texture: bgTex, width: this.W, height: bgH })
       spr.tileScale.set(sc, sc)
       spr.tilePosition.set(0, 0)
       spr.roundPixels = true
       spr.y = 0
-      spr.name = 'bgSprite'
+      spr.label = 'bgSprite'
       this.skyLayer.addChild(spr)
     } else {
       const s1=new PIXI.Graphics()
-      s1.beginFill(C.skyDeep);s1.drawRect(0,0,this.W,this.H*0.50);s1.endFill()
+      s1.rect(0,0,this.W,this.H*0.50).fill(C.skyDeep)
       const s2=new PIXI.Graphics()
-      s2.beginFill(C.sky);s2.drawRect(0,this.H*0.20,this.W,this.H*0.35);s2.endFill()
+      s2.rect(0,this.H*0.20,this.W,this.H*0.35).fill(C.sky)
       this.skyLayer.addChild(s1,s2)
     }
 
@@ -1751,7 +1751,7 @@ export class GameRenderer {
       const ct = this._textures.get(cloudKeys[i % 6]!)
       if (!ct) continue
       const c = new PIXI.Sprite(ct)
-      c.name = `cloud${i + 1}`
+      c.label = `cloud${i + 1}`
       c.anchor.set(0.5, 0.5)
       const scl = CLOUD_SCALE_BASE * (0.75 + Math.random() * 0.45)
       c.scale.set(scl)
@@ -1767,7 +1767,7 @@ export class GameRenderer {
     const rockTex = this._textures.get('rock')
     if (rockTex) {
       const rock = new PIXI.Sprite(rockTex)
-      rock.name = 'rockSprite'
+      rock.label = 'rockSprite'
       rock.anchor.set(0.5, 1)
       const rh = this.H * 0.5
       rock.scale.set(rh / rockTex.height)
@@ -1781,7 +1781,7 @@ export class GameRenderer {
     // Не трогаем TilingSprite «forest» — пересоздание даёт кадр без текстуры / мигание.
     for (let i = this._sceneryLayer.children.length - 1; i >= 0; i--) {
       const ch = this._sceneryLayer.children[i]!
-      if (ch.name === 'forest') continue
+      if (ch.label === 'forest') continue
       this._sceneryLayer.removeChildAt(i)
       ch.destroy({ children: true })
     }
@@ -1793,28 +1793,23 @@ export class GameRenderer {
       const pad = 4
       let forest = this._forestSprite
       if (!forest) {
-        forest = new PIXI.TilingSprite(forestTex, this.W, forestH + pad)
-        forest.name = 'forest'
+        forest = new PIXI.TilingSprite({ texture: forestTex, width: this.W, height: forestH + pad })
+        forest.label = 'forest'
         const forestMask = new PIXI.Graphics()
-        forestMask.name = 'forestMask'
-        forestMask.beginFill(0xffffff)
-        forestMask.drawRect(0, pad, this.W, forestH)
-        forestMask.endFill()
+        forestMask.rect(0, pad, this.W, forestH).fill(0xffffff)
         forest.addChild(forestMask)
         forest.mask = forestMask
         this._sceneryLayer.addChildAt(forest, 0)
         this._forestSprite = forest
+        this._forestMask = forestMask
       } else {
         forest.texture = forestTex
         forest.width = this.W
         forest.height = forestH + pad
         forest.tileScale.set(sc)
-        const forestMask = forest.getChildByName('forestMask') as PIXI.Graphics | null
-        if (forestMask) {
-          forestMask.clear()
-          forestMask.beginFill(0xffffff)
-          forestMask.drawRect(0, pad, this.W, forestH)
-          forestMask.endFill()
+        if (this._forestMask) {
+          this._forestMask.clear()
+          this._forestMask.rect(0, pad, this.W, forestH).fill(0xffffff)
         }
       }
       forest.tileScale.set(sc)
@@ -1828,6 +1823,7 @@ export class GameRenderer {
         this._sceneryLayer.removeChild(dead)
         dead.destroy({ children: true })
         this._forestSprite = null
+        this._forestMask = null
       }
     }
 
@@ -1847,7 +1843,7 @@ export class GameRenderer {
       const baseX = TREE_X_IDLE[i]!
       for (let k = -COPIES; k <= COPIES; k++) {
         const s = new PIXI.Sprite(tex)
-        if (k === 0) s.name = keys[i]
+        if (k === 0) s.label = keys[i]
         s.anchor.set(0.5, 1)
         s.x = baseX + (m0 + k) * tileW
         s.y = TREE_ANCHOR_WORLD_Y + TREE_Y_OFFSET[i]! - lift0
@@ -1860,7 +1856,7 @@ export class GameRenderer {
 
   /** Целочисленный сдвиг тайла неба — убирает вертикальный шов TilingSprite при параллаксе. */
   private _syncSkyBgParallax() {
-    const bg = this.skyLayer.getChildByName('bgSprite') as PIXI.TilingSprite | null
+    const bg = this.skyLayer.getChildByLabel('bgSprite') as PIXI.TilingSprite | null
     if (!bg) return
     bg.tilePosition.x = 0
     bg.tilePosition.y = 0
@@ -1880,7 +1876,7 @@ export class GameRenderer {
     const camDx = this._cloudPrevCamX === null ? 0 : (this.camX - this._cloudPrevCamX)
     this._cloudPrevCamX = this.camX
     const top = Math.max(0, Math.min(this.H, -this.camY))
-    const rock = this.skyLayer.getChildByName('rockSprite') as PIXI.Sprite | null
+    const rock = this.skyLayer.getChildByLabel('rockSprite') as PIXI.Sprite | null
     if (rock) {
       rock.x = this.W * 0.58
       rock.y = top - 6
@@ -1924,7 +1920,7 @@ export class GameRenderer {
     const tex = this._textures.get(cloudKeys[Math.floor(Math.random() * 6)]!)
     if (!tex) return
     const c = new PIXI.Sprite(tex) as PIXI.Sprite & { _drift: number; _topDy: number }
-    c.name = `cloud_dyn_${this._cloudCount}`
+    c.label = `cloud_dyn_${this._cloudCount}`
     c.anchor.set(0.5, 0.5)
     const scl = CLOUD_SCALE_BASE * (0.75 + Math.random() * 0.45)
     c.scale.set(scl)
@@ -2415,7 +2411,7 @@ export class GameRenderer {
       spr.x = 0; spr.y = 0
       gfx.addChild(spr)
     } else {
-      gfx.beginFill(0x27AE60).drawRect(-60, -60, 120, 120).endFill()
+      gfx.rect(-60, -60, 120, 120).fill(0x27AE60)
     }
   }
 
@@ -2441,7 +2437,7 @@ export class GameRenderer {
         return
       }
     }
-    gfx.beginFill(0xFFD700).drawCircle(0, 0, 10).endFill()
+    gfx.circle(0, 0, 10).fill(0xFFD700)
   }
 
   private _getPickupSize(type:EventType): {w:number, h:number} {
@@ -3814,11 +3810,11 @@ export class GameRenderer {
       txt.style.fill=color
       txt.alpha=1;txt.visible=true;txt.scale.set(1)
     }else{
-      txt=new PIXI.Text(label,{
+      txt=new PIXI.Text({ text: label, style: {
         fontFamily:'Arial,sans-serif',fontWeight:'900',fontSize:24,
         fill:color,stroke:{color:0x000000,width:3},
         dropShadow:{color:0x000000,blur:0,distance:2,angle:Math.PI/2,alpha:1},
-      })
+      }})
       txt.anchor.set(0.5,0.5)
     }
     txt.x=wx+(Math.random()-0.5)*40
@@ -4039,6 +4035,7 @@ export class GameRenderer {
     this.lavaSimulation?.setViewport(w, h)
     this.app.renderer.resize(w,h)
     this.skyLayer.removeChildren();this._buildSky()
+    this.skyLayer.addChild(this._sceneryLayer)
     this._updateWorldMask(w, h)
     this._buildTunnel()
     // forest / маска / idle-сетка деревьев завязаны на W,H — иначе после ресайза артефакты
