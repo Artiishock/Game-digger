@@ -8,6 +8,7 @@ import { AutoplayModal } from "./ui/modals/AutoplayModal";
 import { BurgerMenu } from "./ui/menus/BurgerMenu";
 import { ErrorScreen } from "./ui/modals/ErrorScreen";
 import { StartScreen } from "./ui/StartScreen";
+import { LogoSplashScreen } from "./ui/LogoSplashScreen";
 import { useGameStore } from "./store/gameStore";
 import { shallow } from "zustand/shallow";
 import { gameAudio } from "./audio/GameAudio";
@@ -31,6 +32,7 @@ export const App: React.FC = () => {
   const multiplier = useGameStore(s => s.stats.multiplier)
   const settings = useGameStore(s => s.settings, shallow)
   const prevPhase = useRef<string>('')
+  const [logoSplashDone, setLogoSplashDone] = useState(() => isReplayMode())
   const [assetsReady, setAssetsReady] = useState(false)
   const [gameStarted, setGameStarted] = useState(() => isReplayMode())
   const [gameCanvasReady, setGameCanvasReady] = useState(() => isReplayMode())
@@ -176,25 +178,6 @@ ${d.toLocaleTimeString("en-GB", {
   }, [phase]);
 
   if (phase === "ERROR") return <ErrorScreen />;
-  if (!assetsReady) {
-    return (
-      <div
-        style={{
-          position: "relative",
-          width,
-          height,
-          overflow: "hidden",
-          background: "#1A0E08",
-          fontFamily: "'Barlow', sans-serif",
-        }}
-      >
-        <div className="ui-boot">
-          <div className="ui-boot-spinner" />
-          <div className="ui-boot-title">DEEP RUSH</div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div
@@ -254,6 +237,24 @@ ${d.toLocaleTimeString("en-GB", {
             <div className="ui-boot-spinner" />
             <div className="ui-boot-title">DEEP RUSH</div>
           </div>
+        </div>
+      )}
+
+      {/* ── Logo splash: проигрывается самой первой, поверх всего ── */}
+      {!logoSplashDone && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 50,
+            background: "#000",
+          }}
+        >
+          <LogoSplashScreen
+            width={width}
+            height={height}
+            onComplete={() => setLogoSplashDone(true)}
+          />
         </div>
       )}
 

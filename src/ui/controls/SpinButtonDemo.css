@@ -1,0 +1,92 @@
+/* ══════════════════════════════════════════════════════════════
+   SpinButtonDemo — изолированный стенд кнопки Spin
+   ══════════════════════════════════════════════════════════════ */
+
+/* Центрирующая обёртка */
+.spin-demo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  /* Можно разместить как угодно — здесь на весь экран для удобства */
+  min-height: 100vh;
+  background: #0a1a2a; /* примерно как игровой фон */
+}
+
+/* ── Кнопка ─────────────────────────────────────────────────── */
+
+.spin-demo__btn {
+  width:  clamp(80px, 17.59vmin, 240px);
+  height: clamp(80px, 17.59vmin, 240px);
+
+  /* Фон: idle */
+  background-color: transparent;
+  background-image: url("../../ui/spin_bg.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+
+  border: none;
+  outline: none;
+  box-shadow: none;
+  padding: 0;
+  overflow: hidden;
+  position: relative;
+
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  opacity: 1;
+  transition: opacity 0.15s;
+}
+
+/* Фон: нажата (Stop) */
+.spin-demo__btn--active {
+  background-image: url("../../ui/spin_bg2.png");
+}
+
+/* Лёгкое затемнение при :active (палец/мышь зажаты) */
+.spin-demo__btn:active {
+  opacity: 0.82;
+}
+
+/* ── Иконка внутри кнопки ───────────────────────────────────── */
+
+.spin-demo__icon {
+  width:  clamp(67px, 14.72vmin, 200px);
+  height: clamp(67px, 14.72vmin, 200px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  pointer-events: none; /* события идут на кнопку, не на span */
+}
+
+/*
+  pointer-events: none на span НЕ нужен SVG — его hitArea/clickArea
+  сам управляет pointer-events внутри.
+  Убираем блокировку только для внутреннего SVG:
+*/
+.spin-demo__icon > svg {
+  width: 95%;
+  height: 95%;
+  display: block;
+  pointer-events: all; /* SVG-хитарии работают */
+}
+
+/* ── Подпись состояния ──────────────────────────────────────── */
+
+.spin-demo__label {
+  color: #9bb8cc;
+  font-family: Inter, sans-serif;
+  font-size: 13px;
+  margin: 0;
+  letter-spacing: 0.04em;
+  user-select: none;
+}

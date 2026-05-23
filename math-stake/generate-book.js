@@ -143,11 +143,6 @@ async function main() {
   const lossGroups = loadRoadsDir(path.join(MATH_DIR, 'road_by_coeff_from_losses_merged'))
   console.log(`Loaded WIN groups: ${winGroups.length}, LOSS groups: ${lossGroups.length}`)
 
-  // Total loss roads — needed for probability split
-  const totalLossRoads = lossGroups
-    .filter(g => lossProbMap[g.coeff] > 0)
-    .reduce((acc, g) => acc + g.roads.length, 0)
-
   // ── Write books_base.jsonl ─────────────────────────────────────────────────
 
   const bookPath = path.join(OUT_DIR, 'books_base.jsonl')
@@ -186,11 +181,12 @@ async function main() {
     })
   }
 
-  // 2. LOSS rounds (payoutMultiplier = 0, prob split equally among all loss sims)
+  // 2. LOSS rounds (payoutMultiplier = 0, prob weighted by coeff_probabilities_loss.json)
   const sortedLoss = lossGroups.filter(g => lossProbMap[g.coeff] > 0)
-  const lossProbPerRoad = Math.round(lossTotalProb * PROB_SCALE / totalLossRoads)
+    .sort((a, b) => a.coeff - b.coeff)
 
   for (const { coeff: lossCoeff, roads } of sortedLoss) {
+    const lossProbPerRoad = Math.round(lossTotalProb * lossProbMap[lossCoeff] * PROB_SCALE / roads.length)
     roads.forEach((road, idx) => {
       const rng   = makePrng(((lossCoeff * 10000 + 999999) ^ (idx * 0x9e3779b9)) >>> 0)
       const entry = {

@@ -107,6 +107,12 @@ async function loadWinCelebrationSpine(kind: WinCelebrateKind): Promise<Spine> {
     pages.map((p, i) => [atlasPageResolveKey(p), textures[i]!]),
   )
 
+  // Регистрируем текстуры под basename в кэше PIXI до создания TextureAtlas,
+  // чтобы spine-pixi-v8 не делал повторный запрос по короткому имени → 403
+  for (const [name, tex] of pageToTex) {
+    if (!Assets.cache.has(name)) Assets.cache.set(name, tex)
+  }
+
   const atlas = new TextureAtlas(atlasText)
   for (const page of atlas.pages) {
     const key = atlasPageResolveKey(page.name)

@@ -1855,6 +1855,20 @@ export class SpineAnimator {
     return this._heroLoading;
   }
 
+  /**
+   * Регистрирует текстуру в кэше PIXI под именем страницы из атласа (basename, напр. "GOLD.png").
+   * Без этого spine-pixi-v8 делает дополнительный запрос по basename относительно корня игры,
+   * который CDN возвращает с 403.
+   */
+  private static _cacheAtlasTexture(atlasText: string, texture: PIXI.Texture): void {
+    for (const raw of atlasText.split('\n')) {
+      const line = raw.trim();
+      if (/^[\w.-]+\.png$/i.test(line)) {
+        if (!Assets.cache.has(line)) Assets.cache.set(line, texture);
+      }
+    }
+  }
+
   private static async _doLoadGoldStone(): Promise<boolean> {
     const load = async (atlasUrl: string, jsonUrl: string, pngUrl: string) => {
       const [atlasText, spineJson, texture] = await Promise.all([
@@ -1868,6 +1882,9 @@ export class SpineAnimator {
         }),
         Assets.load<PIXI.Texture>(pngUrl),
       ]);
+      // Регистрируем текстуру под basename атласа до создания TextureAtlas,
+      // чтобы spine-pixi не делал повторный запрос по короткому имени → 403
+      this._cacheAtlasTexture(atlasText, texture);
       const atlas = new TextureAtlas(atlasText);
       for (const page of atlas.pages) page.setTexture(SpineTexture.from(texture.source));
       const skelJson = new SkeletonJson(new AtlasAttachmentLoader(atlas));
@@ -1910,6 +1927,7 @@ export class SpineAnimator {
         }),
         Assets.load<PIXI.Texture>(pngUrl),
       ]);
+      this._cacheAtlasTexture(atlasText, texture);
       const atlas = new TextureAtlas(atlasText);
       for (const page of atlas.pages) page.setTexture(SpineTexture.from(texture.source));
       const skelJson = new SkeletonJson(new AtlasAttachmentLoader(atlas));
@@ -1945,6 +1963,7 @@ export class SpineAnimator {
         Assets.load<PIXI.Texture>(pngUrl),
       ]);
 
+      this._cacheAtlasTexture(atlasText, texture);
       const atlas = new TextureAtlas(atlasText);
       for (const page of atlas.pages) page.setTexture(SpineTexture.from(texture.source));
       const skelJson = new SkeletonJson(new AtlasAttachmentLoader(atlas));

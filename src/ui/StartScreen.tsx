@@ -34,6 +34,11 @@ interface RulesArrowButtonProps {
   onReady: () => void;
 }
 
+/**
+ * RulesArrowButton — встраивает SVG-кнопку inline через fetch(), чтобы обойти
+ * CSP-директиву "object-src 'none'" на платформе Stake Engine.
+ * Hover/active-эффекты работают, потому что SVG является частью документа.
+ */
 const RulesArrowButton: React.FC<RulesArrowButtonProps> = ({
   className,
   ariaLabel,
@@ -42,6 +47,7 @@ const RulesArrowButton: React.FC<RulesArrowButtonProps> = ({
   onReady,
 }) => {
   const readySentRef = useRef(false);
+  const [svgHtml, setSvgHtml] = useState<string | null>(null);
 
   const markReady = useCallback(() => {
     if (readySentRef.current) return;
@@ -49,6 +55,7 @@ const RulesArrowButton: React.FC<RulesArrowButtonProps> = ({
     onReady();
   }, [onReady]);
 
+  // Fallback: если fetch завис — всё равно сообщаем о готовности
   useEffect(() => {
     const fallbackId = window.setTimeout(markReady, 800);
     return () => {
@@ -56,54 +63,41 @@ const RulesArrowButton: React.FC<RulesArrowButtonProps> = ({
     };
   }, [markReady]);
 
-  const handleObjectLoad = useCallback(
-    (event: React.SyntheticEvent<HTMLObjectElement>) => {
-      const objectElement = event.currentTarget;
-      const svgDocument = objectElement.contentDocument;
-      const svgElement = svgDocument?.documentElement;
+  // Загружаем SVG-текст и встраиваем inline — обходит "object-src 'none'"
+  useEffect(() => {
+    let cancelled = false;
+    fetch(src)
+      .then((r) => (r.ok ? r.text() : Promise.reject(r.status)))
+      .then((text) => {
+        if (!cancelled) {
+          setSvgHtml(text);
+          markReady();
+        }
+      })
+      .catch(() => {
+        if (!cancelled) markReady();
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [src, markReady]);
 
-      if (!svgElement) {
-        markReady();
-        return;
-      }
-
-      svgElement.setAttribute("role", "button");
-      svgElement.setAttribute("aria-label", ariaLabel);
-      svgElement.style.cursor = "pointer";
-
-      const handleClick = (clickEvent: MouseEvent) => {
-        clickEvent.preventDefault();
-        onActivate();
-      };
-
-      svgElement.addEventListener("click", handleClick);
-      objectElement.addEventListener(
-        "beforeunload",
-        () => svgElement.removeEventListener("click", handleClick),
-        { once: true }
-      );
-      markReady();
-    },
-    [ariaLabel, markReady, onActivate]
-  );
-
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLObjectElement>) => {
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Enter" && event.key !== " ") return;
-
     event.preventDefault();
     onActivate();
   };
 
   return (
-    <object
+    <div
       className={`rules-arrow ${className}`}
-      type="image/svg+xml"
-      data={src}
-      aria-label={ariaLabel}
       role="button"
       tabIndex={0}
+      aria-label={ariaLabel}
+      onClick={onActivate}
       onKeyDown={handleKeyDown}
-      onLoad={handleObjectLoad}
+      // dangerouslySetInnerHTML безопасен: src — это наш собственный URL из public/
+      dangerouslySetInnerHTML={svgHtml !== null ? { __html: svgHtml } : undefined}
     />
   );
 };
