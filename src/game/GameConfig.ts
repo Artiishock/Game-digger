@@ -17,6 +17,43 @@ export const HERO_MAX_SIDE_PX = TILE_PX * 1.1
 /** Доля полуоси Y от maxSide: прежнее соотношение 34/132 при maxSide = TILE×1.1. */
 const TUNNEL_SCRATCH_RY_FRAC_OF_MAX_SIDE = 34 / 132
 
+type ZoomCalibrationPoint = { minSidePx: number; heroScreenHeightPx: number }
+
+/** Линейная интерполяция целевой высоты героя (px на экране) по меньшей стороне viewport. */
+function heroScreenHeightForMinSide(
+  minSide: number,
+  points: readonly ZoomCalibrationPoint[],
+): number {
+  const pts = [...points].sort((a, b) => a.minSidePx - b.minSidePx)
+  if (pts.length === 0) return HERO_MAX_SIDE_PX
+  if (minSide <= pts[0].minSidePx) {
+    if (pts.length === 1) return pts[0].heroScreenHeightPx
+    const t = (minSide - pts[0].minSidePx) / (pts[1].minSidePx - pts[0].minSidePx)
+    return pts[0].heroScreenHeightPx + t * (pts[1].heroScreenHeightPx - pts[0].heroScreenHeightPx)
+  }
+  const last = pts[pts.length - 1]
+  if (minSide >= last.minSidePx) return last.heroScreenHeightPx
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1]
+    if (minSide >= a.minSidePx && minSide <= b.minSidePx) {
+      const t = (minSide - a.minSidePx) / (b.minSidePx - a.minSidePx)
+      return a.heroScreenHeightPx + t * (b.heroScreenHeightPx - a.heroScreenHeightPx)
+    }
+  }
+  return last.heroScreenHeightPx
+}
+
+/**
+ * Масштаб stage (zoom): на экране высота героя ≈ `heroScreenHeightPx`, в мире — `HERO_MAX_SIDE_PX`.
+ * Ориентир — меньшая сторона окна (portrait/landscape одинаково по «узкой» грани).
+ */
+export function computeSceneZoom(widthPx: number, heightPx: number): number {
+  const minSide = Math.min(widthPx, heightPx)
+  const { minZoom, calibration } = GameConfig.zoom
+  const heroPx = heroScreenHeightForMinSide(minSide, calibration)
+  return Math.max(minZoom, Math.min(1, heroPx / HERO_MAX_SIDE_PX))
+}
+
 export const GameConfig = {
   items: {
     COIN: {
@@ -296,6 +333,27 @@ export const GameConfig = {
   viewportChunks: {
     widthPx:  1920,
     heightPx: 1080,
+  },
+
+  /**
+   * Адаптивный масштаб сцены (zoom) по меньшей стороне viewport (`min(width, height)`).
+   *
+   * На экране высота героя ≈ `heroScreenHeightPx`; zoom = heroScreenHeightPx / HERO_MAX_SIDE_PX.
+   * При последней точке калибровки zoom = 1 (как на десктопе, герой 132px).
+   * Виртуальные W/H = actualW/zoom, actualH/zoom — пропорции объектов и героя сохраняются.
+   */
+  zoom: {
+    /** Нижний предел zoom на очень узких экранах. */
+    minZoom: 0.25,
+    /**
+     * Калибровка (minSide → высота героя на экране). Между точками — линейная интерполяция.
+     * 852×393 → minSide 393 → ~52px; 744×1133 → minSide 744 → ~105px.
+     */
+    calibration: [
+      { minSidePx: 393, heroScreenHeightPx: 52 },
+      { minSidePx: 744, heroScreenHeightPx: 105 },
+      { minSidePx: 1080, heroScreenHeightPx: HERO_MAX_SIDE_PX },
+    ] as const,
   },
 
   /**

@@ -65,16 +65,31 @@ export const GameCanvas: React.FC<Props> = ({ width, height, onReady }) => {
 
   // Start round when events arrive — deferred one rAF so the browser can paint
   // the BETTING→RUNNING UI transition before startRound() blocks the main thread.
+  // Replay mode uses a double rAF: the first frame lets the menu close animation
+  // paint, the second frame runs the heavy startRound so there's no visible freeze.
   useEffect(() => {
     if (phase !== 'RUNNING' || events.length === 0) return
     const eventsSnap = events
     const speedSnap  = speed
-    startRafRef.current = requestAnimationFrame(() => {
+    // Read replayMode at effect time (not as a reactive dep) to decide rAF count.
+    const isReplay = useGameStore.getState().replayMode
+
+    const runStart = () => {
       startRafRef.current = null
       performance.mark('dr-raf-fired')
       performance.measure('[DR] RUNNING→RAF (React repaint)', 'dr-phase-running', 'dr-raf-fired')
       rendererRef.current?.startRound(eventsSnap, speedSnap)
-    })
+    }
+
+    if (isReplay) {
+      // Two frames: first lets the menu/overlay repaint, second starts the round.
+      startRafRef.current = requestAnimationFrame(() => {
+        requestAnimationFrame(runStart)
+      })
+    } else {
+      startRafRef.current = requestAnimationFrame(runStart)
+    }
+
     return () => {
       if (startRafRef.current !== null) {
         cancelAnimationFrame(startRafRef.current)
@@ -120,6 +135,7 @@ export const GameCanvas: React.FC<Props> = ({ width, height, onReady }) => {
       style={{
         display: 'block', position: 'absolute', inset: 0,
         width: '100%', height: '100%',
+        background: '#1A0E08',
       }}
     />
   )

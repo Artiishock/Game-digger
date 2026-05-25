@@ -17,6 +17,8 @@ const en: PhraseMap = {
   'total play':                      'total play',
   'play':                            'play',
   'plays':                           'plays',
+  'spin start':                      'Start',
+  'spin rewind':                     'Rewind',
   'coins':                               'Coin',
   'winner':                          'winner',
   'wins':                            'wins',
@@ -55,6 +57,8 @@ const en: PhraseMap = {
   'last win':                        'LAST WIN',
   'distance':                        'Distance',
   'depth':                           'Depth',
+  'last distance':                   'Last distance',
+  'last depth':                      'Last depth',
   'bet':                             'Bet',
   'multiplier':                      'Multiplier',
 
@@ -127,6 +131,10 @@ const en: PhraseMap = {
   'currency':                        'Currency',
   'replay':                          'Replay',
   'plays history empty':             'plays history is empty',
+
+  // ── balance validation ───────────────────────────────────────────────────────
+  'insufficient funds':              'Insufficient funds',
+  'demo balance empty':              'Demo balance depleted. Register to play for real!',
 }
 
 const es: PhraseMap = {
@@ -140,6 +148,8 @@ const es: PhraseMap = {
   'total play':                      'total de jugadas',
   'play':                            'jugar',
   'plays':                           'jugadas',
+  'spin start':                      'Iniciar',
+  'spin rewind':                     'Rebobinar',
   'coins':                               'Moneda',
   'winner':                          'ganador',
   'wins':                            'ganancias',
@@ -178,6 +188,8 @@ const es: PhraseMap = {
   'last win':                        'ÚLTIMA GANANCIA',
   'distance':                        'Distancia',
   'depth':                           'Profundidad',
+  'last distance':                   'Última distancia',
+  'last depth':                      'Última profundidad',
   'bet':                             'Apuesta',
   'multiplier':                      'Multiplicador',
 
@@ -250,6 +262,10 @@ const es: PhraseMap = {
   'currency':                        'Moneda',
   'replay':                          'Repetición',
   'plays history empty':             'el historial de jugadas está vacío',
+
+  // ── balance validation ───────────────────────────────────────────────────────
+  'insufficient funds':              'Fondos insuficientes',
+  'demo balance empty':              '¡Saldo demo agotado. ¡Regístrate para jugar con dinero real!',
 }
 
 const de: PhraseMap = {
@@ -263,6 +279,8 @@ const de: PhraseMap = {
   'total play':                      'Spiele insgesamt',
   'play':                            'spielen',
   'plays':                           'Spiele',
+  'spin start':                      'Start',
+  'spin rewind':                     'Zurückspulen',
   'coins':                               'Münze',
   'winner':                          'Gewinner',
   'wins':                            'Gewinne',
@@ -301,6 +319,8 @@ const de: PhraseMap = {
   'last win':                        'LETZTER GEWINN',
   'distance':                        'Distanz',
   'depth':                           'Tiefe',
+  'last distance':                   'Letzte Distanz',
+  'last depth':                      'Letzte Tiefe',
   'bet':                             'Einsatz',
   'multiplier':                      'Multiplikator',
 
@@ -373,6 +393,10 @@ const de: PhraseMap = {
   'currency':                        'Währung',
   'replay':                          'Wiederholung',
   'plays history empty':             'Spielverlauf ist leer',
+
+  // ── balance validation ───────────────────────────────────────────────────────
+  'insufficient funds':              'Nicht genug Guthaben',
+  'demo balance empty':              'Demo-Guthaben aufgebraucht. Registriere dich für echtes Geld!',
 }
 
 const ru: PhraseMap = {
@@ -386,6 +410,8 @@ const ru: PhraseMap = {
   'total play':                      'всего игр',
   'play':                            'играть',
   'plays':                           'игр',
+  'spin start':                      'Старт',
+  'spin rewind':                     'Перемотка',
   'coins':                           'Монета',
   'winner':                          'победитель',
   'wins':                            'выигрыши',
@@ -424,6 +450,8 @@ const ru: PhraseMap = {
   'last win':                        'ПОСЛЕДНИЙ ВЫИГРЫШ',
   'distance':                        'Дистанция',
   'depth':                           'Глубина',
+  'last distance':                   'Последняя дистанция',
+  'last depth':                      'Последняя глубина',
   'bet':                             'Ставка',
   'multiplier':                      'Множитель',
 
@@ -496,6 +524,10 @@ const ru: PhraseMap = {
   'currency':                        'Валюта',
   'replay':                          'Повтор',
   'plays history empty':             'история игр пуста',
+
+  // ── balance validation ───────────────────────────────────────────────────────
+  'insufficient funds':              'Недостаточно средств',
+  'demo balance empty':              'Демо-баланс исчерпан. Зарегистрируйтесь для игры на реальные деньги!',
 }
 
 const tr: PhraseMap = {
@@ -509,6 +541,8 @@ const tr: PhraseMap = {
   'total play':                      'toplam oyun',
   'play':                            'oyna',
   'plays':                           'oyunlar',
+  'spin start':                      'Başlat',
+  'spin rewind':                     'Geri sar',
   'coins':                               'Jeton',
   'winner':                          'kazanan',
   'wins':                            'kazançlar',
@@ -547,6 +581,8 @@ const tr: PhraseMap = {
   'last win':                        'SON KAZANÇ',
   'distance':                        'Mesafe',
   'depth':                           'Derinlik',
+  'last distance':                   'Son mesafe',
+  'last depth':                      'Son derinlik',
   'bet':                             'Bahis',
   'multiplier':                      'Çarpan',
 
@@ -619,6 +655,10 @@ const tr: PhraseMap = {
   'currency':                        'Para birimi',
   'replay':                          'Tekrar izle',
   'plays history empty':             'oyun geçmişi boş',
+
+  // ── balance validation ───────────────────────────────────────────────────────
+  'insufficient funds':              'Yetersiz bakiye',
+  'demo balance empty':              'Demo bakiyesi tükendi. Gerçek parayla oynamak için kaydolun!',
 }
 
 const MAPS: Record<string, PhraseMap> = { en, es, de, ru, tr }

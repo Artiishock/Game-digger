@@ -645,7 +645,14 @@
 
 .ui-autospin-btn--active {
   background-image: url("../ui/autoplay_bg2.png");
+}
+
+/* Обычный спин (не автоспин): Auto-кнопка задизейблена */
+.ui-autospin-btn--disabled,
+.ui-autospin-btn:disabled {
   opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
 }
 
 .ui-autospin-btn-icon {
@@ -729,7 +736,7 @@
   border-radius: var(--radius-lg);
   max-height: none;
   overflow: visible;
-  animation: balance-bet-modal-in 0.2s ease-out both;
+  animation: balance-bet-modal-in 0.2s ease-out backwards;
 }
 
 .ui-modal-header {
@@ -1051,6 +1058,101 @@
   z-index: 230;
 }
 
+/* ── Враппер: модалка + кнопка Back ─────────────────────────── */
+.ui-ap-modal-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+/* ═══════════════════════════════════════════════════════
+   TOAST NOTIFICATION
+   ═══════════════════════════════════════════════════════ */
+
+.ui-toast {
+  position: fixed;
+  top: 18%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 350;
+
+  background: rgba(14, 7, 3, 0.93);
+  border: 1px solid rgba(252, 201, 57, 0.5);
+  border-radius: 10px;
+  padding: 14px 28px;
+  max-width: min(480px, 86vw);
+
+  text-align: center;
+  color: #f0e6d3;
+  font-size: clamp(13px, 2vmin, 17px);
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+
+  cursor: pointer;
+  pointer-events: auto;
+  user-select: none;
+
+  animation: toast-in 0.25s ease-out;
+}
+
+.ui-toast-msg {
+  display: block;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0);    }
+}
+
+/* ── Кнопка Back ─────────────────────────────────────────────── */
+.ui-ap-back {
+  /* grid: занимаем обе колонки и центрируемся */
+  grid-column: 1 / -1;
+  justify-self: center;
+  margin-top: 16px;
+
+  width: 56px;
+  height: 48px;
+  padding: 0;
+  border: none;
+  outline: none;
+  background-color: transparent;
+  background-image: url("../Back.svg");
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  /* зеркалим форму кнопки по горизонтали */
+  transform: scaleX(-1);
+
+  z-index: 210;
+  transition: opacity 0.15s;
+}
+
+.ui-ap-back:hover {
+  opacity: 0.8;
+}
+
+.ui-ap-back-icon {
+  display: block;
+  width: 20px;
+  height: 20px;
+  background-image: url("../ui/arrow.svg");
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  /* Родитель scaleX(-1) + иконка scaleX(-1) = иконка смотрит вправо (исходное направление arrow.svg) */
+  transform: scaleX(-1);
+}
+
 .ui-ap-section {
   margin: 0;
   min-width: 0;
@@ -1275,6 +1377,10 @@
 
 .ui-pill:hover::before {
   background-color: #a0a0b2;
+}
+
+.ui-pill--active {
+  color: #fcc939;
 }
 
 .ui-pill--active::before {
@@ -1748,6 +1854,23 @@
 .balance-bet-modal__cell span {
   position: relative;
   z-index: 1;
+}
+
+.balance-bet-modal__cell--active {
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 8px;
+}
+
+.balance-bet-modal__cell--active::before {
+  opacity: 0;
+}
+
+.balance-bet-modal__empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 16px;
+  color: rgba(240, 230, 211, 0.3);
 }
 
 
@@ -2716,15 +2839,13 @@
   background: linear-gradient(142.97deg, #E6980A 38.09%, #E18A08 59.71%);
 }
 
-/* Не начинать с scale(0): у детей getBoundingClientRect() ≈ 0 → Pixi инициализируется 1×1 и клип не виден. */
+/* Только opacity: scale на контейнере сдвигал центр Spine при resize окна. */
 @keyframes uiWinCelebratePop {
   from {
     opacity: 0;
-    transform: scale(0);
   }
   to {
     opacity: 1;
-    transform: scale(1);
   }
 }
 
@@ -2738,16 +2859,17 @@
   height: 100%;
   pointer-events: none;
   z-index: 1;
-  margin-top: -50px;
 }
 
 .ui-result-celebrate-inner {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
   opacity: 0;
   animation: uiWinCelebratePop 1s cubic-bezier(0.2, 0.85, 0.25, 1) 0.7s both;
   transform-origin: center center;
-  will-change: transform, opacity;
+  will-change: opacity;
 }
 
 .ui-result-celebrate-video {
@@ -2756,23 +2878,22 @@
   height: 100%;
 }
 
-.ui-result-celebrate-canvas-wrap--epicwin {
+.ui-result-celebrate-canvas-wrap--epicwin,
+.ui-result-celebrate-canvas-wrap--bigwin,
+.ui-result-celebrate-canvas-wrap--megawin {
   position: absolute;
   inset: 0;
-  display: flex;
-  justify-content: center;
-  align-items: center;
   width: 100%;
   height: 100%;
   pointer-events: none;
-  z-index: 1;
-  margin-top: 60px;
   overflow: visible;
 }
 
 .ui-result-celebrate-canvas-wrap {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
 }
 
 .ui-result-celebrate-fail {
@@ -2789,16 +2910,18 @@
   pointer-events: none;
 }
 
-/* Spine (Pixi): абсолютно заполняет оверлей, Pixi вписывает скелет внутрь */
+/* Spine (Pixi): хост = весь оверлей; скелет центрируется в layoutSpine */
 .ui-result-celebrate-canvas {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
 }
 @media (prefers-reduced-motion: reduce) {
   .ui-result-celebrate-inner {
     animation: none;
     opacity: 1;
-    transform: scale(1);
   }
 }
 

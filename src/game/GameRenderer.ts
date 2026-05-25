@@ -10,7 +10,7 @@ import { TileWorld, TILE, tileWorldMaxChunkWindowFromConfig } from './Tileworld'
 import { LavaSimulation } from './LavaSimulation'
 import { SpineAnimator, HERO_ANIM, ROCK_ANIM, GOLD_ANIM, GOLD_STAGE, STONE_STAGE, BREAK_ACTION_DURATION, getSpineItemSize } from './SpineAnimator'
 import type { Spine } from '@esotericsoftware/spine-pixi-v8'
-import { GameConfig, effectiveDevicePixelRatio, HERO_MAX_SIDE_PX } from './GameConfig'
+import { GameConfig, computeSceneZoom, effectiveDevicePixelRatio, HERO_MAX_SIDE_PX } from './GameConfig'
 import { gameAudio } from '../audio/GameAudio'
 import { GameAssets } from './gameAssets'
 import { buildRoundPathV2, buildRoundPathV3, cavePathHitsTunnel, decorGenerationHorizontalExtent, distancePointToTunnelPolyline, pruneDecorObstaclesAfterPathChange, tunnelXAtWorldY } from './WorldMap'
@@ -1298,6 +1298,11 @@ export class GameRenderer {
   private spawner:ObjectSpawner|null=null
   private tunnelActive = false
   private W=0; private H=0
+  private _resizeRaf = 0
+  private _pendingResizeW = 0
+  private _pendingResizeH = 0
+  /** Масштаб сцены (0.25–1). app.stage.scale = _zoom; виртуальные W/H = actualSize/_zoom. */
+  private _zoom = 1.0
   private camX=0; private camY=0
   private tileWorld:TileWorld|null=null
   private worldSeed=0xdeadbeef
@@ -1450,13 +1455,18 @@ export class GameRenderer {
   private _worldMask: PIXI.Graphics = new PIXI.Graphics()
 
   constructor(canvas:HTMLCanvasElement,w:number,h:number){
-    this.W=w;this.H=h
+    // ── Адаптивный zoom по min(W,H): виртуальный мир крупнее экрана → объекты масштабируются ──
+    this._zoom = computeSceneZoom(w, h)
+    this.W = w / this._zoom   // виртуальная ширина мира (игровая логика работает в этих пикселях)
+    this.H = h / this._zoom   // виртуальная высота мира
     const dpr = effectiveDevicePixelRatio()
     canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr)
     const aa = GameConfig.performance.webglAntialias
 
     // PixiJS v8: new Application() без аргументов — renderer и ticker создаются в async init()
     this.app = new PIXI.Application()
+    // stage.scale применяется до первого render — объекты в виртуальных px отображаются в реальные
+    this.app.stage.scale.set(this._zoom)
 
     // ─── Текстура частиц через canvas — не требует renderer ───────────────
     {
@@ -1495,9 +1505,10 @@ export class GameRenderer {
     this._worldMask = new PIXI.Graphics()
     this._worldMask.label = 'worldMask'
     // addChild и mask= переносим в .then() — до init() AlphaMaskPipe не инициализирован
-    this._updateWorldMask(w, h)
+    // Маска рисуется в виртуальных пикселях — stage.scale переводит их в экранные
+    this._updateWorldMask(this.W, this.H)
 
-    this.charScreenY=h*0.42
+    this.charScreenY = this.H * 0.42  // виртуальная позиция Y персонажа на экране
     this._buildSky()
     this._makeIdleWorld()
     this.miner=new SpriteCharacter()
@@ -1717,6 +1728,64 @@ export class GameRenderer {
     }
   }
 
+  /** Обновляет размеры неба/скалы без сноса слоя — убирает чёрный кадр в Chrome при resize. */
+  private _resizeSkyInPlace(): void {
+    const top = Math.max(0, Math.min(this.H, -this.camY))
+    const bgTex = this._textures.get('bg')
+    let bg = this.skyLayer.getChildByLabel('bgSprite') as PIXI.TilingSprite | null
+    if (bgTex) {
+      const bgH = this.H * 0.70
+      const sc = bgH / bgTex.height
+      if (!bg) {
+        bg = new PIXI.TilingSprite({ texture: bgTex, width: this.W, height: bgH })
+        bg.tileScale.set(sc, sc)
+        bg.tilePosition.set(0, 0)
+        bg.roundPixels = true
+        bg.y = 0
+        bg.label = 'bgSprite'
+        this.skyLayer.addChildAt(bg, 0)
+      } else {
+        bg.texture = bgTex
+        bg.width = this.W
+        bg.height = bgH
+        bg.tileScale.set(sc, sc)
+      }
+    } else if (bg) {
+      this.skyLayer.removeChild(bg)
+      bg.destroy()
+    }
+
+    if (!this._skyCloudLayer.parent) {
+      const rock = this.skyLayer.getChildByLabel('rockSprite')
+      const idx = rock ? this.skyLayer.getChildIndex(rock) : this.skyLayer.children.length
+      this.skyLayer.addChildAt(this._skyCloudLayer, Math.max(0, idx))
+    }
+
+    const rockTex = this._textures.get('rock')
+    let rock = this.skyLayer.getChildByLabel('rockSprite') as PIXI.Sprite | null
+    if (rockTex) {
+      const rh = this.H * 0.5
+      if (!rock) {
+        rock = new PIXI.Sprite(rockTex)
+        rock.label = 'rockSprite'
+        rock.anchor.set(0.5, 1)
+        this.skyLayer.addChild(rock)
+      } else {
+        rock.texture = rockTex
+      }
+      rock.scale.set(rh / rockTex.height)
+      rock.x = this.W * 0.58
+      rock.y = top - 6
+    } else if (rock) {
+      this.skyLayer.removeChild(rock)
+      rock.destroy()
+    }
+
+    if (!this._sceneryLayer.parent) {
+      this.skyLayer.addChild(this._sceneryLayer)
+    }
+  }
+
   private _buildSky(){
     this._cloudCount = 10
     for (let i = this._skyCloudLayer.children.length - 1; i >= 0; i--) {
@@ -1774,6 +1843,10 @@ export class GameRenderer {
       rock.x = this.W * 0.58
       rock.y = topAtBuild - 6
       this.skyLayer.addChild(rock)
+    }
+
+    if (!this._sceneryLayer.parent) {
+      this.skyLayer.addChild(this._sceneryLayer)
     }
   }
 
@@ -2756,7 +2829,8 @@ export class GameRenderer {
     tickTickerFpsLog(ticker.deltaMS)
     const dt=Math.min(ticker.deltaTime/60, 0.1)  // cap 100ms — безопасно при лагге вкладки
     const store=useGameStore.getState()
-    const spd=store.speed
+    // В режиме replay фиксируем скорость на 1× — иначе x2/x5 делает анимацию хаотичной.
+    const spd = store.replayMode ? 1.0 : store.speed
     // gameDt — масштабированное время: вся игровая логика использует его,
     // чтобы spd=2 ускорял буквально всё (движение, анимации, таймеры, частицы).
     // Камера тоже использует gameDt — при высокой скорости она должна быть отзывчивее.
@@ -2789,6 +2863,14 @@ export class GameRenderer {
       this._perfPushSceneSnapshot()
       return
     }
+
+    // ── Пауза во время спина при открытии любой модалки ────────────────────
+    // Если игра в фазе RUNNING и открыто меню или окно настроек автоспина —
+    // пропускаем обновление: все объекты замораживаются на текущем кадре.
+    if (store.phase === 'RUNNING' && (store.menuOpen || store.autoplayOpen)) {
+      return
+    }
+    // ────────────────────────────────────────────────────────────────────────
 
     if (this._awaitingStartAnim) {
       // Пока идёт Spine start — корень не двигаем по миру; спуск начинается после клипа.
@@ -4031,22 +4113,52 @@ export class GameRenderer {
   }
 
   resize(w:number,h:number){
-    this.W=w;this.H=h;this.charScreenY=h*0.42
-    this.lavaSimulation?.setViewport(w, h)
-    this.app.renderer.resize(w,h)
-    this.skyLayer.removeChildren();this._buildSky()
-    this.skyLayer.addChild(this._sceneryLayer)
-    this._updateWorldMask(w, h)
+    if (w <= 0 || h <= 0) return
+    this._pendingResizeW = w
+    this._pendingResizeH = h
+    if (this._resizeRaf) return
+    this._resizeRaf = requestAnimationFrame(() => {
+      this._resizeRaf = 0
+      this._applyResize(this._pendingResizeW, this._pendingResizeH)
+    })
+  }
+
+  /** Один кадр на пачку resize-событий; сцена обновляется до resize WebGL, затем синхронный render. */
+  private _applyResize(w: number, h: number): void {
+    if (w <= 0 || h <= 0 || !this.app?.renderer) return
+
+    this._zoom = computeSceneZoom(w, h)
+    this.W = w / this._zoom
+    this.H = h / this._zoom
+    this.charScreenY = this.H * 0.42
+    this.app.stage.scale.set(this._zoom)
+    this.lavaSimulation?.setViewport(this.W, this.H)
+
+    this._resizeSkyInPlace()
+    this._lastWorldMaskGrassTop = Infinity
+    this._updateWorldMask(this.W, this.H)
     this._buildTunnel()
-    // forest / маска / idle-сетка деревьев завязаны на W,H — иначе после ресайза артефакты
     this._syncSurfaceScenery()
+
+    if (this.tileWorld) {
+      const idleVp = this.idleActive ? { w: this.W * 5, h: this.H * 2 } : undefined
+      this.tileWorld.update(this.camX, this.camY, this.W, this.H, idleVp)
+    }
+
     if (this.idleActive) {
       this.camY = this.idleCamY
-      this._syncLayerScroll()
     }
+    this._syncLayerScroll()
+
+    this.app.renderer.resize(w, h)
+    this.app.renderer.render({ container: this.app.stage })
   }
 
   destroy(){
+    if (this._resizeRaf) {
+      cancelAnimationFrame(this._resizeRaf)
+      this._resizeRaf = 0
+    }
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', this._onPageVisibility)
     }

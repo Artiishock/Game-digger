@@ -5,6 +5,7 @@ import { DigButton } from "./ui/controls/DigButton";
 import { TopBar } from "./ui/controls/TopBar";
 import { ResultOverlay } from "./ui/modals/ResultOverlay";
 import { AutoplayModal } from "./ui/modals/AutoplayModal";
+import { ToastNotification } from "./ui/modals/ToastNotification";
 import { BurgerMenu } from "./ui/menus/BurgerMenu";
 import { ErrorScreen } from "./ui/modals/ErrorScreen";
 import { StartScreen } from "./ui/StartScreen";
@@ -220,6 +221,7 @@ ${d.toLocaleTimeString("en-GB", {
           {gameStarted && <ResultOverlay />}
           {gameStarted && <AutoplayModal />}
           {gameStarted && <BurgerMenu />}
+          <ToastNotification />
         </div>
       )}
 

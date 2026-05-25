@@ -1,33 +1,28 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { resolvePublicUrl } from "../../utils/publicUrl";
 
-const BALANCE_BET_OPTIONS = [
-  "0.10",
-  "0.20",
-  "0.50",
-  "1.00",
-  "1.50",
-  "2.00",
-  "2.50",
-  "5.00",
-  "10.0",
-  "100.0",
-  "200.0",
-  "350.0",
-  "500.0",
-  "750.0",
-  "1000",
-];
-
 type BalanceBetModalProps = {
+  /** Доступные уровни ставок (уже отфильтрованы по балансу). */
+  levels: number[];
+  /** Текущая ставка — для подсветки активного варианта. */
+  currentBet: number;
   onClose: () => void;
   onSelect: (value: number) => void;
 };
 
 export const BalanceBetModal: React.FC<BalanceBetModalProps> = ({
+  levels,
+  currentBet,
   onClose,
   onSelect,
 }) => {
+  const activeRef = useRef<HTMLButtonElement>(null);
+
+  // При открытии прокручиваем активный элемент в область видимости
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ block: "nearest", behavior: "instant" });
+  }, []);
+
   return (
     <div className="balance-bet-modal-layer" onClick={onClose}>
       <div
@@ -35,7 +30,6 @@ export const BalanceBetModal: React.FC<BalanceBetModalProps> = ({
         onClick={(event) => event.stopPropagation()}
       >
         <div className="balance-bet-modal__header">
-          <span className="balance-bet-modal__title">Balance (Fun)</span>
           <button
             className="balance-bet-modal__close"
             type="button"
@@ -47,16 +41,26 @@ export const BalanceBetModal: React.FC<BalanceBetModalProps> = ({
         </div>
 
         <div className="balance-bet-modal__grid">
-          {BALANCE_BET_OPTIONS.map((label) => (
-            <button
-              key={label}
-              className="balance-bet-modal__cell"
-              type="button"
-              onClick={() => onSelect(Number(label))}
-            >
-              <span>{label}</span>
-            </button>
-          ))}
+          {levels.map((level) => {
+            const isActive = Math.abs(level - currentBet) < 0.001;
+            return (
+              <button
+                key={level}
+                ref={isActive ? activeRef : undefined}
+                className={`balance-bet-modal__cell${isActive ? " balance-bet-modal__cell--active" : ""}`}
+                type="button"
+                onClick={() => onSelect(level)}
+              >
+                <span>
+                  {level % 1 === 0 ? level.toFixed(0) : level.toFixed(2)}
+                </span>
+              </button>
+            );
+          })}
+
+          {levels.length === 0 && (
+            <div className="balance-bet-modal__empty">—</div>
+          )}
         </div>
       </div>
     </div>

@@ -1,6 +1,4 @@
 <svg id="playHoverOneTurnStable" width="159" height="159" viewBox="0 0 159 159" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <title>Play icon stable one-turn hover animation</title>
-
   <g id="playIcon" pointer-events="none" transform="rotate(0 79.5 79.5)">
     <animateTransform
       id="rotateIn"

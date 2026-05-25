@@ -14,7 +14,11 @@ export const TopBar: React.FC = () => {
   const lastWin = useGameStore((s) => s.lastWin);
   const currency = useGameStore((s) => s.currency);
   const stats = useGameStore((s) => s.stats);
+  const lastRoundStats = useGameStore((s) => s.lastRoundStats);
   const logoDimmed = phase === "RUNNING" || phase === "BETTING";
+  const depthHudLive = phase === "RUNNING";
+  const depthHudDistance = depthHudLive ? stats.distance : lastRoundStats.distance;
+  const depthHudDepth = depthHudLive ? stats.depth : lastRoundStats.depth;
 
   const openTab = (tab: "info" | "settings") => {
     setTab(tab);
@@ -92,14 +96,18 @@ export const TopBar: React.FC = () => {
         {settings.showDepthHud && (
           <div className="ui-depth-block ui-depth-block--desktop">
             <div className="ui-depth-row">
-              <span className="ui-depth-label">{T('distance')}</span>
+              <span className="ui-depth-label">
+                {depthHudLive ? T('distance') : T('last distance')}
+              </span>
               <span className="ui-depth-value">
-                {stats.distance.toFixed(1)} m
+                {depthHudDistance.toFixed(1)} m
               </span>
             </div>
             <div className="ui-depth-row">
-              <span className="ui-depth-label">{T('depth')}</span>
-              <span className="ui-depth-value">{stats.depth.toFixed(1)} m</span>
+              <span className="ui-depth-label">
+                {depthHudLive ? T('depth') : T('last depth')}
+              </span>
+              <span className="ui-depth-value">{depthHudDepth.toFixed(1)} m</span>
             </div>
           </div>
         )}

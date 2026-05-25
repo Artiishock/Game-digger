@@ -3,7 +3,13 @@ import { useGameStore } from "../../store/gameStore";
 import { gameEngine } from "../../game/GameEngine";
 import { gameAudio } from "../../audio/GameAudio";
 import { resolvePublicUrl } from "../../utils/publicUrl";
+import { T } from "../../i18n/t";
 import "../ui.css";
+
+/** У inline SVG убираем &lt;title&gt; — иначе браузер показывает служебную подсказку из файла. */
+function sanitizeSpinSvgMarkup(markup: string): string {
+  return markup.replace(/<title[^>]*>[\s\S]*?<\/title>/gi, "");
+}
 
 const svgCache = new Map<string, string>();
 /** URL, которые уже не загрузились — не повторять fetch при каждом BETTING/RUNNING. */
@@ -19,7 +25,7 @@ const loadSvg = async (url: string): Promise<string | null> => {
       svgFetchMiss.add(url);
       return null;
     }
-    const text = await res.text();
+    const text = sanitizeSpinSvgMarkup(await res.text());
     svgCache.set(url, text);
     return text;
   } catch {
@@ -46,6 +52,9 @@ export const DigButton: React.FC = () => {
 
   const spinPushed = isRunning || isAutoActive;
   const autoPushed = isAutoActive;
+
+  // Обычный спин ИЛИ активный автоспин: кнопка Auto задизейблена
+  const autoDisabled = isRunning || isAutoActive;
 
   const iconRef = useRef<HTMLSpanElement>(null);
   const [iconMarkup, setIconMarkup] = useState<string>("");
@@ -163,12 +172,14 @@ export const DigButton: React.FC = () => {
     setAP(!isAPOpen);
   };
 
+  const spinHint = isRoundPlay ? T("spin rewind") : T("spin start");
 
   return (
     <div className="ui-spin-control">
       <button
-        className={`ui-autospin-btn${autoPushed ? " ui-autospin-btn--active" : ""}`}
+        className={`ui-autospin-btn${autoPushed ? " ui-autospin-btn--active" : ""}${autoDisabled ? " ui-autospin-btn--disabled" : ""}`}
         onClick={handleAutospinClick}
+        disabled={autoDisabled}
         type="button"
       >
         <span
@@ -184,6 +195,8 @@ export const DigButton: React.FC = () => {
         onTouchEnd={handleSpinTouchEnd}
         onClick={handleSpinClick}
         type="button"
+        title={spinHint}
+        aria-label={spinHint}
         aria-busy={phase === "BETTING"}
       >
         <span

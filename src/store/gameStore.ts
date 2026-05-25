@@ -33,6 +33,12 @@ export interface SessionStats {
   multiplier: number
 }
 
+/** Итог прошлого спина — для HUD «Last distance / Last depth» после раунда. */
+export interface LastRoundStats {
+  depth:    number
+  distance: number
+}
+
 /** Значения ползунков по умолчанию (и fallback после mute, если снимка не было). */
 export const DEFAULT_SFX_VOLUME = 0.8
 export const DEFAULT_MUSIC_VOLUME = 0.6
@@ -78,6 +84,8 @@ interface GameStore {
 
   // Live stats (updated every frame by PixiJS renderer)
   stats:     SessionStats
+  /** Финальные depth/distance последнего завершённого спина. */
+  lastRoundStats: LastRoundStats
 
   // Controls
   speed:     SpeedMode
@@ -106,6 +114,8 @@ interface GameStore {
   setSpeed:    (speed: SpeedMode)       => void
   updateStats: (partial: Partial<SessionStats>) => void
   resetStats:  ()                       => void
+  /** Сохранить текущие depth/distance как итог раунда (вызывать в onRoundComplete). */
+  commitLastRoundStats: () => void
 
   setAutoplay:      (cfg: Partial<AutoplayConfig>) => void
   decrementAutoplay:()                  => void
@@ -115,6 +125,11 @@ interface GameStore {
   updateSettings:   (s: Partial<SettingsState>) => void
   /** Глобальный mute/unmute: звук + музыка, ползунки 0 / восстановление (как динамик в шапке). */
   toggleMasterSound: () => void
+
+  // ── Toast notifications ──────────────────────────────────────────────────
+  notification:      string
+  showNotification:  (msg: string) => void
+  clearNotification: ()            => void
 }
 
 const DEFAULT_AUTOPLAY: AutoplayConfig = {
@@ -161,6 +176,7 @@ export const useGameStore = createWithEqualityFn<GameStore>()((set, get) => ({
   worldSeed:  0,
   replayMode: false,
   stats:   { depth: 0, distance: 0, multiplier: 0 },
+  lastRoundStats: { depth: 0, distance: 0 },
 
   speed: 1,
 
@@ -170,6 +186,7 @@ export const useGameStore = createWithEqualityFn<GameStore>()((set, get) => ({
   menuOpen:     false,
   menuTab:      'settings',
   autoplayOpen: false,
+  notification: '',
 
   // ── setters ──────────────────────────────────────────────────────────────
 
@@ -204,6 +221,16 @@ export const useGameStore = createWithEqualityFn<GameStore>()((set, get) => ({
   resetStats: () =>
     set({ stats: { depth: 0, distance: 0, multiplier: 0 } }),
 
+  commitLastRoundStats: () => {
+    const { stats } = get()
+    set({
+      lastRoundStats: {
+        depth: Math.max(0, Math.round(stats.depth * 10) / 10),
+        distance: Math.round(stats.distance * 10) / 10,
+      },
+    })
+  },
+
   setAutoplay: (cfg) =>
     set((s) => ({ autoplay: { ...s.autoplay, ...cfg } })),
 
@@ -218,6 +245,8 @@ export const useGameStore = createWithEqualityFn<GameStore>()((set, get) => ({
   setMenuOpen:    (menuOpen)     => set({ menuOpen }),
   setMenuTab:     (menuTab)      => set({ menuTab }),
   setAutoplayOpen:(autoplayOpen) => set({ autoplayOpen }),
+  showNotification:  (notification) => set({ notification }),
+  clearNotification: ()            => set({ notification: '' }),
   updateSettings: (partial) =>
     set((s) => {
       const next = { ...s.settings, ...partial }

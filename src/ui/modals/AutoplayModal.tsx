@@ -106,15 +106,19 @@ export const AutoplayModal: React.FC = () => {
     setters[inputId]((value) => sanitizeDecimal(updater(value)));
   };
 
-  const handleStart = (selectedRounds?: number) => {
-    const r = selectedRounds ?? (customRounds ? parseInt(customRounds) : rounds);
-    if (!r || r < 1) return;
+  const handleStart = () => {
+    if (!canStart) return;
+
+    const isInfinite = rounds === 0 && !customRounds;
+    const r = customRounds ? parseInt(customRounds) : rounds;
+
+    if (!isInfinite && (!r || r < 1)) return;
 
     setOpen(false);
 
     gameEngine.startAutoplay({
-      infinite: false,
-      totalRounds: r,
+      infinite: isInfinite,
+      totalRounds: isInfinite ? 0 : r,
       stopOnAnyWin: stopAnyWin,
       stopIfSingleWinExceeds:
         stopWinOverActive && stopWinOver ? parseFloat(stopWinOver) : null,
@@ -126,7 +130,20 @@ export const AutoplayModal: React.FC = () => {
   };
 
   return (
-    <div className="ui-overlay" onClick={() => setOpen(false)}>
+    <div
+      className="ui-overlay"
+      onClick={() => {
+        // Если клавиатура открыта — клик по оверлею закрывает клавиатуру,
+        // но НЕ закрывает модалку. Это защита от iOS-бага: при onFocus
+        // ре-рендер добавляет dim в DOM до synthetic click, и iOS может
+        // диспатчить click прямо на оверлей, минуя dim.
+        if (activeInput) {
+          setActiveInput(null);
+          return;
+        }
+        setOpen(false);
+      }}
+    >
       <button
         className="ui-ap-close"
         onClick={() => setOpen(false)}
@@ -151,7 +168,7 @@ export const AutoplayModal: React.FC = () => {
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="ui-ap-section ui-ap-section--autoplay">
+          <div className="ui-ap-section ui-ap-section--autoplay">
           <div className="ui-ap-section-label">{T('play feature')}</div>
 
           <div className="ui-pills">
@@ -161,9 +178,7 @@ export const AutoplayModal: React.FC = () => {
                 onClick={() => {
                   setRounds(r);
                   setCustomRounds("");
-                  handleStart(r);
                 }}
-                disabled={!canStart}
                 className={`ui-pill ${
                   rounds === r && !customRounds ? "ui-pill--active" : ""
                 }`}
@@ -176,25 +191,7 @@ export const AutoplayModal: React.FC = () => {
               onClick={() => {
                 setRounds(0);
                 setCustomRounds("");
-                if (!canStart) return;
-                setOpen(false);
-                gameEngine.startAutoplay({
-                  infinite: true,
-                  totalRounds: 0,
-                  stopOnAnyWin: stopAnyWin,
-                  stopIfSingleWinExceeds:
-                    stopWinOverActive && stopWinOver
-                      ? parseFloat(stopWinOver)
-                      : null,
-                  stopIfBalanceIncreasesBy:
-                    stopBalUpActive && stopBalUp ? parseFloat(stopBalUp) : null,
-                  stopIfBalanceDecreasesBy:
-                    stopBalDownActive && stopBalDown
-                      ? parseFloat(stopBalDown)
-                      : null,
-                });
               }}
-              disabled={!canStart}
               className={`ui-pill ${
                 rounds === 0 && !customRounds ? "ui-pill--active" : ""
               }`}
@@ -219,7 +216,10 @@ export const AutoplayModal: React.FC = () => {
                   placeholder=""
                   value={customRounds}
                   onFocus={() => setActiveInput("customRounds")}
-                  onClick={() => setActiveInput("customRounds")}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveInput("customRounds");
+                  }}
                   onChange={(e) => {
                     setRounds(0);
                     setCustomRounds(e.target.value.replace(/\D/g, ""));
@@ -309,6 +309,16 @@ export const AutoplayModal: React.FC = () => {
             />
           </div>
         </div>
+
+        <button
+          className="ui-ap-back"
+          onClick={(e) => { e.stopPropagation(); handleStart(); }}
+          onPointerDown={(e) => e.stopPropagation()}
+          aria-label="Start autoplay"
+          type="button"
+        >
+          <span className="ui-ap-back-icon" aria-hidden="true" />
+        </button>
       </div>
     </div>
   );
@@ -383,7 +393,10 @@ const InputRow: React.FC<{
         className="ui-input-row-field"
         value={value}
         onFocus={() => onFocusInput(inputId)}
-        onClick={() => onFocusInput(inputId)}
+        onClick={(e) => {
+          e.stopPropagation();
+          onFocusInput(inputId);
+        }}
         onChange={(e) => onChange(e.target.value.replace(/[^\d.]/g, ""))}
         placeholder={placeholder}
       />

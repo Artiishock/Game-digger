@@ -164,20 +164,35 @@ function syncSlotContainerAlpha(inst: Spine): void {
   }
 }
 
-const KIND_SCALE: Record<WinCelebrateKind, number> = {
-  bigwin:  0.8,
-  epicwin: 1.1,
-  megawin: 0.8,
+/** Доля min(W,H), в которую вписывается скелет (адаптивно на любом экране). */
+const KIND_FIT_FRAC: Record<WinCelebrateKind, number> = {
+  bigwin:  0.72,
+  epicwin: 0.88,
+  megawin: 0.72,
 }
 
-// Vertical offset as a fraction of canvas height (positive = move down)
-const KIND_Y_OFFSET: Record<WinCelebrateKind, number> = {
+/** Смещение центра по Y в долях высоты хоста (положительное = вниз). */
+const KIND_Y_OFFSET_FRAC: Record<WinCelebrateKind, number> = {
   bigwin:  0,
-  epicwin: 0.1,
+  epicwin: 0.04,
   megawin: 0,
 }
 
-function layoutSpine(spine: Spine, w: number, h: number, pad = 0.8, yOffset = 0): void {
+function readHostSize(host: HTMLElement): { w: number; h: number } {
+  const w = Math.max(1, Math.round(host.clientWidth))
+  const h = Math.max(1, Math.round(host.clientHeight))
+  return { w, h }
+}
+
+/** Фиксированный центр скелета (bind pose) — не пересчитываем getBounds() при resize. */
+type SpineLayoutAnchor = {
+  cx: number
+  cy: number
+  uw: number
+  uh: number
+}
+
+function captureSpineLayoutAnchor(spine: Spine): SpineLayoutAnchor {
   spine.update(0)
   syncSlotContainerAlpha(spine)
   let b: { x: number; y: number; width: number; height: number } = spine.getBounds()
@@ -187,12 +202,32 @@ function layoutSpine(spine: Spine, w: number, h: number, pad = 0.8, yOffset = 0)
     const rh = sd.height && sd.height > 0 ? sd.height : 1500
     b = { x: sd.x ?? 0, y: sd.y ?? 0, width: rw, height: rh }
   }
-  const sx = (w * pad) / Math.max(b.width, 1e-3)
-  const sy = (h * pad) / Math.max(b.height, 1e-3)
-  const s = Math.min(sx, sy)
+  return {
+    cx: b.x + b.width * 0.5,
+    cy: b.y + b.height * 0.5,
+    uw: b.width,
+    uh: b.height,
+  }
+}
+
+/** Масштаб ∝ min(W,H); центр экрана (доли 0.5) — позиция не плывёт при смене размера окна. */
+function applySpineLayout(
+  spine: Spine,
+  w: number,
+  h: number,
+  anchor: SpineLayoutAnchor,
+  fitFrac: number,
+  yOffsetFrac = 0,
+): void {
+  const minSide = Math.min(w, h)
+  const fitBox = minSide * fitFrac
+  const s = Math.min(
+    fitBox / Math.max(anchor.uw, 1e-3),
+    fitBox / Math.max(anchor.uh, 1e-3),
+  )
   spine.scale.set(s)
-  spine.x = w * 0.5 - (b.x + b.width * 0.5) * s
-  spine.y = h * 0.5 - (b.y + b.height * 0.5) * s + h * yOffset
+  spine.x = w * 0.5 - anchor.cx * s
+  spine.y = h * (0.5 + yOffsetFrac) - anchor.cy * s
 }
 
 type Props = { kind: WinCelebrateKind; roundId: string }
@@ -211,9 +246,21 @@ export const WinCelebrationSpine: React.FC<Props> = ({ kind, roundId }) => {
     let app: PIXI.Application | null = null
     let spine: Spine | null = null
     let ro: ResizeObserver | null = null
+    let resizeRaf = 0
     let tickFn: (() => void) | null = null
+    let onWindowResize: (() => void) | null = null
+    let layoutAnchor: SpineLayoutAnchor | null = null
 
     const dispose = () => {
+      layoutAnchor = null
+      if (resizeRaf) {
+        cancelAnimationFrame(resizeRaf)
+        resizeRaf = 0
+      }
+      if (onWindowResize) {
+        window.removeEventListener('resize', onWindowResize)
+        onWindowResize = null
+      }
       ro?.disconnect()
       ro = null
       // Stop ticker + renderer before touching the scene graph so no RAF fires
@@ -244,11 +291,6 @@ export const WinCelebrationSpine: React.FC<Props> = ({ kind, roundId }) => {
       }
     }
 
-    const measureHost = (): { w: number; h: number } => ({
-      w: Math.max(1, window.innerWidth),
-      h: Math.max(1, window.innerHeight),
-    })
-
     ;(async () => {
       try {
         const spineInst = await loadWinCelebrationSpine(kind)
@@ -260,12 +302,12 @@ export const WinCelebrationSpine: React.FC<Props> = ({ kind, roundId }) => {
         const sa = spine as Spine & { autoUpdate?: boolean }
         sa.autoUpdate = false
 
-        // PixiJS v8: renderer инициализируется async — используем await app.init()
+        const host0 = readHostSize(el)
         app = new PIXI.Application()
         try {
           await app.init({
-            width: window.innerWidth,
-            height: window.innerHeight,
+            width: host0.w,
+            height: host0.h,
             backgroundAlpha: 0,
             antialias: GameConfig.performance.webglAntialias,
             resolution: effectiveDevicePixelRatio(),
@@ -275,8 +317,8 @@ export const WinCelebrationSpine: React.FC<Props> = ({ kind, roundId }) => {
         } catch {
           app = new PIXI.Application()
           await app.init({
-            width: window.innerWidth,
-            height: window.innerHeight,
+            width: host0.w,
+            height: host0.h,
             backgroundAlpha: 0,
             antialias: false,
             hello: false,
@@ -289,13 +331,34 @@ export const WinCelebrationSpine: React.FC<Props> = ({ kind, roundId }) => {
         }
 
         const canvas = app.canvas as HTMLCanvasElement
-        canvas.style.width = '100vw'
-        canvas.style.height = '100vh'
+        canvas.style.position = 'absolute'
+        canvas.style.inset = '0'
+        canvas.style.width = '100%'
+        canvas.style.height = '100%'
         canvas.style.display = 'block'
+        canvas.style.pointerEvents = 'none'
         el.appendChild(canvas)
 
-        layoutSpine(spine, window.innerWidth, window.innerHeight, KIND_SCALE[kind], KIND_Y_OFFSET[kind])
+        const applyLayout = (): void => {
+          if (!alive || !app || !spine) return
+          const { w, h } = readHostSize(el)
+          if (!layoutAnchor) {
+            layoutAnchor = captureSpineLayoutAnchor(spine)
+          }
+          applySpineLayout(
+            spine,
+            w,
+            h,
+            layoutAnchor,
+            KIND_FIT_FRAC[kind],
+            KIND_Y_OFFSET_FRAC[kind],
+          )
+          app.renderer.resize(w, h)
+          app.renderer.render({ container: app.stage })
+        }
+
         app.stage.addChild(spine)
+        applyLayout()
 
         const tick = () => {
           if (!alive || !app || !spine) return
@@ -305,17 +368,20 @@ export const WinCelebrationSpine: React.FC<Props> = ({ kind, roundId }) => {
         tickFn = tick
         app.ticker.add(tick)
 
-        const reflowNow = (): void => {
-          if (!alive || !app || !spine) return
-          const { w, h } = measureHost()
-          app.renderer.resize(w, h)
-          layoutSpine(spine, w, h, KIND_SCALE[kind], KIND_Y_OFFSET[kind])
+        const scheduleReflow = (): void => {
+          if (resizeRaf) cancelAnimationFrame(resizeRaf)
+          resizeRaf = requestAnimationFrame(() => {
+            resizeRaf = 0
+            applyLayout()
+          })
         }
 
-        ro = new ResizeObserver(() => reflowNow())
+        ro = new ResizeObserver(() => scheduleReflow())
         ro.observe(el)
+        onWindowResize = () => scheduleReflow()
+        window.addEventListener('resize', onWindowResize)
         requestAnimationFrame(() => {
-          requestAnimationFrame(() => reflowNow())
+          requestAnimationFrame(() => applyLayout())
         })
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)

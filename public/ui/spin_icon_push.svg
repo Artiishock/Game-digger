@@ -1,6 +1,4 @@
 <svg id="playToStopOnce" width="159" height="159" viewBox="0 0 159 159" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <title>Play to Stop one-shot animation</title>
-
   <!-- Click works only while Play is visible. After the first click it is disabled. -->
   <rect id="clickArea" x="0" y="0" width="159" height="159" fill="transparent" pointer-events="all">
     <set attributeName="pointer-events" begin="clickArea.click" to="none" fill="freeze" />

@@ -142,6 +142,14 @@ export class LavaSimulation {
   setViewport(viewW: number, viewH: number) {
     this._viewW = Math.max(320, viewW)
     this._viewH = Math.max(240, viewH)
+    // Растягиваем TilingSprite чтобы он покрывал весь виртуальный viewport + запас.
+    // Нужно при zoom < 1: виртуальный H > конфигового tilingHeightPx.
+    if (this._tilingSprite) {
+      const tw = Math.max(GameConfig.lava.tilingWidthPx, Math.ceil(this._viewW) + 256)
+      const th = Math.max(GameConfig.lava.tilingHeightPx, Math.ceil(this._viewH) + 256)
+      this._tilingSprite.width  = tw
+      this._tilingSprite.height = th
+    }
   }
 
   hasRenderableLava(): boolean {

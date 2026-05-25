@@ -1,10 +1,77 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useGameStore, type SpeedMode } from "../../store/gameStore";
-import { formatMoney, toDisplay } from "../../rgs/client";
+import { formatMoney, toDisplay, type RgsConfig } from "../../rgs/client";
 import { resolvePublicUrl } from "../../utils/publicUrl";
 import "../ui.css";
 import { T } from "../../i18n/t";
 import { BalanceBetModal } from "../modals/BalanceBetModal";
+
+// ── Генерация уровней ставок ──────────────────────────────────────────────────
+
+/**
+ * Следующий «красивый» уровень ставки по 1-2-5 прогрессии.
+ * 0.10 → 0.20 → 0.50 → 1.00 → 2.00 → 5.00 → 10.00 → ...
+ */
+function nextBetLevel(v: number): number {
+  const mag = Math.pow(10, Math.floor(Math.log10(v)));
+  const n = v / mag;
+  const next = n < 1.5 ? 2 * mag : n < 3.5 ? 5 * mag : 10 * mag;
+  return Math.round(next * 1_000_000) / 1_000_000; // убираем float-мусор
+}
+
+/**
+ * Строит список уровней ставок по 1-2-5 прогрессии в диапазоне [minD, maxD].
+ * Используется только когда Stake не прислал betLevels.
+ */
+function generateBetLevels(minD: number, maxD: number): number[] {
+  if (minD <= 0 || maxD <= 0 || minD > maxD) return minD > 0 ? [minD] : [];
+  const result: number[] = [];
+  let v = minD;
+  while (v <= maxD + 1e-9) {
+    result.push(Math.round(v * 100) / 100);
+    if (v >= maxD) break;
+    const nxt = nextBetLevel(v);
+    v = nxt > maxD ? maxD : nxt;
+  }
+  return [...new Set(result)];
+}
+
+/**
+ * Возвращает display-уровни ставок из конфига.
+ *
+ * Stake присылает betLevels, но они могут покрывать только часть диапазона
+ * (например, только до $100, хотя maxBet = $1000). В таком случае используем
+ * 1-2-5 генерацию, чтобы покрыть весь диапазон до maxBet.
+ *
+ * Если betLevels покрывают полный диапазон (V10/V11 могут иметь разные шаги) —
+ * используем их как есть, сохраняя кастомные шаги Stake.
+ */
+function resolveBetLevels(config: RgsConfig): number[] {
+  const minD = toDisplay(config.minBet);
+  const maxD = toDisplay(config.maxBet);
+
+  if (Array.isArray(config.betLevels) && config.betLevels.length > 1) {
+    const provided = [...config.betLevels]
+      .sort((a, b) => a - b)
+      .map(toDisplay);
+    const providedMax = provided[provided.length - 1];
+    // Допуск 1% + фиксированный $0.01 — на случай float-погрешностей
+    const tolerance = 0.01 * maxD + 0.01;
+
+    if (Math.abs(providedMax - maxD) <= tolerance) {
+      // Stake прислал полный диапазон — используем его шаги (V10/V11)
+      return provided;
+    }
+
+    // Stake прислал сокращённый список (например, до $100 при maxBet=$1000):
+    // сохраняем Stake-шаги как есть, затем достраиваем 1-2-5 от providedMax до maxD.
+    const extension = generateBetLevels(providedMax, maxD)
+      .filter((v) => v > providedMax + 0.001);
+    return [...provided, ...extension];
+  }
+
+  return generateBetLevels(minD, maxD);
+}
 
 // ── Скорости ─────────────────────────────────────────────────────────────────
 const SPEEDS: { mode: SpeedMode; label: string }[] = [
@@ -88,11 +155,15 @@ export const Hud: React.FC = () => {
   const turboDisabled = !!config?.jurisdiction.disabledTurbo;
   const betDisabled =
     phase === "RUNNING" || phase === "BETTING" || phase === "BOOT";
-  const levels = config?.betLevels.map(toDisplay) ?? [
-    0.1, 0.5, 1, 2, 5, 10, 25, 50, 100,
-  ];
-  const minBet = levels[0] ?? 0.1;
-  const maxBet = levels[levels.length - 1] ?? 1000;
+
+  // Все уровни ставок из конфига, отфильтрованные по текущему балансу.
+  // Адаптированы под валюту игрока: Stake присылает betLevels под каждую валюту.
+  // Пересчитываются после каждого спина (balance меняется → re-render).
+  const balanceDisplay = toDisplay(balance);
+  const allLevels = config ? resolveBetLevels(config) : [];
+  const levels = allLevels.filter((l) => l <= balanceDisplay);
+  const minBet = levels.length > 0 ? levels[0] : 0;
+  const maxBet = levels.length > 0 ? levels[levels.length - 1] : 0;
 
   // ── Balance bet modal state ───────────────────────────────────────────────
   const [showBetModal, setShowBetModal] = useState(false);
@@ -187,6 +258,8 @@ export const Hud: React.FC = () => {
         {/* TOTAL BET + модальное окно */}
         {showBetModal && (
           <BalanceBetModal
+            levels={levels}
+            currentBet={bet}
             onClose={() => setShowBetModal(false)}
             onSelect={handleModalSelect}
           />
