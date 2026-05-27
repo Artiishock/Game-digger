@@ -45,30 +45,50 @@ export interface UrlParams {
   lang:      string
   device:    'mobile' | 'desktop'
   rgsUrl:    string
-  betID:     string | null
+  betID:     string | null   // Legacy replay (?betID=xxx)
+  // New Stake Bet Replay params (?replay=true&game=...&version=...&mode=...&event=...)
+  isReplay:       boolean
+  replayGame:     string | null
+  replayVersion:  string | null
+  replayBetMode:  string | null
+  replayEvent:    string | null
+  replayAmount:   number | null   // bet amount in API units (÷ MONEY_SCALE = display)
+  replayCurrency: string | null
+  social:         boolean
 }
 
 export function getUrlParams(): UrlParams {
   const p = new URLSearchParams(window.location.search)
   const rawLang = p.get('locale') ?? p.get('lang') ?? 'en'
+  const rawAmount = p.get('amount')
   return {
     sessionID: p.get('sessionID') ?? 'demo',
     lang:      rawLang.split('-')[0].toLowerCase(),
     device:    (p.get('device')   ?? 'desktop') as 'mobile' | 'desktop',
     rgsUrl:    p.get('rgs_url')   ?? '',
     betID:     p.get('betID') ?? p.get('roundID') ?? null,
+    // New replay params
+    isReplay:       p.get('replay') === 'true',
+    replayGame:     p.get('game'),
+    replayVersion:  p.get('version'),
+    replayBetMode:  p.get('mode'),
+    replayEvent:    p.get('event'),
+    replayAmount:   rawAmount !== null ? Number(rawAmount) : null,
+    replayCurrency: p.get('currency'),
+    social:         p.get('social') === 'true',
   }
 }
 
 /** True when no rgs_url is present → run in FUN/demo mode */
 export function isDemo(): boolean {
-  return !getUrlParams().rgsUrl
+  const p = getUrlParams()
+  return !p.isReplay && !p.rgsUrl
 }
 
-/** True when Stake opens the game for bet replay (?betID=... present) */
+/** True when Stake opens the game for bet replay (?replay=true or legacy ?betID=...) */
 export function isReplayMode(): boolean {
-  const { betID, rgsUrl } = getUrlParams()
-  return betID !== null && rgsUrl !== ''
+  const p = getUrlParams()
+  return p.isReplay || (p.betID !== null && p.rgsUrl !== '')
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -322,6 +342,84 @@ function normalisePlayResponse(raw: any): PlayResponse {
 export async function endRound(): Promise<EndRoundResponse> {
   const { sessionID } = getUrlParams()
   return post<EndRoundResponse>('/wallet/end-round', { sessionID })
+}
+
+// ─── Bet Replay (new Stake Engine format) ────────────────────────────────────
+
+export interface ReplayDataResponse {
+  payoutMultiplier: number
+  costMultiplier:   number
+  events:           RoundEvent[]
+}
+
+/**
+ * Fetch replay state from RGS — no session required.
+ * GET {rgs_url}/bet/replay/{game}/{version}/{mode}/{event}
+ */
+export async function fetchReplayData(): Promise<ReplayDataResponse> {
+  const { rgsUrl, replayGame, replayVersion, replayBetMode, replayEvent } = getUrlParams()
+  if (!rgsUrl || !replayGame || !replayVersion || !replayBetMode || !replayEvent) {
+    console.error('[RGS] fetchReplayData: missing URL params', { rgsUrl, replayGame, replayVersion, replayBetMode, replayEvent })
+    throw new RgsError('ERR_GEN')
+  }
+
+  const base = rgsUrl.startsWith('http') ? rgsUrl.replace(/\/$/, '') : `https://${rgsUrl}`
+  const url  = `${base}/bet/replay/${replayGame}/${replayVersion}/${replayBetMode}/${replayEvent}`
+
+  const ctrl  = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), RGS_TIMEOUT_MS)
+
+  let res: Response
+  try {
+    res = await fetch(url, { signal: ctrl.signal })
+  } catch (e: any) {
+    console.error('[RGS] fetchReplayData network/timeout error:', e?.message ?? e)
+    throw new RgsError(e?.name === 'AbortError' ? 'ERR_TIMEOUT' : 'ERR_GEN')
+  } finally {
+    clearTimeout(timer)
+  }
+
+  if (!res.ok) {
+    console.error('[RGS] fetchReplayData status', res.status)
+    throw new RgsError(`HTTP_${res.status}`, res.status)
+  }
+
+  let raw: any
+  try { raw = await res.json() } catch {
+    throw new RgsError('ERR_GEN')
+  }
+
+  // Normalize state → RoundEvent[] (same logic as normalisePlayResponse)
+  const stateArr: any[] = Array.isArray(raw?.state)      ? raw.state
+                        : Array.isArray(raw?.events)     ? raw.events
+                        : Array.isArray(raw?.bookEvents) ? raw.bookEvents
+                        : []
+  if (!stateArr.length) {
+    console.error('[RGS] fetchReplayData: empty state in response:', raw)
+    throw new RgsError('ERR_GEN')
+  }
+
+  const events: RoundEvent[] = stateArr.map((ev: any) => {
+    const out: any = {
+      ...ev,
+      type:     ev.type,
+      depth:    Number(ev.depth    ?? 0),
+      distance: Number(ev.distance ?? 0),
+    }
+    if (ev.effect && typeof ev.effect === 'object') {
+      out.effect = { op: String(ev.effect.op), value: Number(ev.effect.value ?? 0) }
+    }
+    if (ev.multiplierSnap != null) out.multiplierSnap = Number(ev.multiplierSnap)
+    if (ev.durationMs    != null) out.durationMs     = Number(ev.durationMs)
+    return out as RoundEvent
+  })
+
+  const rawPayout = Number(raw?.payoutMultiplier ?? 0)
+  const payoutMultiplier = rawPayout > 100 ? rawPayout / 100 : rawPayout
+  const rawCost = Number(raw?.costMultiplier ?? 1)
+  const costMultiplier = rawCost > 100 ? rawCost / 100 : rawCost
+
+  return { payoutMultiplier, costMultiplier, events }
 }
 
 /** Track mid-round state (allows resume on disconnect) */

@@ -1,5 +1,5 @@
 import React from "react";
-import { t } from "../../i18n/t";
+import { t, T } from "../../i18n/t";
 import { useGameStore } from "../../store/gameStore";
 import type { RoundEvent } from "../../rgs/client";
 import { gameEngine } from "../../game/GameEngine";
@@ -23,19 +23,19 @@ export const InfoPanel: React.FC = () => (
       <div className="info-list">
         <div className="info-list-row">
           <span className="info-list-label">{t('coins')}</span>
-          <span className="info-list-value">+1 / +2 / +3 / +5 / +10</span>
+          <span className="info-list-value">+1, +2, +3, +5, +10</span>
         </div>
         <div className="info-list-row">
           <span className="info-list-label">{t('gold nuggets')}</span>
-          <span className="info-list-value">+1 / +2 / +3 / +4</span>
+          <span className="info-list-value">+1, +2, +3, +4</span>
         </div>
         <div className="info-list-row">
           <span className="info-list-label">{t('diamonds')}</span>
-          <span className="info-list-value">х2 / x3 / x4 / x5</span>
+          <span className="info-list-value">х2, x3, x4, x5</span>
         </div>
         <div className="info-list-row">
           <span className="info-list-label">{t('rocks')}</span>
-          <span className="info-list-value">-1 / -2 / -3 / -4</span>
+          <span className="info-list-value">-1, -2, -3, -4</span>
         </div>
         <div className="info-list-row">
           <span className="info-list-label">{t('bomb')}</span>
@@ -194,8 +194,8 @@ export const ReplayPanel: React.FC = () => {
           <table className="replay-table">
             <thead>
               <tr>
-                {["Time", "Currency", "Bet", "Win", "Replay"].map((h) => (
-                  <th key={h}>{h}</th>
+                {(["time", "currency", "bet", "win", "replay"] as const).map((key) => (
+                  <th key={key}>{T(key)}</th>
                 ))}
               </tr>
             </thead>

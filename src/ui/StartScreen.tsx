@@ -274,10 +274,10 @@ export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart
             <button
               className="rules-start-btn"
               type="button"
-              aria-label="Start game"
+              aria-label={t('spin start')}
               onClick={onStart}
             >
-              <span>Start</span>
+              <span>{t('spin start')}</span>
             </button>
           </div>
         </div>

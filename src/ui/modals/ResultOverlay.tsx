@@ -75,27 +75,25 @@ export const ResultOverlay: React.FC = () => {
 
   const handleInteraction = () => {
     if (autoplay.active) return
-    if (!counterSkipped) {
-      setCounterSkipped(true)
-      gameAudio.stopWinPayLoop()
-    } else {
-      gameAudio.stopWinPayLoop()
-      gameAudio.unlock()
-      useGameStore.getState().setPhase('IDLE')
-    }
+    setCounterSkipped(true)
+    gameAudio.stopWinPayLoop()
+    gameAudio.unlock()
+    useGameStore.getState().setPhase('IDLE')
   }
 
   useEffect(() => {
     if (!show || autoplay.active) return
-    const onKey = () => handleInteraction()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== 'Space') return
+      e.preventDefault()
+      handleInteraction()
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [show, autoplay.active, counterSkipped])
+  }, [show, autoplay.active])
 
   if (!show || !isBigWin) return null
-
-  const dismissOverlayOnly = () => handleInteraction()
 
   const bgStyle = {
     background:
@@ -106,7 +104,6 @@ export const ResultOverlay: React.FC = () => {
     <div
       className="ui-result"
       style={bgStyle}
-      onClick={dismissOverlayOnly}
     >
       {celebrateKind && (
         <div className="ui-result-celebrate" aria-hidden>

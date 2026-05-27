@@ -15,6 +15,7 @@ import { gameAudio } from '../audio/GameAudio'
 import { GameAssets } from './gameAssets'
 import { buildRoundPathV2, buildRoundPathV3, cavePathHitsTunnel, decorGenerationHorizontalExtent, distancePointToTunnelPolyline, pruneDecorObstaclesAfterPathChange, tunnelXAtWorldY } from './WorldMap'
 import type { FullPathResult, PathPoint, RoadPoint } from './WorldMap'
+import { T } from '../i18n/t'
 import { GameLogger } from '../dev/GameLogger'
 import { perf, installPerfProfiler } from '../dev/PerfProfiler'
 import { tickTickerFpsLog } from '../dev/tickerFpsLog'
@@ -986,18 +987,52 @@ class ObjectSpawner {
     safePixiDestroyDisplay(o.gfx)
   }
 
-  private _roadItemHit(charX: number, charY: number, o: SpawnedObj): boolean {
+  /**
+   * Swept segment collision — fixes missed hits at high speed (×5) + low FPS.
+   * Instead of a single point test, we check whether the segment from (x0,y0)
+   * to (x1,y1) passes through the item's AABB (including COLL_R margin).
+   * The lava system already uses an equivalent segment test (touchesSegment).
+   */
+  private _roadItemHit(
+    x0: number, y0: number,   // start-of-frame position (prev tick)
+    x1: number, y1: number,   // end-of-frame position   (this tick)
+    o: SpawnedObj,
+  ): boolean {
     const hw = Math.max(o.width,  TILE * 0.5) / 2
     const hh = Math.max(o.height, TILE * 0.5) / 2
-    return charX > o.worldX - hw - COLL_R && charX < o.worldX + hw + COLL_R &&
-      charY > o.worldY - hh - COLL_R && charY < o.worldY + hh + COLL_R
+    const itemTop    = o.worldY - hh - COLL_R
+    const itemBottom = o.worldY + hh + COLL_R
+    const itemLeft   = o.worldX - hw - COLL_R
+    const itemRight  = o.worldX + hw + COLL_R
+
+    // Quick Y-range cull
+    const yMin = y0 < y1 ? y0 : y1
+    const yMax = y0 < y1 ? y1 : y0
+    if (yMax < itemTop || yMin > itemBottom) return false
+
+    // Interpolate X at the item's worldY to check horizontal overlap.
+    // Uses the midpoint when there is negligible vertical displacement.
+    const dy = y1 - y0
+    let xAt: number
+    if (Math.abs(dy) < 0.5) {
+      xAt = (x0 + x1) * 0.5
+    } else {
+      const t = Math.max(0, Math.min(1, (o.worldY - y0) / dy))
+      xAt = x0 + t * (x1 - x0)
+    }
+    return xAt > itemLeft && xAt < itemRight
   }
 
-  checkCollisions(charX: number, charY: number, onCollect: (obj: SpawnedObj) => void) {
+  checkCollisions(
+    prevCharX: number, prevCharY: number,
+    charX: number, charY: number,
+    onCollect: (obj: SpawnedObj) => void,
+  ) {
     let best: SpawnedObj | null = null
     for (const o of this.objects) {
       if (o.collected || !o.isRoadItem) continue
-      if (!this._roadItemHit(charX, charY, o)) continue
+      if (!this._roadItemHit(prevCharX, prevCharY, charX, charY, o)) continue
+      // Among all swept candidates pick the shallowest (first in direction of travel)
       if (!best || o.worldY < best.worldY || (o.worldY === best.worldY && o.worldX < best.worldX)) best = o
     }
     if (!best) return
@@ -1261,7 +1296,7 @@ export class GameRenderer {
   private minerLayer:   PIXI.Container = new PIXI.Container()
   private miner: SpriteCharacter
   private liveWinBadge: PIXI.Container = new PIXI.Container()
-  private liveWinTitleText: PIXI.Text = new PIXI.Text({ text: 'MULTIPLIER', style: {
+  private liveWinTitleText: PIXI.Text = new PIXI.Text({ text: T('win label'), style: {
     fontFamily: 'Arial Black, Arial, sans-serif',
     fontSize: 14,
     fontWeight: '800',
@@ -2834,7 +2869,12 @@ export class GameRenderer {
     // gameDt — масштабированное время: вся игровая логика использует его,
     // чтобы spd=2 ускорял буквально всё (движение, анимации, таймеры, частицы).
     // Камера тоже использует gameDt — при высокой скорости она должна быть отзывчивее.
-    const gameDt = dt * (this._turboActive ? Math.max(10, spd) : spd)
+    // Turbo-скорость: на мобильных (zoom < threshold) снижаем с 10× до 3× —
+    // меньше GPU-работы за кадр (скратч туннеля, Spine, коллизии), читабельнее анимации.
+    const turboMul = this._zoom < GameConfig.round.turboMobileZoomThreshold
+      ? GameConfig.round.turboSpeedMobile
+      : GameConfig.round.turboSpeedDesktop
+    const gameDt = dt * (this._turboActive ? Math.max(turboMul, spd) : spd)
 
     if(this.idleActive){
       if(this.tunnelActive) this._hideTunnel()
@@ -3251,7 +3291,7 @@ export class GameRenderer {
 
     if(this.spawner && !this._ended && !this.stoneBreakActive && !this.goldBreakActive){
       const _pco = perf.begin('collide', 0.5)
-      this.spawner.checkCollisions(this.charX,this.charY,(obj)=>{
+      this.spawner.checkCollisions(lavaTrailAx,lavaTrailAy,this.charX,this.charY,(obj)=>{
         this._onCollect(obj)
       })
       perf.end('collide', _pco)

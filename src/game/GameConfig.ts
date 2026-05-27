@@ -271,6 +271,17 @@ export const GameConfig = {
     loseIdleGlideSec: 1,
     autoplayDelayMs:  1200,  // задержка между раундами в автоплее, мс
     minRoundGapMs:     500,  // минимальная пауза от конца раунда до следующего старта, мс
+
+    /**
+     * Множитель перемотки (повторный Spin во время RUNNING).
+     * Десктоп (zoom ≥ turboMobileZoomThreshold): 10×.
+     * Мобильный/планшет (zoom < threshold): 3× — меньше GPU-работы за кадр,
+     * анимации читабельны на маленьком экране.
+     */
+    turboSpeedDesktop:        10,
+    turboSpeedMobile:          3,
+    /** Zoom ниже этого порога → устройство считается мобильным для выбора turbo-скорости. */
+    turboMobileZoomThreshold: 0.75,
     /** Множитель «экран / глубина» для ppm — больше → дальше друг от друга символы по Y */
     depthSpreadScreenFactor: 2.6,
     /**

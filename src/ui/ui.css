@@ -72,6 +72,93 @@
     transform: rotate(360deg);
   }
 }
+@keyframes replay-dot-blink {
+  0%, 100% { opacity: 1; box-shadow: 0 0 6px 2px rgba(255, 30, 30, 0.8); }
+  50%       { opacity: 0.08; box-shadow: none; }
+}
+
+/* ═══════════════════════════════════════════════════════
+   REPLAY BADGE  (shown during bet-replay playback)
+   ═══════════════════════════════════════════════════════ */
+
+.ui-replay-badge {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 13px 5px 10px;
+  background: rgba(0, 0, 0, 0.60);
+  border-radius: 20px;
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ui-replay-dot {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff2020;
+  animation: replay-dot-blink 1.1s ease-in-out infinite;
+}
+
+.ui-replay-label {
+  font-family: var(--font-display);
+  font-size: 15px;
+  letter-spacing: 2.5px;
+  color: #fff;
+  line-height: 1;
+  user-select: none;
+}
+
+.ui-replay-bet {
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: rgba(255, 184, 48, 0.9);
+  line-height: 1;
+  user-select: none;
+  padding-left: 4px;
+  border-left: 1px solid rgba(255, 255, 255, 0.2);
+  margin-left: 2px;
+}
+
+/* ═══════════════════════════════════════════════════════
+   REPLAY PLAY / PLAY AGAIN BUTTON
+   ═══════════════════════════════════════════════════════ */
+
+.ui-replay-play-btn {
+  width: clamp(80px, 17.59vmin, 240px);
+  height: clamp(80px, 17.59vmin, 240px);
+  border-radius: 50%;
+  border: 3px solid rgba(255, 184, 48, 0.8);
+  background: rgba(0, 0, 0, 0.55);
+  color: rgba(255, 184, 48, 1);
+  font-size: clamp(28px, 7vmin, 80px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s, border-color 0.15s;
+  touch-action: manipulation;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  flex-shrink: 0;
+}
+
+.ui-replay-play-btn:active {
+  transform: scale(0.93);
+  background: rgba(255, 184, 48, 0.18);
+}
+
+.ui-replay-play-btn--again {
+  font-size: clamp(32px, 8vmin, 88px);
+}
 
 /* ═══════════════════════════════════════════════════════
    TOP BAR
@@ -395,7 +482,7 @@
     color 0.15s ease;
 }
 
-.ui-speed-btn:hover .ui-speed-icon,
+/* :active и --active всегда */
 .ui-speed-btn:active .ui-speed-icon,
 .ui-speed-btn--active .ui-speed-icon {
   width: clamp(28px, 4.63vmin, 64px);
@@ -403,11 +490,28 @@
   color: #f2fdff;
 }
 
-.ui-speed-btn:hover .ui-speed-label,
+/* :hover только на устройствах с настоящим указателем.
+   На тач-экранах (hover: none) :hover «прилипает» после тапа —
+   кнопка остаётся белой до следующего прикосновения. */
+@media (hover: hover) and (pointer: fine) {
+  .ui-speed-btn:hover .ui-speed-icon {
+    width: clamp(28px, 4.63vmin, 64px);
+    height: clamp(28px, 4.63vmin, 64px);
+    color: #f2fdff;
+  }
+}
+
 .ui-speed-btn:active .ui-speed-label,
 .ui-speed-btn--active .ui-speed-label {
   font-size: clamp(10px, 1.48vmin, 20px);
   color: #facb32;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ui-speed-btn:hover .ui-speed-label {
+    font-size: clamp(10px, 1.48vmin, 20px);
+    color: #facb32;
+  }
 }
 
 /* Total BET */
@@ -619,6 +723,7 @@
 /* AUTOSPIN */
 
 .ui-autospin-btn {
+  position: relative;
   width: clamp(45px, 8.33vmin, 115px);
   height: clamp(45px, 8.33vmin, 115px);
   touch-action: manipulation;
@@ -668,6 +773,27 @@
   width: 95%;
   height: 95%;
   display: block;
+}
+
+/* Счётчик автоспина — над иконкой, у верхнего края кнопки */
+.ui-autospin-counter {
+  position: absolute;
+  top: clamp(2px, 0.46vmin, 6px);
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  font-family: Inter, var(--font-body), sans-serif;
+  font-weight: 900;
+  font-size: clamp(11px, 1.85vmin, 24px);
+  line-height: 1;
+  color: #f2fdff;
+  pointer-events: none;
+  user-select: none;
+  z-index: 3;
+  -webkit-text-stroke: clamp(1px, 0.09vw, 1.5px) #000;
+  paint-order: stroke fill;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.9);
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -2709,7 +2835,7 @@
 }
 
 .ui-result-claim-wrap {
-  --btn-w: min(267px, 24.72vmin);
+  --btn-w: clamp(135px, 28vmin, 340px);
   position: absolute;
   bottom: clamp(16px, 3.5vh, 40px);
   left: 50%;
@@ -2734,7 +2860,7 @@
   appearance: none;
   -webkit-appearance: none;
   background: #9C3E0A;
-  box-shadow: none;
+  box-shadow: 0 0 0 3px #5E1205;
   border-radius: calc(var(--btn-w) * 18 / 267);
   cursor: pointer;
   padding: 0 0 calc(var(--btn-w) * 15 / 267) 0;
@@ -2746,10 +2872,9 @@
 
   animation: uiWinCelebratePop 0.5s cubic-bezier(0.2, 0.85, 0.25, 1) 1.4s both;
   transform-origin: center bottom;
-  transition: filter 0.15s ease, box-shadow 0.15s ease, height 0.08s ease;
+  transition: box-shadow 0.15s ease, height 0.08s ease;
 }
 
-/* Button_inner — gradient face, leaves dark base at bottom */
 .ui-result-claim-btn::before {
   content: '';
   position: absolute;
@@ -2759,10 +2884,9 @@
   height: calc(100% - var(--btn-w) * 15 / 267);
   background: linear-gradient(180deg, #FFE713 0%, #E18A08 100%);
   border-radius: calc(var(--btn-w) * 18 / 267);
-  transition: top 0.08s ease, height 0.08s ease;
+  transition: top 0.08s ease, height 0.08s ease, background 0.15s ease;
 }
 
-/* Background — inner glare on face */
 .ui-result-claim-btn::after {
   content: '';
   position: absolute;
@@ -2776,7 +2900,6 @@
   transition: top 0.02s ease;
 }
 
-/* Name */
 .ui-result-claim-btn span {
   position: relative;
   z-index: 1;
@@ -2815,17 +2938,12 @@
   pointer-events: none;
 }
 
-.ui-result-claim-btn:hover {
-  filter: brightness(1.12);
-}
-
 .ui-result-claim-btn:hover::before {
   background: linear-gradient(180deg, #FFF040 0%, #F09B10 100%);
 }
 
 .ui-result-claim-btn:active {
-  filter: brightness(0.88);
-  box-shadow: none;
+  box-shadow: 0 0 0 3px #3D0A03;
   background: #7A2E06;
   height: calc(var(--btn-w) * 94 / 267);
 }
@@ -5080,7 +5198,6 @@
     font-size: clamp(7px, calc(3.6082vh - 12.8454px), 14px);
   }
 
-  .ui-speed-btn:hover .ui-speed-icon,
   .ui-speed-btn:active .ui-speed-icon,
   .ui-speed-btn--active .ui-speed-icon {
     width: clamp(22px, calc(14.433vh - 57.3814px), 50px);
@@ -5088,16 +5205,30 @@
     color: #f2fdff;
   }
 
+  @media (hover: hover) and (pointer: fine) {
+    .ui-speed-btn:hover .ui-speed-icon {
+      width: clamp(22px, calc(14.433vh - 57.3814px), 50px);
+      height: clamp(22px, calc(14.433vh - 57.3814px), 50px);
+      color: #f2fdff;
+    }
+  }
+
   .ui-speed-btn--active {
     width: clamp(30px, calc(17.5258vh - 66.3918px), 64px) !important;
     height: clamp(30px, calc(19.0722vh - 74.8969px), 67px) !important;
   }
 
-  .ui-speed-btn:hover .ui-speed-label,
   .ui-speed-btn:active .ui-speed-label,
   .ui-speed-btn--active .ui-speed-label {
     font-size: clamp(10px, calc(3.0928vh - 7.0103px), 16px);
     color: #facb32;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .ui-speed-btn:hover .ui-speed-label {
+      font-size: clamp(10px, calc(3.0928vh - 7.0103px), 16px);
+      color: #facb32;
+    }
   }
 
   .ui-bet-block {
@@ -5426,7 +5557,6 @@
     font-size: clamp(7px, calc(1.4vw + 1.4px), 14px);
   }
 
-  .ui-speed-btn:hover .ui-speed-icon,
   .ui-speed-btn:active .ui-speed-icon,
   .ui-speed-btn--active .ui-speed-icon {
     width: clamp(22px, calc(5.6vw - 0.4px), 50px);
@@ -5434,11 +5564,25 @@
     color: #f2fdff;
   }
 
-  .ui-speed-btn:hover .ui-speed-label,
+  @media (hover: hover) and (pointer: fine) {
+    .ui-speed-btn:hover .ui-speed-icon {
+      width: clamp(22px, calc(5.6vw - 0.4px), 50px);
+      height: clamp(22px, calc(5.6vw - 0.4px), 50px);
+      color: #f2fdff;
+    }
+  }
+
   .ui-speed-btn:active .ui-speed-label,
   .ui-speed-btn--active .ui-speed-label {
     font-size: clamp(10px, calc(1.2vw + 5.2px), 16px);
     color: #facb32;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .ui-speed-btn:hover .ui-speed-label {
+      font-size: clamp(10px, calc(1.2vw + 5.2px), 16px);
+      color: #facb32;
+    }
   }
 
   .ui-bet-block {

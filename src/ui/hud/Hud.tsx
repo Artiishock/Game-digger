@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useGameStore, type SpeedMode } from "../../store/gameStore";
-import { formatMoney, toDisplay, type RgsConfig } from "../../rgs/client";
+import { formatMoney, toDisplay, isReplayMode, type RgsConfig } from "../../rgs/client";
 import { resolvePublicUrl } from "../../utils/publicUrl";
 import "../ui.css";
 import { T } from "../../i18n/t";
@@ -215,16 +215,20 @@ export const Hud: React.FC = () => {
     5: resolvePublicUrl("ui/speedmode_5.svg"),
   };
 
+  const inReplay = isReplayMode()
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="ui-hud">
-      {/* CREDIT */}
-      <div className="ui-credit">
-        <span className="ui-credit-label">{T('balance')}</span>
-        <span className="ui-credit-value">
-          {formatMoney(balance, currency)}
-        </span>
-      </div>
+      {/* CREDIT — hidden in replay mode */}
+      {!inReplay && (
+        <div className="ui-credit">
+          <span className="ui-credit-label">{T('balance')}</span>
+          <span className="ui-credit-value">
+            {formatMoney(balance, currency)}
+          </span>
+        </div>
+      )}
 
       <div className="ui-group-wrapper" ref={groupRef}>
         {/* SPEED BUTTONS */}
@@ -255,8 +259,8 @@ export const Hud: React.FC = () => {
           })}
         </div>
 
-        {/* TOTAL BET + модальное окно */}
-        {showBetModal && (
+        {/* TOTAL BET + модальное окно — hidden in replay mode */}
+        {!inReplay && showBetModal && (
           <BalanceBetModal
             levels={levels}
             currentBet={bet}
@@ -265,29 +269,31 @@ export const Hud: React.FC = () => {
           />
         )}
 
-        <div
-          className="ui-bet-block"
-          onClick={() => !betDisabled && setShowBetModal(true)}
-        >
-          <span className="ui-bet-label">{T('total play')}</span>
-          <div className="ui-bet-controls">
-            <button
-              className="ui-bet-adj"
-              onClick={(event) => { event.stopPropagation(); handleMinus(); }}
-              disabled={betDisabled || bet <= minBet}
-            >
-              <span className="ui-bet-icon ui-bet-icon--minus" aria-hidden="true" />
-            </button>
-            <span className="ui-bet-amount">{bet.toFixed(2)}</span>
-            <button
-              className="ui-bet-adj"
-              onClick={(event) => { event.stopPropagation(); handlePlus(); }}
-              disabled={betDisabled || bet >= maxBet}
-            >
-              <span className="ui-bet-icon ui-bet-icon--plus" aria-hidden="true" />
-            </button>
+        {!inReplay && (
+          <div
+            className="ui-bet-block"
+            onClick={() => !betDisabled && setShowBetModal(true)}
+          >
+            <span className="ui-bet-label">{T('total play')}</span>
+            <div className="ui-bet-controls">
+              <button
+                className="ui-bet-adj"
+                onClick={(event) => { event.stopPropagation(); handleMinus(); }}
+                disabled={betDisabled || bet <= minBet}
+              >
+                <span className="ui-bet-icon ui-bet-icon--minus" aria-hidden="true" />
+              </button>
+              <span className="ui-bet-amount">{bet.toFixed(2)}</span>
+              <button
+                className="ui-bet-adj"
+                onClick={(event) => { event.stopPropagation(); handlePlus(); }}
+                disabled={betDisabled || bet >= maxBet}
+              >
+                <span className="ui-bet-icon ui-bet-icon--plus" aria-hidden="true" />
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

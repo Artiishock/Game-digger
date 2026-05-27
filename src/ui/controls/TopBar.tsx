@@ -15,6 +15,8 @@ export const TopBar: React.FC = () => {
   const currency = useGameStore((s) => s.currency);
   const stats = useGameStore((s) => s.stats);
   const lastRoundStats = useGameStore((s) => s.lastRoundStats);
+  const replayMode = useGameStore((s) => s.replayMode);
+  const replayBetAmount = useGameStore((s) => s.replayBetAmount);
   const logoDimmed = phase === "RUNNING" || phase === "BETTING";
   const depthHudLive = phase === "RUNNING";
   const depthHudDistance = depthHudLive ? stats.distance : lastRoundStats.distance;
@@ -27,6 +29,19 @@ export const TopBar: React.FC = () => {
 
   return (
     <>
+      {/* Replay recording badge */}
+      {replayMode && (
+        <div className="ui-replay-badge">
+          <span className="ui-replay-dot" />
+          <span className="ui-replay-label">REPLAY</span>
+          {replayBetAmount > 0 && (
+            <span className="ui-replay-bet">
+              {replayBetAmount.toFixed(2)} {currency}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Logo */}
       <div
         className={`ui-logo-zone${logoDimmed ? " ui-logo-zone--gameplay" : ""}`}

@@ -44,6 +44,29 @@ class GameEngine {
     this._setPhase(store, 'BOOT')
 
     try {
+      const urlParams = RGS.getUrlParams()
+
+      // ── New Stake Bet Replay: ?replay=true (no session needed) ──────────────
+      if (urlParams.isReplay) {
+        gameAudio.init()
+        const data = await RGS.fetchReplayData()
+
+        const betDisplay = urlParams.replayAmount != null
+          ? RGS.toDisplay(urlParams.replayAmount)
+          : 0
+        store.setReplayBetAmount(betDisplay)
+        store.setReplayCostMultiplier(data.costMultiplier)
+        if (urlParams.replayCurrency) store.setCurrency(urlParams.replayCurrency)
+
+        // Pre-load events, wait for user "Play" click (replayPending = true)
+        store.setEvents(data.events, '')
+        store.setReplayMode(true)
+        store.setReplayPending(true)
+        this._setPhase(store, 'IDLE')
+        return
+      }
+
+      // ── Normal auth flow ────────────────────────────────────────────────────
       let auth: RGS.AuthResponse
 
       if (RGS.isDemo()) {
@@ -63,7 +86,7 @@ class GameEngine {
 
       gameAudio.init()
 
-      // Stake Bet Replay: game opened with ?betID=xxx → play round back without betting.
+      // Legacy Stake Bet Replay: ?betID=xxx → play round back without betting.
       if (RGS.isReplayMode() && auth.round && auth.round.events.length > 0) {
         this.startReplay(auth.round.events, 0, auth.round.roundID)
         return
@@ -114,9 +137,17 @@ class GameEngine {
     store.setMenuOpen(false)
     store.setWorldSeed(worldSeed)
     store.setReplayMode(true)
+    store.setReplayPending(false)
     store.resetStats()
     store.setEvents(events, roundID ?? store.roundID)
     this._setPhase(store, 'RUNNING')
+  }
+
+  /** "Play Again" — re-runs the last replay with the same events. */
+  playReplayAgain(): void {
+    const store = useGameStore.getState()
+    if (store.phase === 'BETTING' || store.phase === 'RUNNING') return
+    this.startReplay(store.events, store.worldSeed, store.roundID)
   }
 
   /** Вызывается из GameCanvas когда пользователь пропустил анимацию лавы. */
@@ -136,7 +167,6 @@ class GameEngine {
   async instantFinishRound(): Promise<void> {
     const store = useGameStore.getState()
     if (store.phase !== 'RUNNING') return
-    if (store.autoplay.active) return
     await this._rendererInstantFinish?.()
   }
 
@@ -256,8 +286,11 @@ class GameEngine {
     const bet   = store.bet
 
     if (store.replayMode) {
+      // Use the historical bet amount from URL ?amount= param if available,
+      // otherwise fall back to the current store.bet
+      const betForCalc = store.replayBetAmount > 0 ? store.replayBetAmount : bet
       if (won) {
-        store.setLastWin(RGS.toDisplay(Math.round(bet * multiplier * RGS.MONEY_SCALE)))
+        store.setLastWin(RGS.toDisplay(Math.round(betForCalc * multiplier * RGS.MONEY_SCALE)))
         store.setLastWinMult(multiplier)
         this._setPhase(store, 'WIN')
       } else {

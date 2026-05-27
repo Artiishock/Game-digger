@@ -50,6 +50,28 @@ const GAPLESS_LOOPS = new Set(['drill.ogg'])
 // Background tracks controlled by gradual volume fading rather than hard on/off
 const FADE_TRACKS = new Set(['background_2.ogg', 'background_3.ogg'])
 
+/**
+ * Индивидуальные множители громкости для конкретных файлов.
+ * Применяются поверх sfxVolume / musicVolume из настроек пользователя.
+ */
+const FILE_VOLUME_SCALE: Record<string, number> = {
+  'iddle.ogg':   0.5,
+  'drill.ogg':   0.5,
+  'ambient.ogg': 0.5,
+}
+
+/**
+ * HTML5 Audio для этих луперов НЕ удаляем через src='' при остановке —
+ * они часто перезапускаются (каждый раунд) и пересоздание вызывает задержку на мобильном.
+ * Просто ставим на паузу и переиспользуем элемент.
+ */
+const REUSE_LOOPERS = new Set([
+  'ambient.ogg', 'iddle.ogg',
+  'background_1.ogg',
+  'finish_pay.ogg', 'finish_coins.ogg',
+  'gold.ogg', 'stone.ogg',
+])
+
 class GameAudioModule {
   private ctx: AudioContext | null = null
   private buffers = new Map<string, AudioBuffer>()
@@ -62,19 +84,111 @@ class GameAudioModule {
   private readonly FADE_DURATION_MS = 2000
   private readonly FADE_STEP_MS = 50
   private _loseInProgress = false
+  /** Файлы, которые были активны до скрытия страницы (для resume при возврате). */
+  private _bgPausedFiles: Set<string> | null = null
+  /**
+   * Файлы, у которых play() был заблокирован autoplay-политикой браузера.
+   * Будут повторно запущены при следующем пользовательском жесте (unlock).
+   */
+  private _blockedPlays = new Set<string>()
+  private readonly _onVisibility = () => {
+    if (document.hidden) {
+      this._pauseAllForBackground()
+    } else {
+      this._resumeFromBackground()
+    }
+  }
+
+  /**
+   * Вызывает play() на HTML5 Audio-элементе.
+   * Если заблокирован autoplay-политикой — добавляет в очередь для retry при unlock().
+   */
+  private _htmlPlay(a: HTMLAudioElement, file: string): void {
+    void a.play().catch(() => {
+      // play() заблокирован — запомним файл, повторим попытку при следующем жесте (unlock).
+      this._blockedPlays.add(file)
+    })
+  }
+
+  /** Повторяет play() для всех ранее заблокированных луперов. */
+  private _retryBlockedPlays(): void {
+    if (!this._blockedPlays.size) return
+    for (const file of this._blockedPlays) {
+      const looper = this.loopers.get(file)
+      if (looper && looper.paused && looper.src) {
+        void looper.play().catch(() => {})
+      }
+    }
+    this._blockedPlays.clear()
+  }
+
+  /** Пауза всех активных луперов при уходе страницы в фон (visibilitychange). */
+  private _pauseAllForBackground(): void {
+    const playing = new Set<string>()
+    for (const [file, looper] of this.loopers.entries()) {
+      if (!looper.paused) {
+        playing.add(file)
+        looper.pause()
+      }
+    }
+    // Приостанавливаем AudioContext — освобождает системные ресурсы и
+    // предотвращает двойной запуск треков при возврате в foreground на iOS.
+    if (this.ctx && this.ctx.state === 'running') {
+      void this.ctx.suspend()
+    }
+    this._bgPausedFiles = playing
+  }
+
+  /** Возобновляет только те луперы, которые играли до ухода в фон. */
+  private _resumeFromBackground(): void {
+    const files = this._bgPausedFiles
+    this._bgPausedFiles = null
+
+    const doPlay = () => {
+      if (files) {
+        for (const file of files) {
+          const looper = this.loopers.get(file)
+          // Возобновляем только если элемент ещё существует и не был намеренно остановлен.
+          if (looper && looper.src) void looper.play().catch(() => { this._blockedPlays.add(file) })
+        }
+      }
+      // Параллельно повторяем любые ранее заблокированные play().
+      this._retryBlockedPlays()
+    }
+
+    // AudioContext необходимо resume() раньше чем HTML5 Audio play(),
+    // иначе на iOS WebAudio-ноды (drill.ogg) не восстановятся корректно.
+    if (this.ctx && this.ctx.state === 'suspended') {
+      void this.ctx.resume().then(doPlay)
+    } else {
+      doPlay()
+    }
+  }
 
   /** Вызывать по первому клику пользователя (DIG), чтобы снять блокировку autoplay. */
   unlock(): void {
     if (!this.ctx) this.ctx = new AudioContext({ latencyHint: 'interactive' })
-    void this.ctx.resume()
+    void this.ctx.resume().then(() => {
+      const ctx = this.ctx!
+      // 1. Прогреваем аудиопайплайн тихим буфером — устраняет задержку первого звука (iOS/Android).
+      const silence = ctx.createBuffer(1, 1, ctx.sampleRate)
+      const s = ctx.createBufferSource()
+      s.buffer = silence
+      s.connect(ctx.destination)
+      s.start()
+      // 2. Повторяем play() ТОЛЬКО для файлов, заблокированных autoplay-политикой.
+      //    Нельзя трогать все паузированные loopers — часть из них намеренно остановлена
+      //    (gold.ogg/stone.ogg после окончания события, iddle.ogg во время спина и т.д.).
+      this._retryBlockedPlays()
+    })
     void this.ensureBuffers()
+    // refreshFromStore уже вызывает syncPhase внутри — второй прямой вызов не нужен.
     this.refreshFromStore()
-    const store = useGameStore.getState()
-    this.syncPhase(store.phase, store.stats.multiplier)
   }
 
   init(): void {
     void this.ensureBuffers()
+    document.addEventListener('visibilitychange', this._onVisibility)
   }
 
   /** Вызывать из React при смене настроек звука (громкость / mute). */
@@ -101,13 +215,23 @@ class GameAudioModule {
     if (inPlayableScene) {
       this.setLoop('background_1.ogg', true)
 
-      this._ensureLoopStartedAt('background_2.ogg', 0)
-      this._ensureLoopStartedAt('background_3.ogg', 0)
+      // background_2: запускаем только во время RUNNING, иначе плавно затухаем и останавливаем.
+      if (phase === 'RUNNING') {
+        this._ensureLoopStartedAt('background_2.ogg', 0)
+        this._fadeLooper('background_2.ogg', targetVol)
+      } else {
+        this._fadeLooper('background_2.ogg', 0)   // fade → auto-stop (см. _fadeLooper)
+      }
 
-      this._fadeLooper('background_2.ogg', phase === 'RUNNING' ? targetVol : 0)
-
+      // background_3: запускаем ТОЛЬКО при достижении порогового множителя.
       const intenseBgMin = GameConfig.round.megaWinMinMultiplier
-      this._fadeLooper('background_3.ogg', phase === 'RUNNING' && multiplier >= intenseBgMin ? targetVol : 0)
+      const wantBg3 = phase === 'RUNNING' && multiplier >= intenseBgMin
+      if (wantBg3) {
+        this._ensureLoopStartedAt('background_3.ogg', 0)
+        this._fadeLooper('background_3.ogg', targetVol)
+      } else {
+        this._fadeLooper('background_3.ogg', 0)   // fade → auto-stop
+      }
     } else {
       this._stopFadingLoop('background_2.ogg')
       this._stopFadingLoop('background_3.ogg')
@@ -177,7 +301,13 @@ class GameAudioModule {
   playSfx(file: string): void {
     const { soundEnabled, sfxVolume } = useGameStore.getState().settings
     if (!soundEnabled || sfxVolume <= 0) return
-    void this.ensureBuffers().then(() => this._playBuffer(file, sfxVolume))
+    if (this.loadDone) {
+      // Буферы готовы — играем синхронно без .then() задержки.
+      // На мобильном это устраняет 10–50 мс запаздывание SFX относительно анимации.
+      this._playBuffer(file, sfxVolume)
+    } else {
+      void this.ensureBuffers().then(() => this._playBuffer(file, sfxVolume))
+    }
   }
 
   playDig(): void {
@@ -219,7 +349,7 @@ class GameAudioModule {
   setLoop(file: string, on: boolean): void {
     const { soundEnabled, musicEnabled, sfxVolume, musicVolume } = useGameStore.getState().settings
     const isMusic = MUSIC_LOOPS.has(file)
-    const volume = isMusic ? musicVolume : sfxVolume
+    const volume = (isMusic ? musicVolume : sfxVolume) * (FILE_VOLUME_SCALE[file] ?? 1)
     if (!soundEnabled || (isMusic && !musicEnabled) || volume <= 0) on = false
 
     if (GAPLESS_LOOPS.has(file)) {
@@ -231,7 +361,7 @@ class GameAudioModule {
     if (on) {
       if (existing) {
         existing.volume = volume
-        if (existing.paused) void existing.play().catch(() => {})
+        if (existing.paused) this._htmlPlay(existing, file)
         return
       }
       const a = new Audio(url(file))
@@ -239,7 +369,7 @@ class GameAudioModule {
       a.preload = 'auto'
       a.volume = volume
       this.loopers.set(file, a)
-      void a.play().catch(() => {})
+      this._htmlPlay(a, file)
       return
     }
     if (existing) {
@@ -249,9 +379,16 @@ class GameAudioModule {
         this.fadeIntervals.delete(file)
       }
       this.fadeTargetVolumes.delete(file)
+      this._blockedPlays.delete(file)
       existing.pause()
       existing.currentTime = 0
-      this.loopers.delete(file)
+      if (REUSE_LOOPERS.has(file)) {
+        // Переиспользуемые луперы: только пауза, не удаляем элемент.
+        // Следующий setLoop(true) сразу возобновит без пересоздания и без задержки.
+      } else {
+        existing.src = ''  // полностью освобождаем медиаресурс
+        this.loopers.delete(file)
+      }
     }
   }
 
@@ -264,8 +401,8 @@ class GameAudioModule {
       return
     }
     if (existing) {
-      // First render play() may have been blocked by autoplay policy — retry on user-gesture context
-      if (existing.paused) void existing.play().catch(() => {})
+      // play() ранее мог быть заблокирован autoplay-политикой — повторяем попытку.
+      if (existing.paused) this._htmlPlay(existing, file)
       return
     }
     const a = new Audio(url(file))
@@ -273,7 +410,7 @@ class GameAudioModule {
     a.preload = 'auto'
     a.volume = initialVolume
     this.loopers.set(file, a)
-    void a.play().catch(() => {})
+    this._htmlPlay(a, file)
   }
 
   /** Gradually fades a looper to targetVolume over FADE_DURATION_MS. No-ops if already heading there. */
@@ -301,7 +438,13 @@ class GameAudioModule {
     if (snapSilent) {
       looper.volume = 0
       looper.pause()
+      looper.currentTime = 0
+      this._blockedPlays.delete(file)
       this.fadeTargetVolumes.delete(file)
+      if (!REUSE_LOOPERS.has(file)) {
+        looper.src = ''
+        this.loopers.delete(file)
+      }
       return
     }
 
@@ -323,9 +466,21 @@ class GameAudioModule {
       }
       const next = l.volume + delta
       if ((delta > 0 && next >= targetVolume) || (delta < 0 && next <= targetVolume)) {
-        l.volume = Math.max(0, Math.min(1, targetVolume))
+        const finalVol = Math.max(0, Math.min(1, targetVolume))
+        l.volume = finalVol
         clearInterval(interval)
         this.fadeIntervals.delete(file)
+        this.fadeTargetVolumes.delete(file)
+        // Трек дотух до нуля — останавливаем.
+        if (finalVol <= 0.001) {
+          l.pause()
+          l.currentTime = 0
+          this._blockedPlays.delete(file)
+          if (!REUSE_LOOPERS.has(file)) {
+            l.src = ''
+            this.loopers.delete(file)
+          }
+        }
       } else {
         l.volume = Math.max(0, Math.min(1, next))
       }
@@ -342,11 +497,15 @@ class GameAudioModule {
       this.fadeIntervals.delete(file)
     }
     this.fadeTargetVolumes.delete(file)
+    this._blockedPlays.delete(file)
     const existing = this.loopers.get(file)
     if (existing) {
       existing.pause()
       existing.currentTime = 0
-      this.loopers.delete(file)
+      if (!REUSE_LOOPERS.has(file)) {
+        existing.src = ''
+        this.loopers.delete(file)
+      }
     }
   }
 
@@ -381,16 +540,24 @@ class GameAudioModule {
         htmlFallback.pause()
         this.loopers.delete(file)
       }
-      void ctx.resume()
-      const g = ctx.createGain()
-      g.gain.value = volume
-      const src = ctx.createBufferSource()
-      src.buffer = buf
-      src.loop = true
-      src.connect(g)
-      g.connect(ctx.destination)
-      src.start()
-      this.looperNodes.set(file, { src, gain: g })
+      const startNode = () => {
+        // Двойная проверка: пока мы ждали resume(), loop мог быть уже остановлен.
+        if (this.looperNodes.has(file)) return
+        const g = ctx.createGain()
+        g.gain.value = volume
+        const s = ctx.createBufferSource()
+        s.buffer = buf
+        s.loop = true
+        s.connect(g)
+        g.connect(ctx.destination)
+        s.start()
+        this.looperNodes.set(file, { src: s, gain: g })
+      }
+      if (ctx.state === 'running') {
+        startNode()
+      } else {
+        void ctx.resume().then(startNode)
+      }
     } else {
       const existing = this.looperNodes.get(file)
       if (existing) {
@@ -422,7 +589,7 @@ class GameAudioModule {
         looper.pause()
         continue
       }
-      const baseVolume = isMusic ? musicVolume : sfxVolume
+      const baseVolume = (isMusic ? musicVolume : sfxVolume) * (FILE_VOLUME_SCALE[file] ?? 1)
       if (FADE_TRACKS.has(file)) {
         const fadeTarget = this.fadeTargetVolumes.get(file)
         if (fadeTarget !== undefined && fadeTarget > 0) {
@@ -436,7 +603,7 @@ class GameAudioModule {
     }
     for (const [file, nodes] of this.looperNodes.entries()) {
       const isMusic = MUSIC_LOOPS.has(file)
-      const volume = isMusic ? musicVolume : sfxVolume
+      const volume = (isMusic ? musicVolume : sfxVolume) * (FILE_VOLUME_SCALE[file] ?? 1)
       const active = soundEnabled && (!isMusic || musicEnabled)
       nodes.gain.gain.value = active ? volume : 0
     }
@@ -479,16 +646,23 @@ class GameAudioModule {
       const buf = this.buffers.get(file)
       const ctx = this.ctx
       if (!buf || !ctx) continue
-      void ctx.resume()
-      const g = ctx.createGain()
-      g.gain.value = volume
-      const src = ctx.createBufferSource()
-      src.buffer = buf
-      src.loop = true
-      src.connect(g)
-      g.connect(ctx.destination)
-      src.start()
-      this.looperNodes.set(file, { src, gain: g })
+      const upgrade = (f: string, v: number) => {
+        if (this.looperNodes.has(f)) return
+        const g = ctx.createGain()
+        g.gain.value = v
+        const src = ctx.createBufferSource()
+        src.buffer = buf
+        src.loop = true
+        src.connect(g)
+        g.connect(ctx.destination)
+        src.start()
+        this.looperNodes.set(f, { src, gain: g })
+      }
+      if (ctx.state === 'running') {
+        upgrade(file, volume)
+      } else {
+        void ctx.resume().then(() => upgrade(file, volume))
+      }
     }
   }
 
@@ -502,14 +676,22 @@ class GameAudioModule {
       void a.play().catch(() => {})
       return
     }
-    void ctx.resume()
-    const g = ctx.createGain()
-    g.gain.value = Math.max(0, Math.min(1, vol))
-    const src = ctx.createBufferSource()
-    src.buffer = buf
-    src.connect(g)
-    g.connect(ctx.destination)
-    src.start()
+    const play = () => {
+      const g = ctx.createGain()
+      g.gain.value = Math.max(0, Math.min(1, vol))
+      const src = ctx.createBufferSource()
+      src.buffer = buf
+      src.connect(g)
+      g.connect(ctx.destination)
+      src.start()
+    }
+    // Если контекст уже запущен — играем немедленно (нет задержки).
+    // Если suspended (например после ухода в фон) — ждём resume(), только потом играем.
+    if (ctx.state === 'running') {
+      play()
+    } else {
+      void ctx.resume().then(play)
+    }
   }
 }
 

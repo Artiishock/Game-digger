@@ -81,6 +81,12 @@ interface GameStore {
   roundID:    string
   worldSeed:  number
   replayMode: boolean
+  /** Historical bet amount for Stake Bet Replay (display $, 0 = unknown / legacy). */
+  replayBetAmount:      number
+  /** Cost multiplier from /bet/replay response (default 1). */
+  replayCostMultiplier: number
+  /** true = replay data loaded, waiting for user "Play" click */
+  replayPending:        boolean
 
   // Live stats (updated every frame by PixiJS renderer)
   stats:     SessionStats
@@ -106,9 +112,12 @@ interface GameStore {
   setBet:      (bet: number)            => void
   setCurrency: (c: string)              => void
   setSessionID:(id: string)             => void
-  setEvents:      (events: RoundEvent[], roundID: string) => void
-  setWorldSeed:   (seed: number) => void
-  setReplayMode:  (mode: boolean) => void
+  setEvents:            (events: RoundEvent[], roundID: string) => void
+  setWorldSeed:         (seed: number) => void
+  setReplayMode:        (mode: boolean) => void
+  setReplayBetAmount:   (amount: number) => void
+  setReplayCostMultiplier: (mult: number) => void
+  setReplayPending:     (pending: boolean) => void
   setLastWin:     (win: number)          => void
   setLastWinMult: (mult: number)         => void
   setSpeed:    (speed: SpeedMode)       => void
@@ -175,6 +184,9 @@ export const useGameStore = createWithEqualityFn<GameStore>()((set, get) => ({
   roundID:    '',
   worldSeed:  0,
   replayMode: false,
+  replayBetAmount:      0,
+  replayCostMultiplier: 1,
+  replayPending:        false,
   stats:   { depth: 0, distance: 0, multiplier: 0 },
   lastRoundStats: { depth: 0, distance: 0 },
 
@@ -198,9 +210,12 @@ export const useGameStore = createWithEqualityFn<GameStore>()((set, get) => ({
   setCurrency: (currency) => set({ currency }),
   setSessionID:(sessionID)=> set({ sessionID }),
 
-  setEvents:     (events, roundID) => set({ events, roundID }),
-  setWorldSeed:  (worldSeed)      => set({ worldSeed }),
-  setReplayMode: (replayMode)     => set({ replayMode }),
+  setEvents:     (events, roundID)   => set({ events, roundID }),
+  setWorldSeed:  (worldSeed)         => set({ worldSeed }),
+  setReplayMode: (replayMode)        => set({ replayMode }),
+  setReplayBetAmount:      (replayBetAmount)      => set({ replayBetAmount }),
+  setReplayCostMultiplier: (replayCostMultiplier) => set({ replayCostMultiplier }),
+  setReplayPending:        (replayPending)        => set({ replayPending }),
   setLastWin:     (lastWin)     => set({ lastWin }),
   setLastWinMult: (lastWinMult) => set({ lastWinMult }),
   setSpeed:   (speed)    => set({ speed }),

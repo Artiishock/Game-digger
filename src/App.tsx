@@ -29,9 +29,10 @@ document.head.appendChild(fontLink);
 
 export const App: React.FC = () => {
   const { width, height } = useWindowSize()
-  const phase    = useGameStore(s => s.phase)
-  const multiplier = useGameStore(s => s.stats.multiplier)
-  const settings = useGameStore(s => s.settings, shallow)
+  const phase          = useGameStore(s => s.phase)
+  const multiplier     = useGameStore(s => s.stats.multiplier)
+  const settings       = useGameStore(s => s.settings, shallow)
+  const replayPending  = useGameStore(s => s.replayPending)
   const prevPhase = useRef<string>('')
   const [logoSplashDone, setLogoSplashDone] = useState(() => isReplayMode())
   const [assetsReady, setAssetsReady] = useState(false)
@@ -90,7 +91,14 @@ export const App: React.FC = () => {
   }, [startDismissing, startScreenGone]);
 
   // ── Boot ─────────────────────────────────────────────────────────────────────
+  // Preload и boot стартуют ПОСЛЕ завершения логотипа (logoSplashDone).
+  // Причина: preloadStartupAssets() делает gl.texImage2D() для Pixi-текстур и Spine-атласов —
+  // это блокирует главный поток и крадёт rAF-бюджет у Canvas2D анимации логотипа,
+  // вызывая видимые подвисания на мобильных. Логотип длится ~3 сек, за это время
+  // сеть простаивает — ничего не теряем, зато анимация идёт плавно.
+  // В replay-режиме logoSplashDone = true сразу, поэтому задержки нет.
   useEffect(() => {
+    if (!logoSplashDone) return;
     let cancelled = false;
     (async () => {
       await preloadStartupAssets();
@@ -101,7 +109,7 @@ export const App: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [logoSplashDone]);
 
   useEffect(() => {
     gameAudio.syncPhase(phase, multiplier)
@@ -213,6 +221,36 @@ ${d.toLocaleTimeString("en-GB", {
 
           {/* ── DIG button + Autoplay button ── */}
           {gameStarted && !isReplayMode() && <DigButton />}
+
+          {/* ── Replay: "Play" before start, "Play Again" after result ── */}
+          {gameStarted && isReplayMode() && replayPending && (
+            <div className="ui-spin-control">
+              <button
+                className="ui-replay-play-btn"
+                onClick={() => {
+                  gameAudio.unlock();
+                  const s = useGameStore.getState();
+                  gameEngine.startReplay(s.events, s.worldSeed, s.roundID);
+                }}
+              >
+                ▶
+              </button>
+            </div>
+          )}
+          {gameStarted && isReplayMode() && !replayPending &&
+            (phase === 'WIN' || phase === 'LOSE') && (
+            <div className="ui-spin-control">
+              <button
+                className="ui-replay-play-btn ui-replay-play-btn--again"
+                onClick={() => {
+                  gameAudio.unlock();
+                  gameEngine.playReplayAgain();
+                }}
+              >
+                ↺
+              </button>
+            </div>
+          )}
 
           {/* ── Top-right controls ── */}
           {gameStarted && <TopBar />}

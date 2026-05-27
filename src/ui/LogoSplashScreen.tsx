@@ -24,11 +24,9 @@ function parseAtlas(text: string): Map<string, FrameInfo> {
 
   for (const line of lines) {
     if (/\.png$/i.test(line)) {
-      // Заголовок страницы
       currentPage = line;
       currentFrame = "";
     } else if (line.startsWith("bounds:") && currentFrame && currentPage) {
-      // Координаты кадра
       const parts = line.slice(7).split(",").map((n) => parseInt(n.trim(), 10));
       if (parts.length >= 4) {
         map.set(currentFrame, {
@@ -41,10 +39,8 @@ function parseAtlas(text: string): Map<string, FrameInfo> {
       }
       currentFrame = "";
     } else if (!line.includes(":") && line.length > 0) {
-      // Имя кадра (строки без ':' — не свойства страницы/кадра)
       currentFrame = line;
     }
-    // Строки вида size:, filter:, rotate:, etc. — пропускаем
   }
 
   return map;
@@ -107,7 +103,7 @@ export const LogoSplashScreen: React.FC<LogoSplashScreenProps> = ({
         }
         if (frameNames.length === 0) { complete(); return; }
 
-        // 3. Порядок страниц для воспроизведения (по возрастанию номера кадра)
+        // 3. Порядок страниц для воспроизведения
         const pageOrder: string[] = [];
         const seenPages = new Set<string>();
         for (const name of frameNames) {
@@ -118,7 +114,7 @@ export const LogoSplashScreen: React.FC<LogoSplashScreenProps> = ({
           }
         }
 
-        // 4. Загружаем все страницы-атласы параллельно
+        // 4. Параллельная загрузка всех страниц-атласов
         const imageMap = new Map<string, HTMLImageElement>();
         await Promise.all(
           pageOrder.map(
@@ -126,27 +122,21 @@ export const LogoSplashScreen: React.FC<LogoSplashScreenProps> = ({
               new Promise<void>((resolve) => {
                 const img = new Image();
                 img.onload = () => { imageMap.set(page, img); resolve(); };
-                img.onerror = () => { resolve(); }; // не блокируем при ошибке
+                img.onerror = () => resolve(); // не блокируем при ошибке
                 img.src = baseUrl + page;
               })
           )
         );
         if (cancelled) return;
 
-        // 5. Запускаем анимацию
-        const FPS = 12.5 * 3; // воспроизведение x3
-        const FRAME_MS = 1000 / FPS; // ≈80ms на кадр
-        let frameIdx = 0;
-        let accumulated = 0;
-        let prevNow = performance.now();
-
+        // 5. Функция отрисовки одного кадра
         const draw = (name: string) => {
           const info = frameMap.get(name);
           if (!info) return;
           const img = imageMap.get(info.page);
           if (!img) return;
 
-          // Центрируем 1920×1080 с сохранением пропорций (letter/pillarbox)
+          // Центрируем с сохранением пропорций (letter/pillarbox)
           const srcAspect = info.w / info.h;
           const dstAspect = canvas.width / canvas.height;
           let dw: number, dh: number, dx: number, dy: number;
@@ -167,8 +157,17 @@ export const LogoSplashScreen: React.FC<LogoSplashScreenProps> = ({
           ctx.drawImage(img, info.x, info.y, info.w, info.h, dx, dy, dw, dh);
         };
 
-        // Первый кадр — сразу
+        // 6. Прогрев GPU — рисуем первый кадр до старта rAF-цикла.
+        //    Это вызывает загрузку текстуры в GPU заранее,
+        //    чтобы первые кадры анимации не тормозили.
         draw(frameNames[0]!);
+
+        // 7. rAF-цикл воспроизведения
+        const FPS = 12.5 * 3; // x3 скорость
+        const FRAME_MS = 1000 / FPS;
+        let frameIdx = 0;
+        let accumulated = 0;
+        let prevNow = performance.now();
 
         const tick = (now: number) => {
           if (cancelled) return;
@@ -176,17 +175,24 @@ export const LogoSplashScreen: React.FC<LogoSplashScreenProps> = ({
           accumulated += now - prevNow;
           prevNow = now;
 
-          // Продвигаем кадры, не пропуская более одного за тик (плавнее)
-          if (accumulated >= FRAME_MS && frameIdx < frameNames.length - 1) {
+          // Продвигаем кадры — до 4 за один тик, чтобы догнать отставание
+          // (на медленном устройстве анимация не «плывёт»).
+          let advanced = 0;
+          while (
+            accumulated >= FRAME_MS &&
+            frameIdx < frameNames.length - 1 &&
+            advanced < 4
+          ) {
             accumulated -= FRAME_MS;
-            // При очень медленном браузере — не копим слишком много
-            if (accumulated > FRAME_MS * 2) accumulated = 0;
             frameIdx++;
-            draw(frameNames[frameIdx]!);
+            advanced++;
           }
+          // Сбрасываем накопленное если отстали более чем на 4 кадра
+          if (accumulated > FRAME_MS * 4) accumulated = 0;
+
+          if (advanced > 0) draw(frameNames[frameIdx]!);
 
           if (frameIdx >= frameNames.length - 1) {
-            // Последний кадр — небольшая пауза, потом завершение
             window.setTimeout(() => {
               if (!cancelled) complete();
             }, 400);

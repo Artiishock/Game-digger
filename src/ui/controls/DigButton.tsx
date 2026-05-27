@@ -53,8 +53,8 @@ export const DigButton: React.FC = () => {
   const spinPushed = isRunning || isAutoActive;
   const autoPushed = isAutoActive;
 
-  // Обычный спин ИЛИ активный автоспин: кнопка Auto задизейблена
-  const autoDisabled = isRunning || isAutoActive;
+  // Обычный спин (без автоспина): кнопка Auto задизейблена
+  const autoDisabled = isRunning && !isAutoActive;
 
   const iconRef = useRef<HTMLSpanElement>(null);
   const [iconMarkup, setIconMarkup] = useState<string>("");
@@ -88,6 +88,27 @@ export const DigButton: React.FC = () => {
     };
   }, [autoIconUrl]);
 
+  // Тот же триггер SMIL-анимации — для иконки автоспина при активации
+  useEffect(() => {
+    if (!autoIconMarkup || !autoIconRef.current) return;
+    if (!autoPushed) return;
+    const span = autoIconRef.current;
+    if (!span.querySelector("#clickArea")) return;
+    span.innerHTML = autoIconMarkup;
+    const raf = requestAnimationFrame(() => {
+      const animations = span.querySelectorAll<SVGAnimationElement>(
+        "animate, animateTransform, set"
+      );
+      animations.forEach((el) => {
+        if (typeof el.beginElementAt !== "function") return;
+        const beginAttr = el.getAttribute("begin") ?? "";
+        const offset = parseFloat(beginAttr.match(/\+(\d+(?:\.\d+)?)s/)?.[1] ?? "0");
+        el.beginElementAt(offset);
+      });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [autoIconMarkup, autoPushed]);
+
   useEffect(() => {
     if (!iconMarkup || !iconRef.current) return;
     if (!spinPushed) return;
@@ -116,15 +137,12 @@ export const DigButton: React.FC = () => {
     const phaseNow = useGameStore.getState().phase;
     if (phaseNow === "BETTING") return;
 
-    if (isAutoActive) {
-      gameEngine.stopAutoplay();
-      return;
-    }
     if (isRoundPlay) {
       await gameEngine.instantFinishRound();
       return;
     }
-    if (canDig) {
+    // Во время автоспина между раундами (IDLE/WIN/LOSE) — не перебиваем автоспин вручным стартом
+    if (canDig && !isAutoActive) {
       gameAudio.playStartGame();
       await gameEngine.startRound();
     }
@@ -169,6 +187,10 @@ export const DigButton: React.FC = () => {
   }, []);
 
   const handleAutospinClick = () => {
+    if (isAutoActive) {
+      gameEngine.stopAutoplay();
+      return;
+    }
     setAP(!isAPOpen);
   };
 
@@ -188,6 +210,11 @@ export const DigButton: React.FC = () => {
           aria-hidden="true"
           dangerouslySetInnerHTML={{ __html: autoIconMarkup }}
         />
+        {autoPushed && (
+          <span className="ui-autospin-counter" aria-live="polite">
+            {autoplay.infinite ? "∞" : autoplay.remainingRounds}
+          </span>
+        )}
       </button>
 
       <button
@@ -205,11 +232,6 @@ export const DigButton: React.FC = () => {
           aria-hidden="true"
           dangerouslySetInnerHTML={{ __html: iconMarkup }}
         />
-        {isAutoActive && (
-          <span className="ui-spin-btn-counter">
-            {autoplay.infinite ? "∞" : autoplay.remainingRounds}
-          </span>
-        )}
       </button>
     </div>
   );
