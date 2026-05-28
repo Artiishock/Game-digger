@@ -1872,7 +1872,7 @@
   bottom: calc(100% + 5px);
   z-index: 120;
   width: min(555px, calc(100vw - 20px));
-  height: min(195px, calc(100vw - 20px));
+  max-height: min(450px, calc(100dvh - 80px));
   box-sizing: border-box;
   padding: 10px;
   border-radius: 12px;
@@ -1882,6 +1882,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  overflow: hidden;
   transform-origin: bottom right;
   animation: balance-bet-modal-in 0.18s ease-out both;
 }
@@ -1926,6 +1927,24 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(159, 159, 159, 0.4) transparent;
+}
+
+.balance-bet-modal__grid::-webkit-scrollbar {
+  width: 4px;
+}
+
+.balance-bet-modal__grid::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.balance-bet-modal__grid::-webkit-scrollbar-thumb {
+  background: rgba(159, 159, 159, 0.4);
+  border-radius: 2px;
 }
 
 .balance-bet-modal__cell {
@@ -2153,7 +2172,7 @@
 
   font-family: "Inter", sans-serif;
   font-size: clamp(13px, 3.5vmin, 42px);
-  line-height: 100%;
+  line-height: 1.15;
   font-weight: 900;
   font-style: normal;
   letter-spacing: 0;
@@ -2163,7 +2182,7 @@
   color: #f2fdff;
 
   max-width: 90vw;
-  white-space: nowrap;
+  white-space: normal;
 
   -webkit-text-stroke: clamp(1px, 0.14vw, 2px) #000;
   paint-order: stroke fill;
@@ -2195,6 +2214,16 @@
   z-index: 4;
   display: block;
   overflow: visible;
+}
+
+/* SVG инжектится через dangerouslySetInnerHTML с фиксированными
+   width="62" height="72" — заставляем его растягиваться под контейнер.
+   viewBox="0 0 62 72" + preserveAspectRatio="xMidYMid meet" (дефолт)
+   → масштабируется пропорционально, без искажений. */
+.rules-arrow svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .rules-arrow:hover {
@@ -2365,8 +2394,8 @@
   .rules-slide-main {
     --image-width: clamp(190px, 51vw, 465px);
     --image-slot-width: clamp(230px, 62vw, 525px);
-    --arrow-size: clamp(45px, 11.5vw, 68px);
-    --arrow-gap: clamp(10px, 1.8vw, 28px);
+    --arrow-size: clamp(45px, 11.5vmin, 68px);
+    --arrow-gap: clamp(10px, 1.8vmin, 28px);
   }
 
   .rules-slide-main--places {
@@ -3634,7 +3663,7 @@
   width: 100%;
   height: calc(100% - 25px);
   min-height: 0;
-  padding: 0 45px;
+
   box-sizing: border-box;
   overflow: hidden;
   scrollbar-width: none;
@@ -3679,8 +3708,8 @@
   font-weight: 700;
   color: #facb32;
   text-transform: uppercase;
-  white-space: normal;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
   background-color: transparent;
 }
 
@@ -3691,8 +3720,10 @@
   font-weight: 500;
   color: #dbdbdb;
   text-transform: uppercase;
-  white-space: normal;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 0;
 }
 
 .replay-time-cell {
@@ -3725,6 +3756,7 @@
 
 .replay-table tbody tr:last-child td {
   border-bottom: none;
+
 }
 
 
@@ -3771,7 +3803,7 @@
 
 
 .replay-button {
-  width: 170px;
+  width: 90%;
   height: 40px;
   border-radius: 8px;
   background-color: #52525c;
@@ -3810,6 +3842,25 @@
 .replay-button:active .replay-icon,
 .replay-button--active .replay-icon {
   color: #d9d9d9;
+}
+
+.replay-loading {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: replay-spin 0.7s linear infinite;
+}
+
+@keyframes replay-spin {
+  to { transform: rotate(360deg); }
+}
+
+.replay-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .replay-button:hover {
@@ -4221,24 +4272,23 @@
 
   .ui-menu-modal .replay-table th:nth-child(1),
   .ui-menu-modal .replay-table td:nth-child(1) {
-    width: 22%;
+    width: 13%;
   }
 
   .ui-menu-modal .replay-table th:nth-child(2),
   .ui-menu-modal .replay-table td:nth-child(2) {
-    width: 23%;
+    width: 19%;
   }
 
   .ui-menu-modal .replay-table th:nth-child(3),
   .ui-menu-modal .replay-table td:nth-child(3),
   .ui-menu-modal .replay-table th:nth-child(4),
-  .ui-menu-modal .replay-table td:nth-child(4) {
-    width: 16%;
-  }
-
+  .ui-menu-modal .replay-table td:nth-child(4),
   .ui-menu-modal .replay-table th:nth-child(5),
-  .ui-menu-modal .replay-table td:nth-child(5) {
-    width: 23%;
+  .ui-menu-modal .replay-table td:nth-child(5),
+  .ui-menu-modal .replay-table th:nth-child(6),
+  .ui-menu-modal .replay-table td:nth-child(6) {
+    width: 17%;
   }
 
   .ui-menu-modal .replay-time-cell {
@@ -4459,8 +4509,21 @@
     font-size: clamp(8px, 2.5vw, 10px);
   }
 
+  .ui-menu-modal .replay-table td {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 0;
+  }
+
+  .ui-menu-modal .replay-time-cell {
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
   .ui-menu-modal .replay-button {
-    width: clamp(45px, 13.75vw, 55px);
+    width: 100%;
+    min-width: 0;
     height: clamp(20px, 6.25vw, 25px);
   }
 
@@ -4618,6 +4681,27 @@
     min-height: 100%;
     height: 100%;
     margin: 0;
+  }
+
+  .ui-menu-modal .replay-table th:nth-child(1),
+  .ui-menu-modal .replay-table td:nth-child(1) {
+    width: 13%;
+  }
+
+  .ui-menu-modal .replay-table th:nth-child(2),
+  .ui-menu-modal .replay-table td:nth-child(2) {
+    width: 19%;
+  }
+
+  .ui-menu-modal .replay-table th:nth-child(3),
+  .ui-menu-modal .replay-table td:nth-child(3),
+  .ui-menu-modal .replay-table th:nth-child(4),
+  .ui-menu-modal .replay-table td:nth-child(4),
+  .ui-menu-modal .replay-table th:nth-child(5),
+  .ui-menu-modal .replay-table td:nth-child(5),
+  .ui-menu-modal .replay-table th:nth-child(6),
+  .ui-menu-modal .replay-table td:nth-child(6) {
+    width: 17%;
   }
 
   .ui-menu-modal .ui-modal-scrollbar {
@@ -4995,9 +5079,30 @@
     white-space: nowrap;
   }
 
+  .ui-menu-modal .replay-table th:nth-child(1),
+  .ui-menu-modal .replay-table td:nth-child(1) {
+    width: 13%;
+  }
+
+  .ui-menu-modal .replay-table th:nth-child(2),
+  .ui-menu-modal .replay-table td:nth-child(2) {
+    width: 19%;
+  }
+
+  .ui-menu-modal .replay-table th:nth-child(3),
+  .ui-menu-modal .replay-table td:nth-child(3),
+  .ui-menu-modal .replay-table th:nth-child(4),
+  .ui-menu-modal .replay-table td:nth-child(4),
+  .ui-menu-modal .replay-table th:nth-child(5),
+  .ui-menu-modal .replay-table td:nth-child(5),
+  .ui-menu-modal .replay-table th:nth-child(6),
+  .ui-menu-modal .replay-table td:nth-child(6) {
+    width: 17%;
+  }
 
   .ui-menu-modal .replay-button {
-    width: clamp(64px, calc(-115.48px + 44.87vh), 185px);
+    width: min(clamp(64px, calc(-115.48px + 44.87vh), 185px), 100%);
+    max-width: 100%;
     height: clamp(18px, calc(-14.59px + 8.15vh), 40px);
     border-radius: 4px;
     margin: 0 auto;
@@ -5065,6 +5170,12 @@
   .ui-win-amount {
     font-size: clamp(12px, calc(10.3093vh - 44.701px), 32px);
     font-weight: 800;
+  }
+
+  .ui-replay-badge {
+    top: clamp(70px, calc(-35px + 19.05vh), 110px);
+    left: 50%;
+    transform: translateX(-50%);
   }
 
   .ui-topright {
@@ -5401,6 +5512,12 @@
   .ui-win-amount {
     font-size: clamp(12px, calc(4vw - 4px), 32px);
     font-weight: 800;
+  }
+
+  .ui-replay-badge {
+    top: clamp(70px, calc(37px + 8.8vw), 115px);
+    left: 50%;
+    transform: translateX(-50%);
   }
 
   .ui-topright {
@@ -5767,6 +5884,134 @@
     grid-row: 1;
   }
 
+}
+
+
+/* ═══════════════════════════════════════════════════════
+   GAME UI portrait — Mobile S (≤ 370 px, targets 320 × 568)
+   Figma source: Footer_menu 320×75 px
+   ======================================================= */
+@media (max-aspect-ratio: 1/1) and (max-width: 370px) {
+
+  /* HUD: тонкие padding-и из Figma (5px 10px) */
+  .ui-hud {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  /* ── Credit / Balance ──────────────────────────── */
+  .ui-credit-label {
+    font-size: 8px;
+    -webkit-text-stroke: 1px #000;
+    text-shadow: 0 1px 0 #000;
+  }
+
+  .ui-credit-value {
+    font-size: 8px;
+    -webkit-text-stroke: 1px #000;
+    text-shadow: 0 1px 0 #000;
+  }
+
+  /* ── Total Bet label & amount ──────────────────── */
+  .ui-bet-label {
+    font-size: 8px;
+    -webkit-text-stroke: 1px #000;
+    text-shadow: 0 1px 0 #000;
+    /* Figma Total bet_title width: 45px → принудительный перенос
+       "TOTAL" + "PLAY" → две строки */
+    white-space: normal;
+    max-width: 40px;
+    line-height: 1.15;
+    word-break: normal;
+  }
+
+  .ui-bet-amount {
+    font-size: 8px;
+    -webkit-text-stroke: 1px #000;
+    text-shadow: 0 1px 0 #000;
+    min-width: 5ch;
+  }
+
+  /* ── +/− кнопки ставки ─────────────────────────── */
+  /* Figma: Back 30×30 px, border-radius 4.8 px */
+  .ui-bet-adj {
+    width: 30px;
+    height: 30px;
+  }
+
+  /* Figma: Rectangle 3.6×13.2 px → иконка ~13 px */
+  .ui-bet-icon {
+    width: 13px;
+    height: 13px;
+  }
+
+  /* Подтягиваем блок ставки к правому краю с учётом padding */
+  .ui-bet-block {
+    right: 10px;
+  }
+
+  /* ── Speed buttons ─────────────────────────────── */
+  /* Figma Speed_mobile 2: 127×32 px, gap 4 px
+     Turtle (активная): 32.43×32 px → scale(1.2) от 27 px = 32.4 px ✓
+     Rabbit / Horse / Gepard: 27.68×27.68 px → 28 px base */
+  .ui-speed-group {
+    gap: 4px;
+    bottom: 22px; /* (75px HUD − 28px btn) / 2 ≈ 23 px */
+  }
+
+  .ui-speed-btn {
+    width: 28px;
+    height: 28px;
+  }
+
+  /* Figma Animal zone: 21.19×21.19 px → 21 px */
+  .ui-speed-icon {
+    width: 21px;
+    height: 21px;
+  }
+
+  /* Figma х0.75 label: font-size 6 px (non-active) */
+  .ui-speed-label {
+    font-size: 6px;
+  }
+
+  /* Active speed btn: scale(1.2) даёт 33.6 px ≈ Figma turtle 32 px */
+  .ui-speed-btn:active .ui-speed-icon,
+  .ui-speed-btn--active .ui-speed-icon {
+    width: 23px;
+    height: 23px;
+  }
+
+  /* Figma active label: font-size 10 px */
+  .ui-speed-btn:active .ui-speed-label,
+  .ui-speed-btn--active .ui-speed-label {
+    font-size: 8px;
+    color: #facb32;
+  }
+
+  /* ── Rules screen arrows ───────────────────────────
+     При 320px базовые portrait-значения дают:
+       --arrow-size 45px + --arrow-gap 10px
+       → стрелки уходят за края экрана (offset ~170px при 50%=160px)
+     Уменьшаем до 28px + gap 6px → offset ~135px → обе стрелки внутри экрана.
+     Проверка на 320px: left=11px, right=281px+28px=309px < 320px ✓
+     Проверка на 370px: left=31px, right=307px+32px=339px < 370px ✓  */
+  .rules-slide-main {
+    --arrow-size: clamp(28px, 8.75vmin, 32px);
+    --arrow-gap:  clamp(6px,  2vmin,    8px);
+  }
+
+  /* ── Rules title — перенос на 2 строки ─────────────
+     white-space: nowrap запрещает перенос по умолчанию.
+     На 320px самые длинные тайтлы (EN/RU/ES/TR) не влезают в 1 строку
+     — убираем nowrap и ограничиваем ширину по image-slot (230px). */
+  .rules-title {
+    white-space: normal;
+    max-width: clamp(150px, 68vmin, 220px);
+    line-height: 1.2;
+    min-height: 2lh;       /* резервируем место под 2 строки */
+    text-align: center;
+  }
 }
 
 

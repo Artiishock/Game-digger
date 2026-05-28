@@ -127,6 +127,7 @@ const en: PhraseMap = {
   'rules version':                       'Game rules version 1.0 dated May 11, 2026. Game version 1.0.0.',
 
   // ── replay table ────────────────────────────────────────────────────────────
+  'id':                              'ID',
   'time':                            'Time',
   'currency':                        'Currency',
   'replay':                          'Replay',
@@ -258,6 +259,7 @@ const es: PhraseMap = {
   'rules version':                       'Versión de las reglas del juego 1.0 del 11 de mayo de 2026. Versión del juego 1.0.0.',
 
   // ── replay table ────────────────────────────────────────────────────────────
+  'id':                              'ID',
   'time':                            'Hora',
   'currency':                        'Moneda',
   'replay':                          'Repetición',
@@ -389,6 +391,7 @@ const de: PhraseMap = {
   'rules version':                       'Version der Spielregeln 1.0 vom 11. Mai 2026. Spielversion 1.0.0.',
 
   // ── replay table ────────────────────────────────────────────────────────────
+  'id':                              'ID',
   'time':                            'Zeit',
   'currency':                        'Währung',
   'replay':                          'Wiederholung',
@@ -520,6 +523,7 @@ const ru: PhraseMap = {
   'rules version':                   'Версия правил игры 1.0 от 11 мая 2026 года. Версия игры 1.0.0.',
 
   // ── replay table ────────────────────────────────────────────────────────────
+  'id':                              'ID',
   'time':                            'Время',
   'currency':                        'Валюта',
   'replay':                          'Повтор',
@@ -651,6 +655,7 @@ const tr: PhraseMap = {
   'rules version':                       'Oyun kuralları sürümü 1.0, 11 Mayıs 2026. Oyun sürümü 1.0.0.',
 
   // ── replay table ────────────────────────────────────────────────────────────
+  'id':                              'ID',
   'time':                            'Zaman',
   'currency':                        'Para birimi',
   'replay':                          'Tekrar izle',

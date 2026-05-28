@@ -1,12 +1,10 @@
 <svg id="playToStopOnce" width="159" height="159" viewBox="0 0 159 159" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <title>Play to Stop one-shot animation</title>
-
   <!-- Click works only while Play is visible. After the first click it is disabled. -->
   <rect id="clickArea" x="0" y="0" width="159" height="159" fill="transparent" pointer-events="all">
     <set attributeName="pointer-events" begin="clickArea.click" to="none" fill="freeze" />
   </rect>
 
-  <!-- STOP icon: original 118x118 figure, final visual size is not changed. -->
+  <!-- STOP icon: speed.svg (двойная стрелка >>) вместо красного квадрата. -->
   <g id="stopIcon" opacity="0" pointer-events="none">
     <animate
       attributeName="opacity"
@@ -46,7 +44,11 @@
           fill="freeze" />
 
         <g transform="translate(-59 -59)">
-          <rect x="7.5" y="7.5" width="103" height="103" rx="17.5" fill="black" fill-opacity="0.35" stroke="#FF3F42" stroke-width="15" />
+          <!-- speed.svg (118x118) → scaled to 103x103, positioned at (7.5, 7.5) -->
+          <g transform="translate(7.5 7.5) scale(0.873)">
+            <path d="M60.9539 54.5345C63.4222 57.0032 63.4219 61.0054 60.9534 63.4739L25.6464 98.7802C23.1777 101.249 19.1752 101.249 16.7066 98.7801L7.94654 90.0201C5.47785 87.5514 5.47787 83.5488 7.94659 81.0802L25.5557 63.4714C28.0243 61.0029 28.0245 57.0005 25.556 54.5318L7.94626 36.92C5.47783 34.4513 5.47794 30.449 7.94651 27.9804L16.7066 19.2203C19.1754 16.7515 23.1783 16.7517 25.6469 19.2208L60.9539 54.5345Z" fill="#F1FDFF"/>
+            <path d="M111.522 54.5345C113.99 57.0032 113.99 61.0054 111.521 63.4739L76.2141 98.7802C73.7454 101.249 69.7429 101.249 67.2743 98.7801L58.5142 90.0201C56.0455 87.5514 56.0456 83.5488 58.5143 81.0802L76.1234 63.4714C78.592 61.0029 78.5922 57.0005 76.1237 54.5318L58.5139 36.92C56.0455 34.4513 56.0456 30.449 58.5142 27.9804L67.2743 19.2203C69.7431 16.7515 73.746 16.7517 76.2146 19.2208L111.522 54.5345Z" fill="#F1FDFF"/>
+          </g>
         </g>
       </g>
     </g>

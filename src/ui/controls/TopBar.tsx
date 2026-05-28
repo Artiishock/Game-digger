@@ -17,6 +17,7 @@ export const TopBar: React.FC = () => {
   const lastRoundStats = useGameStore((s) => s.lastRoundStats);
   const replayMode = useGameStore((s) => s.replayMode);
   const replayBetAmount = useGameStore((s) => s.replayBetAmount);
+  const replayRoundID = useGameStore((s) => s.roundID);
   const logoDimmed = phase === "RUNNING" || phase === "BETTING";
   const depthHudLive = phase === "RUNNING";
   const depthHudDistance = depthHudLive ? stats.distance : lastRoundStats.distance;
@@ -34,6 +35,9 @@ export const TopBar: React.FC = () => {
         <div className="ui-replay-badge">
           <span className="ui-replay-dot" />
           <span className="ui-replay-label">REPLAY</span>
+          {replayRoundID && (
+            <span className="ui-replay-bet">ID: {replayRoundID}</span>
+          )}
           {replayBetAmount > 0 && (
             <span className="ui-replay-bet">
               {replayBetAmount.toFixed(2)} {currency}

@@ -44,8 +44,21 @@ const MUSIC_LOOPS = new Set([
   'background_3.ogg',
 ])
 
-// Files requiring gap-free looping via Web Audio API (HTML5 Audio has a seek-gap on loop)
-const GAPLESS_LOOPS = new Set(['drill.ogg'])
+// Files requiring gap-free looping via Web Audio API (HTML5 Audio has a seek-gap on loop).
+// ALL looping tracks are listed here: Web Audio AudioBufferSourceNode.loop is truly gapless
+// because the decoded PCM buffer is already in memory — no seek, no codec priming delay.
+const GAPLESS_LOOPS = new Set([
+  'drill.ogg',         // short SFX loop (was already here)
+  'ambient.ogg',       // ambient environment loop
+  'iddle.ogg',         // idle state loop
+  'background_1.ogg',  // main background music
+  'background_2.ogg',  // secondary music (RUNNING phase)
+  'background_3.ogg',  // intense music (high multiplier)
+  'finish_pay.ogg',    // win payout counter loop
+  'finish_coins.ogg',  // coins celebration loop
+  'gold.ogg',          // gold collect event loop
+  'stone.ogg',         // stone event loop
+])
 
 // Background tracks controlled by gradual volume fading rather than hard on/off
 const FADE_TRACKS = new Set(['background_2.ogg', 'background_3.ogg'])
@@ -251,17 +264,27 @@ class GameAudioModule {
   stopMusicForLose(): void {
     this._loseInProgress = true
 
-    // Fade tracks — отменяем плавное изменение, ставим на паузу без сброса позиции
-    for (const file of FADE_TRACKS) {
-      const interval = this.fadeIntervals.get(file)
-      if (interval) { clearInterval(interval); this.fadeIntervals.delete(file) }
-      this.loopers.get(file)?.pause()
+    const stopFile = (file: string) => {
+      const timer = this.fadeIntervals.get(file)
+      if (timer) { clearTimeout(timer as unknown as number); this.fadeIntervals.delete(file) }
+      this.fadeTargetVolumes.delete(file)
+
+      if (GAPLESS_LOOPS.has(file)) {
+        const ctx = this.ctx
+        const nodes = this.looperNodes.get(file)
+        if (nodes && ctx) {
+          nodes.gain.gain.cancelScheduledValues(ctx.currentTime)
+          nodes.gain.gain.value = 0
+        }
+        // Останавливаем ноду полностью; syncPhase перезапустит при возобновлении
+        this._setGaplessLoop(file, false, 0)
+      } else {
+        this.loopers.get(file)?.pause()
+      }
     }
 
-    // Остальные музыкальные треки — тоже только пауза
-    for (const file of ['background_1.ogg', 'ambient.ogg', 'iddle.ogg'] as const) {
-      this.loopers.get(file)?.pause()
-    }
+    for (const file of FADE_TRACKS) stopFile(file)
+    for (const file of ['background_1.ogg', 'ambient.ogg', 'iddle.ogg'] as const) stopFile(file)
 
     this.setLoop('drill.ogg', false)
   }
@@ -395,6 +418,27 @@ class GameAudioModule {
   /** Starts a loop at the given initial volume without overriding an already-running instance. */
   private _ensureLoopStartedAt(file: string, initialVolume: number): void {
     const { soundEnabled, musicEnabled } = useGameStore.getState().settings
+
+    // ── Web Audio path (GAPLESS_LOOPS) ──────────────────────────────────────
+    if (GAPLESS_LOOPS.has(file)) {
+      if (!soundEnabled || !musicEnabled) {
+        const nodes = this.looperNodes.get(file)
+        if (nodes) {
+          const ctx = this.ctx
+          if (ctx) {
+            nodes.gain.gain.cancelScheduledValues(ctx.currentTime)
+            nodes.gain.gain.value = 0
+          }
+          this._setGaplessLoop(file, false, 0)
+        }
+        return
+      }
+      // Запускаем на нужной начальной громкости; если нода уже есть — _setGaplessLoop обновит gain
+      this._setGaplessLoop(file, true, initialVolume)
+      return
+    }
+
+    // ── HTML5 Audio fallback ─────────────────────────────────────────────────
     const existing = this.loopers.get(file)
     if (!soundEnabled || !musicEnabled) {
       if (existing && !existing.paused) existing.pause()
@@ -416,10 +460,55 @@ class GameAudioModule {
   /** Gradually fades a looper to targetVolume over FADE_DURATION_MS. No-ops if already heading there. */
   private _fadeLooper(file: string, targetVolume: number): void {
     const { soundEnabled, musicEnabled } = useGameStore.getState().settings
+    const snapSilent_html5 = targetVolume <= 0.001 && (!soundEnabled || !musicEnabled) && this.loopers.get(file)
+
+    // ── Web Audio path (GAPLESS_LOOPS) — плавное изменение через GainNode-планировщик ──
+    if (GAPLESS_LOOPS.has(file)) {
+      const ctx = this.ctx
+      const snapSilentG = targetVolume <= 0.001 && (!soundEnabled || !musicEnabled)
+
+      const prevTarget = this.fadeTargetVolumes.get(file)
+      if (!snapSilentG && prevTarget === targetVolume && this.fadeIntervals.has(file)) return
+
+      this.fadeTargetVolumes.set(file, targetVolume)
+
+      // Отменяем предыдущий таймер завершения
+      const prevTimer = this.fadeIntervals.get(file)
+      if (prevTimer) { clearTimeout(prevTimer as unknown as number); this.fadeIntervals.delete(file) }
+
+      const nodes = this.looperNodes.get(file)
+      if (!nodes || !ctx) return
+
+      const startVol = nodes.gain.gain.value
+
+      if (snapSilentG || Math.abs(targetVolume - startVol) < 0.001) {
+        nodes.gain.gain.cancelScheduledValues(ctx.currentTime)
+        nodes.gain.gain.value = Math.max(0, Math.min(1, targetVolume))
+        if (targetVolume <= 0.001) { this._setGaplessLoop(file, false, 0); this.fadeTargetVolumes.delete(file) }
+        return
+      }
+
+      const fadeSec = this.FADE_DURATION_MS / 1000
+      nodes.gain.gain.cancelScheduledValues(ctx.currentTime)
+      nodes.gain.gain.setValueAtTime(startVol, ctx.currentTime)
+      nodes.gain.gain.linearRampToValueAtTime(Math.max(0, Math.min(1, targetVolume)), ctx.currentTime + fadeSec)
+
+      if (targetVolume <= 0.001) {
+        // Через FADE_DURATION_MS + небольшой буфер останавливаем ноду
+        const timer = setTimeout(() => {
+          this.fadeIntervals.delete(file)
+          this.fadeTargetVolumes.delete(file)
+          this._setGaplessLoop(file, false, 0)
+        }, this.FADE_DURATION_MS + 60) as unknown as ReturnType<typeof setInterval>
+        this.fadeIntervals.set(file, timer)
+      }
+      return
+    }
+
+    // ── HTML5 Audio path ─────────────────────────────────────────────────────
     const looperEarly = this.loopers.get(file)
     /** При выключении звука/музыки не тянуть 2s fade — иначе после mute syncPhase снова «поднимает» слой. */
-    const snapSilent =
-      targetVolume <= 0.001 && (!soundEnabled || !musicEnabled) && looperEarly
+    const snapSilent = snapSilent_html5
 
     const prevTarget = this.fadeTargetVolumes.get(file)
     if (!snapSilent && prevTarget === targetVolume && this.fadeIntervals.has(file)) return
@@ -491,13 +580,22 @@ class GameAudioModule {
 
   /** Stops a fade-controlled loop immediately (used when leaving the playable scene). */
   private _stopFadingLoop(file: string): void {
-    const interval = this.fadeIntervals.get(file)
-    if (interval) {
-      clearInterval(interval)
-      this.fadeIntervals.delete(file)
-    }
+    const timer = this.fadeIntervals.get(file)
+    if (timer) { clearTimeout(timer as unknown as number); this.fadeIntervals.delete(file) }
     this.fadeTargetVolumes.delete(file)
     this._blockedPlays.delete(file)
+
+    if (GAPLESS_LOOPS.has(file)) {
+      const ctx = this.ctx
+      const nodes = this.looperNodes.get(file)
+      if (nodes && ctx) {
+        nodes.gain.gain.cancelScheduledValues(ctx.currentTime)
+        nodes.gain.gain.value = 0
+      }
+      this._setGaplessLoop(file, false, 0)
+      return
+    }
+
     const existing = this.loopers.get(file)
     if (existing) {
       existing.pause()
@@ -605,7 +703,24 @@ class GameAudioModule {
       const isMusic = MUSIC_LOOPS.has(file)
       const volume = (isMusic ? musicVolume : sfxVolume) * (FILE_VOLUME_SCALE[file] ?? 1)
       const active = soundEnabled && (!isMusic || musicEnabled)
-      nodes.gain.gain.value = active ? volume : 0
+      if (!active) {
+        // Мьютим мгновенно: отменяем любой запланированный рамп
+        const ctx = this.ctx
+        if (ctx) {
+          nodes.gain.gain.cancelScheduledValues(ctx.currentTime)
+          nodes.gain.gain.setValueAtTime(0, ctx.currentTime)
+        } else {
+          nodes.gain.gain.value = 0
+        }
+      } else if (FADE_TRACKS.has(file)) {
+        // Fade-треки управляются _fadeLooper — не прерываем текущий рамп.
+        // Обновляем цель только если рамп уже завершён (gain стабилен).
+        if (!this.fadeIntervals.has(file)) {
+          nodes.gain.gain.value = volume
+        }
+      } else {
+        nodes.gain.gain.value = volume
+      }
     }
   }
 

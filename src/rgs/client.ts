@@ -70,9 +70,9 @@ export function getUrlParams(): UrlParams {
     // New replay params
     isReplay:       p.get('replay') === 'true',
     replayGame:     p.get('game'),
-    replayVersion:  p.get('version'),
+    replayVersion:  p.get('version') ?? p.get('front'),
     replayBetMode:  p.get('mode'),
-    replayEvent:    p.get('event'),
+    replayEvent:    p.get('event') ?? p.get('eventId'),
     replayAmount:   rawAmount !== null ? Number(rawAmount) : null,
     replayCurrency: p.get('currency'),
     social:         p.get('social') === 'true',
@@ -213,8 +213,9 @@ async function post<T>(path: string, body: Record<string, unknown>): Promise<T> 
     let text = ''
     try {
       text = await res.text()
-      const data = text ? JSON.parse(text) as { statusCode?: string; message?: string } : null
-      if (data?.statusCode) code = data.statusCode
+      const data = text ? JSON.parse(text) as { statusCode?: string; error?: string; message?: string } : null
+      if (data?.error) code = data.error
+      else if (data?.statusCode) code = data.statusCode
     } catch { /* ignore */ }
     console.error('[RGS]', path, 'status', res.status, 'body:', text)
     throw new RgsError(code, res.status)
@@ -352,20 +353,7 @@ export interface ReplayDataResponse {
   events:           RoundEvent[]
 }
 
-/**
- * Fetch replay state from RGS — no session required.
- * GET {rgs_url}/bet/replay/{game}/{version}/{mode}/{event}
- */
-export async function fetchReplayData(): Promise<ReplayDataResponse> {
-  const { rgsUrl, replayGame, replayVersion, replayBetMode, replayEvent } = getUrlParams()
-  if (!rgsUrl || !replayGame || !replayVersion || !replayBetMode || !replayEvent) {
-    console.error('[RGS] fetchReplayData: missing URL params', { rgsUrl, replayGame, replayVersion, replayBetMode, replayEvent })
-    throw new RgsError('ERR_GEN')
-  }
-
-  const base = rgsUrl.startsWith('http') ? rgsUrl.replace(/\/$/, '') : `https://${rgsUrl}`
-  const url  = `${base}/bet/replay/${replayGame}/${replayVersion}/${replayBetMode}/${replayEvent}`
-
+async function _fetchReplayFromUrl(url: string): Promise<ReplayDataResponse> {
   const ctrl  = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), RGS_TIMEOUT_MS)
 
@@ -373,14 +361,14 @@ export async function fetchReplayData(): Promise<ReplayDataResponse> {
   try {
     res = await fetch(url, { signal: ctrl.signal })
   } catch (e: any) {
-    console.error('[RGS] fetchReplayData network/timeout error:', e?.message ?? e)
+    console.error('[RGS] fetchReplay network/timeout error:', e?.message ?? e)
     throw new RgsError(e?.name === 'AbortError' ? 'ERR_TIMEOUT' : 'ERR_GEN')
   } finally {
     clearTimeout(timer)
   }
 
   if (!res.ok) {
-    console.error('[RGS] fetchReplayData status', res.status)
+    console.error('[RGS] fetchReplay status', res.status)
     throw new RgsError(`HTTP_${res.status}`, res.status)
   }
 
@@ -389,13 +377,12 @@ export async function fetchReplayData(): Promise<ReplayDataResponse> {
     throw new RgsError('ERR_GEN')
   }
 
-  // Normalize state → RoundEvent[] (same logic as normalisePlayResponse)
   const stateArr: any[] = Array.isArray(raw?.state)      ? raw.state
                         : Array.isArray(raw?.events)     ? raw.events
                         : Array.isArray(raw?.bookEvents) ? raw.bookEvents
                         : []
   if (!stateArr.length) {
-    console.error('[RGS] fetchReplayData: empty state in response:', raw)
+    console.error('[RGS] fetchReplay: empty state in response:', raw)
     throw new RgsError('ERR_GEN')
   }
 
@@ -420,6 +407,53 @@ export async function fetchReplayData(): Promise<ReplayDataResponse> {
   const costMultiplier = rawCost > 100 ? rawCost / 100 : rawCost
 
   return { payoutMultiplier, costMultiplier, events }
+}
+
+/**
+ * Fetch replay state from RGS — no session required.
+ * GET {rgs_url}/bet/replay/{game}/{version}/{mode}/{event}
+ * Used on game load when opened with ?replay=true URL params.
+ */
+export async function fetchReplayData(): Promise<ReplayDataResponse> {
+  const { rgsUrl, replayGame, replayVersion, replayBetMode, replayEvent } = getUrlParams()
+  if (!rgsUrl || !replayGame || !replayVersion || !replayBetMode || !replayEvent) {
+    console.error('[RGS] fetchReplayData: missing URL params', { rgsUrl, replayGame, replayVersion, replayBetMode, replayEvent })
+    throw new RgsError('ERR_GEN')
+  }
+  const base = rgsUrl.startsWith('http') ? rgsUrl.replace(/\/$/, '') : `https://${rgsUrl}`
+  return _fetchReplayFromUrl(`${base}/bet/replay/${replayGame}/${replayVersion}/${replayBetMode}/${replayEvent}`)
+}
+
+/**
+ * Fetch replay data for a specific eventId using the current session's rgsUrl.
+ * Game slug and version are parsed from the page URL pathname.
+ * Used by the in-game history panel to replay past rounds via Stake API.
+ */
+export async function fetchReplayDataByEventId(eventId: string): Promise<ReplayDataResponse> {
+  const p = new URLSearchParams(window.location.search)
+  const { rgsUrl } = getUrlParams()
+  if (!rgsUrl) throw new RgsError('ERR_GEN')
+
+  // Prefer URL params (game=, version= or front=), fall back to pathname parsing
+  let game    = p.get('game') ?? ''
+  let version = p.get('version') ?? p.get('front') ?? ''
+  if (!game || !version) {
+    const parts = window.location.pathname.split('/').filter(Boolean)
+    const htmlIdx = parts.findIndex(seg => seg.endsWith('.html'))
+    const pathParts = htmlIdx >= 0 ? parts.slice(0, htmlIdx) : parts
+    game    = game    || pathParts[pathParts.length - 2] || ''
+    version = version || pathParts[pathParts.length - 1] || ''
+  }
+
+  if (!game || !version) {
+    console.error('[RGS] fetchReplayDataByEventId: cannot determine game/version', { search: window.location.search, pathname: window.location.pathname })
+    throw new RgsError('ERR_GEN')
+  }
+
+  const mode = p.get('mode') ?? 'base'
+  const base = rgsUrl.startsWith('http') ? rgsUrl.replace(/\/$/, '') : `https://${rgsUrl}`
+  console.log(`[RGS] fetchReplayDataByEventId: ${game}/${version}/${mode}/${eventId}`)
+  return _fetchReplayFromUrl(`${base}/bet/replay/${game}/${version}/${mode}/${eventId}`)
 }
 
 /** Track mid-round state (allows resume on disconnect) */

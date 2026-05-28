@@ -455,7 +455,7 @@ export async function demoPlay(betDisplay: number): Promise<PlayResponse> {
   }
 
   const events  = roadToEvents(road, isLoss, rng)
-  const roundID = `demo-${Date.now()}-${_roundSeq}`
+  const roundID = String(_roundSeq)
 
   // ── Лог раунда ──────────────────────────────────────────────────────────────
   const tokenSymbols = road.map(t => {

@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useState } from "react";
 import { t, T } from "../../i18n/t";
 import { useGameStore } from "../../store/gameStore";
 import type { RoundEvent } from "../../rgs/client";
+import { isDemo, fetchReplayDataByEventId } from "../../rgs/client";
 import { gameEngine } from "../../game/GameEngine";
 import { resolvePublicUrl } from "../../utils/publicUrl";
 
@@ -178,6 +179,26 @@ const splitReplayTime = (time: string) => {
 };
 
 export const ReplayPanel: React.FC = () => {
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+
+  const handleReplay = async (r: ReplayRound) => {
+    if (isDemo() || !r.roundID) {
+      gameEngine.startReplay(r.events, r.worldSeed);
+      return;
+    }
+    setLoadingId(r.roundID);
+    console.log('[Replay] history replay — roundID (betID):', r.roundID);
+    try {
+      const data = await fetchReplayDataByEventId(r.roundID);
+      gameEngine.startReplay(data.events, 0);
+    } catch (e) {
+      console.error('[Replay] Stake fetch failed, falling back to local events:', e);
+      gameEngine.startReplay(r.events, r.worldSeed);
+    } finally {
+      setLoadingId(null);
+    }
+  };
+
   if (roundHistory.length === 0) {
     return (
       <div className="replay-panel replay-panel--empty">
@@ -194,7 +215,7 @@ export const ReplayPanel: React.FC = () => {
           <table className="replay-table">
             <thead>
               <tr>
-                {(["time", "currency", "bet", "win", "replay"] as const).map((key) => (
+                {(["id", "time", "currency", "bet", "win", "replay"] as const).map((key) => (
                   <th key={key}>{T(key)}</th>
                 ))}
               </tr>
@@ -203,9 +224,11 @@ export const ReplayPanel: React.FC = () => {
             <tbody>
               {roundHistory.map((r, i) => {
                 const { date, timeValue } = splitReplayTime(r.time);
+                const isLoading = loadingId === r.roundID;
 
                 return (
                   <tr key={i}>
+                    <td>{r.roundID || '—'}</td>
                     <td className="replay-time-cell">
                       <span>{date}</span>
                       <span>{timeValue}</span>
@@ -218,16 +241,21 @@ export const ReplayPanel: React.FC = () => {
                     <td>
                       <button
                         className="replay-button"
-                        onClick={() => gameEngine.startReplay(r.events, r.worldSeed)}
+                        disabled={loadingId !== null}
+                        onClick={() => handleReplay(r)}
                       >
-                        <span
-                          className="replay-icon"
-                          aria-hidden="true"
-                          style={{
-                            mask: `url("${resolvePublicUrl("ui/replay_icon.svg")}") center / contain no-repeat`,
-                            WebkitMask: `url("${resolvePublicUrl("ui/replay_icon.svg")}") center / contain no-repeat`,
-                          }}
-                        />
+                        {isLoading ? (
+                          <span className="replay-loading" aria-hidden="true" />
+                        ) : (
+                          <span
+                            className="replay-icon"
+                            aria-hidden="true"
+                            style={{
+                              mask: `url("${resolvePublicUrl("ui/replay_icon.svg")}") center / contain no-repeat`,
+                              WebkitMask: `url("${resolvePublicUrl("ui/replay_icon.svg")}") center / contain no-repeat`,
+                            }}
+                          />
+                        )}
                       </button>
                     </td>
                   </tr>

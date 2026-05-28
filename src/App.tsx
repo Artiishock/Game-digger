@@ -44,7 +44,17 @@ export const App: React.FC = () => {
   const [startScreenGone, setStartScreenGone] = useState(() => isReplayMode())
   const gameSurfaceMounted = assetsReady && phase !== "BOOT"
   const showBootOverlay = !assetsReady || phase === "BOOT" || (!startScreenGone && !startScreenReady)
-  const handleGameCanvasReady = useCallback(() => setGameCanvasReady(true), [])
+  const handleGameCanvasReady = useCallback(() => {
+    setGameCanvasReady(true)
+    if (!isReplayMode()) return
+    const s = useGameStore.getState()
+    console.log('[Replay] handleGameCanvasReady: replayPending=', s.replayPending, 'events=', s.events.length)
+    if (s.replayPending) {
+      console.log('[Replay] auto-starting from renderer ready')
+      try { gameAudio.unlock() } catch { /* ignore autoplay policy */ }
+      gameEngine.startReplay(s.events, s.worldSeed, s.roundID)
+    }
+  }, [])
   const handleStartScreenReady = useCallback(() => setStartScreenReady(true), [])
 
   useEffect(() => {
@@ -122,6 +132,23 @@ export const App: React.FC = () => {
   useEffect(() => {
     gameAudio.refreshFromStore();
   }, [settings]);
+
+  // Fallback: if renderer.ready didn't resolve, start replay after 1s
+  useEffect(() => {
+    if (!replayPending || phase !== 'IDLE' || !isReplayMode()) return
+    console.log('[Replay] fallback timer started')
+    const id = window.setTimeout(() => {
+      const s = useGameStore.getState()
+      console.log('[Replay] fallback fired: replayPending=', s.replayPending, 'phase=', s.phase)
+      if (s.replayPending && s.phase === 'IDLE') {
+        console.log('[Replay] auto-starting from fallback')
+        try { gameAudio.unlock() } catch { /* ignore */ }
+        gameEngine.startReplay(s.events, s.worldSeed, s.roundID)
+      }
+    }, 1000)
+    return () => window.clearTimeout(id)
+  }, [replayPending, phase])
+
 
   // Блокируем браузерный zoom, чтобы масштаб игры не менялся от Ctrl-комбинаций.
   useEffect(() => {
@@ -222,35 +249,6 @@ ${d.toLocaleTimeString("en-GB", {
           {/* ── DIG button + Autoplay button ── */}
           {gameStarted && !isReplayMode() && <DigButton />}
 
-          {/* ── Replay: "Play" before start, "Play Again" after result ── */}
-          {gameStarted && isReplayMode() && replayPending && (
-            <div className="ui-spin-control">
-              <button
-                className="ui-replay-play-btn"
-                onClick={() => {
-                  gameAudio.unlock();
-                  const s = useGameStore.getState();
-                  gameEngine.startReplay(s.events, s.worldSeed, s.roundID);
-                }}
-              >
-                ▶
-              </button>
-            </div>
-          )}
-          {gameStarted && isReplayMode() && !replayPending &&
-            (phase === 'WIN' || phase === 'LOSE') && (
-            <div className="ui-spin-control">
-              <button
-                className="ui-replay-play-btn ui-replay-play-btn--again"
-                onClick={() => {
-                  gameAudio.unlock();
-                  gameEngine.playReplayAgain();
-                }}
-              >
-                ↺
-              </button>
-            </div>
-          )}
 
           {/* ── Top-right controls ── */}
           {gameStarted && <TopBar />}

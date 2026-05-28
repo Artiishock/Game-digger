@@ -2165,8 +2165,14 @@ export class GameRenderer {
     this.ppm      = Math.max(TILE*2, Math.round((this.H * spread)/depthM/TILE)*TILE)
 
     const store = useGameStore.getState()
-    if (store.replayMode && store.worldSeed !== 0) {
-      this.worldSeed = store.worldSeed
+    if (store.replayMode) {
+      if (store.worldSeed !== 0) {
+        this.worldSeed = store.worldSeed
+        console.log('[Replay] startRound — using SAVED worldSeed:', this.worldSeed)
+      } else {
+        this.worldSeed = events.reduce((a,e,i)=>a^(e.depth*31+i*97),0x1337) >>> 0
+        console.log('[Replay] startRound — using DETERMINISTIC worldSeed (Stake):', this.worldSeed)
+      }
     } else {
       const baseSeed = events.reduce((a,e,i)=>a^(e.depth*31+i*97),0x1337) >>> 0
       const randSalt = (() => {
@@ -2179,6 +2185,7 @@ export class GameRenderer {
         }
       })()
       this.worldSeed = (baseSeed ^ randSalt) >>> 0
+      console.log('[Round] startRound — new worldSeed:', this.worldSeed, '(baseSeed:', baseSeed, ')')
       store.setWorldSeed(this.worldSeed)
     }
     if (!this.tileWorld) {
