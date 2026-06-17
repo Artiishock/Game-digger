@@ -5,6 +5,7 @@ import { resolvePublicUrl } from "../../utils/publicUrl";
 import "../ui.css";
 import { T } from "../../i18n/t";
 import { BalanceBetModal } from "../modals/BalanceBetModal";
+import { VolatilitySelector } from "../controls/VolatilitySelector";
 
 // ── Генерация уровней ставок ──────────────────────────────────────────────────
 
@@ -258,6 +259,9 @@ export const Hud: React.FC = () => {
             );
           })}
         </div>
+
+        {/* VOLATILITY SELECTOR — hidden in replay mode */}
+        {!inReplay && <VolatilitySelector />}
 
         {/* TOTAL BET + модальное окно — hidden in replay mode */}
         {!inReplay && showBetModal && (

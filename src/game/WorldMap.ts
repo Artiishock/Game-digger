@@ -95,8 +95,8 @@ function pickDecorType(y: number, r: number): EventType {
   const stoneChance = Math.min(types.stoneMax, types.stoneBase + depth * types.stoneDepthScale)
   if (r < types.coinBase)                            return 'COIN'
   if (r < types.coinBase + bombChance)               return 'BOMB'
-  if (r < types.coinBase + bombChance + stoneChance) return 'STONE'
-  if (r < types.goldThreshold)                       return 'GOLD'
+  if (r < types.coinBase + bombChance + stoneChance) return 'STONE_TICK'
+  if (r < types.goldThreshold)                       return 'GOLD_TICK'
   const homeDecor = types.homeDecorChance ?? 0
   if (r < types.goldThreshold + homeDecor)           return 'HOME'
   return 'DIAMOND'
@@ -110,8 +110,8 @@ function pickPathSegmentDecorType(y: number, r: number): EventType {
   const stoneChance = Math.min(types.stoneMax, types.stoneBase + depth * types.stoneDepthScale)
   if (r < types.coinBase)                            return 'COIN'
   if (r < types.coinBase + bombChance)               return 'BOMB'
-  if (r < types.coinBase + bombChance + stoneChance) return 'STONE'
-  if (r < types.goldThreshold)                       return 'GOLD'
+  if (r < types.coinBase + bombChance + stoneChance) return 'STONE_TICK'
+  if (r < types.goldThreshold)                       return 'GOLD_TICK'
   return 'DIAMOND'
 }
 
@@ -360,7 +360,7 @@ export function pruneDecorObstaclesAfterPathChange(
   if (path.length === 0) return obstacles
   return obstacles.filter(o => {
     if (o.kind !== 'decor') return true
-    const type = o.decorVisual ?? 'GOLD'
+    const type = o.decorVisual ?? 'GOLD_TICK'
     const sz = type === 'HOME' ? DECOR_HOME_PLACE_SZ : (ITEM_SZ[type] ?? 60)
     const r = type === 'HOME' ? (sz * Math.SQRT1_2) : (sz / 2)
     return !intersectsTunnel(o.x, o.y, r, path, surfY, DECOR_VISUAL_TUNNEL_MARGIN)

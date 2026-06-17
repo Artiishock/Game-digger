@@ -261,7 +261,8 @@ class GameEngine {
    * закрываем застрявший раунд через /end-round и пробуем play ещё раз.
    */
   private async _playWithRecovery(bet: number): Promise<RGS.PlayResponse> {
-    const tryPlay = () => RGS.isDemo() ? Demo.demoPlay(bet) : RGS.play(bet)
+    const volatility = useGameStore.getState().volatility
+    const tryPlay = () => RGS.isDemo() ? Demo.demoPlay(bet) : RGS.play(bet, volatility)
 
     try {
       return await tryPlay()

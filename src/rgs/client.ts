@@ -114,7 +114,7 @@ export interface RgsConfig {
 }
 
 /** A single event in a game round — Deep Rush flavour */
-export type EventType = 'COIN' | 'GOLD' | 'DIAMOND' | 'BOMB' | 'STONE' | 'HOME' | 'LAVA'
+export type EventType = 'COIN' | 'GOLD_TICK' | 'DIAMOND' | 'BOMB' | 'STONE_TICK' | 'HOME' | 'LAVA'
 
 /** Детерминированный эффект события на множитель — единственный источник правды. */
 export interface EventEffect {
@@ -270,12 +270,12 @@ export async function getBalance(): Promise<MoneyAmount> {
  * float/int×100, isActive как bool/string. Нормализуем формат прямо здесь,
  * чтобы вся остальная игра работала с единым контрактом.
  */
-export async function play(betDisplay: number): Promise<PlayResponse> {
+export async function play(betDisplay: number, volatility: 'low' | 'medium' | 'high' = 'medium'): Promise<PlayResponse> {
   const { sessionID } = getUrlParams()
   const raw = await post<any>('/wallet/play', {
     sessionID,
     amount: Math.round(betDisplay * MONEY_SCALE),
-    mode:   'base',
+    mode:   volatility,
   })
   return normalisePlayResponse(raw)
 }

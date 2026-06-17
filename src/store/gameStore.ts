@@ -14,6 +14,18 @@ export type GamePhase =
 
 export type SpeedMode = 0.75 | 1 | 2 | 5
 
+export type VolatilityMode = 'low' | 'medium' | 'high'
+
+const VOLATILITY_LS_KEY = 'dr_volatility'
+
+function loadVolatility(): VolatilityMode {
+  try {
+    const v = localStorage.getItem(VOLATILITY_LS_KEY)
+    if (v === 'low' || v === 'medium' || v === 'high') return v
+  } catch { /* ignore */ }
+  return 'medium'
+}
+
 export interface AutoplayConfig {
   active:                      boolean
   /** true = играть до стоп-условий или ручной остановки; счётчик раундов не уменьшается */
@@ -94,7 +106,8 @@ interface GameStore {
   lastRoundStats: LastRoundStats
 
   // Controls
-  speed:     SpeedMode
+  speed:      SpeedMode
+  volatility: VolatilityMode
   autoplay:  AutoplayConfig
   settings:  SettingsState
 
@@ -120,7 +133,8 @@ interface GameStore {
   setReplayPending:     (pending: boolean) => void
   setLastWin:     (win: number)          => void
   setLastWinMult: (mult: number)         => void
-  setSpeed:    (speed: SpeedMode)       => void
+  setSpeed:       (speed: SpeedMode)       => void
+  setVolatility:  (mode: VolatilityMode)  => void
   updateStats: (partial: Partial<SessionStats>) => void
   resetStats:  ()                       => void
   /** Сохранить текущие depth/distance как итог раунда (вызывать в onRoundComplete). */
@@ -191,6 +205,7 @@ export const useGameStore = createWithEqualityFn<GameStore>()((set, get) => ({
   lastRoundStats: { depth: 0, distance: 0 },
 
   speed: 1,
+  volatility: loadVolatility(),
 
   autoplay: { ...DEFAULT_AUTOPLAY },
   settings: { ...DEFAULT_SETTINGS },
@@ -218,7 +233,11 @@ export const useGameStore = createWithEqualityFn<GameStore>()((set, get) => ({
   setReplayPending:        (replayPending)        => set({ replayPending }),
   setLastWin:     (lastWin)     => set({ lastWin }),
   setLastWinMult: (lastWinMult) => set({ lastWinMult }),
-  setSpeed:   (speed)    => set({ speed }),
+  setSpeed:       (speed)    => set({ speed }),
+  setVolatility:  (volatility) => {
+    try { localStorage.setItem(VOLATILITY_LS_KEY, volatility) } catch { /* ignore */ }
+    set({ volatility })
+  },
 
   updateStats: (partial) => {
     const s = get()

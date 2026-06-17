@@ -304,8 +304,8 @@ const C = {
   lamp:0xFFFF99, axeShaft:0x6B4226, axeBlade:0xAAAAAA, axeShine:0xDDDDDD,
   dirtChunk:0x8B5E3C,
   particleColors:{
-    COIN:0xFFD700,GOLD:0xFFB830,DIAMOND:0x4ECDC4,
-    BOMB:0xFF4500,STONE:0x888888,LAVA:0xFF4500,HOME:0x7CFC00,
+    COIN:0xFFD700,GOLD_TICK:0xFFB830,DIAMOND:0x4ECDC4,
+    BOMB:0xFF4500,STONE_TICK:0x888888,LAVA:0xFF4500,HOME:0x7CFC00,
   } as Record<EventType,number>,
 }
 
@@ -323,7 +323,7 @@ const PICKUP_SPRITE_SCALE = 0.150
 const PICKUP_SCALE_GOLD_STONE_MUL = 2.6
 
 function pickupTextureScale(type: EventType): number {
-  if (type === 'GOLD' || type === 'STONE') return PICKUP_SPRITE_SCALE * PICKUP_SCALE_GOLD_STONE_MUL
+  if (type === 'GOLD_TICK' || type === 'STONE_TICK') return PICKUP_SPRITE_SCALE * PICKUP_SCALE_GOLD_STONE_MUL
   return PICKUP_SPRITE_SCALE
 }
 
@@ -1234,8 +1234,8 @@ class ObjectSpawner {
     const stoneChance = Math.min(types.stoneMax, types.stoneBase + depth * types.stoneDepthScale)
     if (r < types.coinBase)                            return 'COIN'
     if (r < types.coinBase + bombChance)               return 'BOMB'
-    if (r < types.coinBase + bombChance + stoneChance) return 'STONE'
-    if (r < types.goldThreshold)                       return 'GOLD'
+    if (r < types.coinBase + bombChance + stoneChance) return 'STONE_TICK'
+    if (r < types.goldThreshold)                       return 'GOLD_TICK'
     const homeDecor = (types as { homeDecorChance?: number }).homeDecorChance ?? 0
     if (r < types.goldThreshold + homeDecor)          return 'HOME'
     return 'DIAMOND'
@@ -2537,8 +2537,8 @@ export class GameRenderer {
 
   private _drawPickup(gfx:PIXI.Graphics, type:EventType) {
     const typeMap: {[key in EventType]?: string} = {
-      'COIN': 'coin', 'GOLD': 'gold', 'DIAMOND': 'diamond',
-      'BOMB': 'bomba', 'STONE': 'stoun',
+      'COIN': 'coin', 'GOLD_TICK': 'gold', 'DIAMOND': 'diamond',
+      'BOMB': 'bomba', 'STONE_TICK': 'stoun',
     }
     const fileName = typeMap[type]
     if (fileName) {
@@ -2557,8 +2557,8 @@ export class GameRenderer {
 
   private _getPickupSize(type:EventType): {w:number, h:number} {
     const typeMap: {[key in EventType]?: string} = {
-      'COIN': 'coin', 'GOLD': 'gold', 'DIAMOND': 'diamond',
-      'BOMB': 'bomba', 'STONE': 'stoun',
+      'COIN': 'coin', 'GOLD_TICK': 'gold', 'DIAMOND': 'diamond',
+      'BOMB': 'bomba', 'STONE_TICK': 'stoun',
     }
     const fileName = typeMap[type]
     if (fileName) {
@@ -3047,7 +3047,7 @@ export class GameRenderer {
         store.updateStats({ multiplier: Math.round(this.multiplier * 100) / 100 })
         this._breakStage = 0
         this._destroyBreakObj()
-        this._applyRepulseDeferred('STONE')
+        this._applyRepulseDeferred('STONE_TICK')
         canMove = true
       } else {
         canMove = false
@@ -3102,7 +3102,7 @@ export class GameRenderer {
         store.updateStats({ multiplier: Math.round(this.multiplier * 100) / 100 })
         this._breakStage = 0
         this._destroyBreakObj()
-        this._applyRepulseDeferred('GOLD')
+        this._applyRepulseDeferred('GOLD_TICK')
         canMove = true
       } else {
         canMove = false
@@ -3413,13 +3413,13 @@ export class GameRenderer {
     switch (type) {
       case 'BOMB':    effect = rgs?.effect?.value != null ? `÷${rgs.effect.value}` : before > 0.001 ? `÷${(before / Math.max(after, 0.001)).toFixed(1)}` : `÷${GameConfig.items.BOMB.divisor}`; break
       case 'DIAMOND': effect = `×${(after / Math.max(before, 0.001)).toFixed(2)}`; break
-      case 'GOLD': {
+      case 'GOLD_TICK': {
         const secs = durationSec ?? 0
         const gain = after - before
         effect = `${secs.toFixed(1)}s → +${gain.toFixed(2)} к мульт`
         break
       }
-      case 'STONE': {
+      case 'STONE_TICK': {
         const secs = durationSec ?? 0
         const pct  = before > 0 ? ((before - after) / before * 100) : 0
         const sign = pct >= 0 ? '-' : '+'
@@ -3477,13 +3477,13 @@ export class GameRenderer {
   private _onCollect(obj:SpawnedObj){
     const type=obj.type
 
-    if (type === 'STONE') {
+    if (type === 'STONE_TICK') {
       this.stoneBreakActive = true
       this.stoneBreakStartMultiplier = this.multiplier
       const multBefore = this.multiplier
       const rgsIdx = obj.rgsEventRef
         ? this.rgsQueue.findIndex(e => e === obj.rgsEventRef)
-        : this.rgsQueue.findIndex(e => e.type === 'STONE')
+        : this.rgsQueue.findIndex(e => e.type === 'STONE_TICK')
       let duration =
         GameConfig.items.STONE.durationMin + Math.random() * (GameConfig.items.STONE.durationMax - GameConfig.items.STONE.durationMin)
       let stoneSub: number | null = null
@@ -3501,7 +3501,7 @@ export class GameRenderer {
       this.multiplier = this._roundMultiplier(
         Math.max(GameConfig.multiplier.floor, this.multiplier - stoneSub),
       )
-      this._logCollect('STONE', multBefore, this.multiplier, duration,
+      this._logCollect('STONE_TICK', multBefore, this.multiplier, duration,
         { matched: rgsIdx >= 0, effect: rgsIdx >= 0 ? { op: 'sub', value: stoneSub! } : null })
       this.stoneBreakTotalDuration = duration
       this.stoneBreakRemainingTime = duration
@@ -3532,13 +3532,13 @@ export class GameRenderer {
     }
 
     // Золотой самородок — останавливаемся и получаем ×3/сек пока бурим
-    if (type === 'GOLD') {
+    if (type === 'GOLD_TICK') {
       this.goldBreakActive = true
       this.goldBreakStartMultiplier = this.multiplier
       const multBefore = this.multiplier
       const rgsIdx = obj.rgsEventRef
         ? this.rgsQueue.findIndex(e => e === obj.rgsEventRef)
-        : this.rgsQueue.findIndex(e => e.type === 'GOLD')
+        : this.rgsQueue.findIndex(e => e.type === 'GOLD_TICK')
       let duration =
         GameConfig.items.GOLD.durationMin + Math.random() * (GameConfig.items.GOLD.durationMax - GameConfig.items.GOLD.durationMin)
       let goldAdd: number | null = null
@@ -3554,7 +3554,7 @@ export class GameRenderer {
         ]
       }
       this.multiplier = this._roundMultiplier(this.multiplier + goldAdd)
-      this._logCollect('GOLD', multBefore, this.multiplier, duration,
+      this._logCollect('GOLD_TICK', multBefore, this.multiplier, duration,
         { matched: rgsIdx >= 0, effect: rgsIdx >= 0 ? { op: 'add', value: goldAdd! } : null })
       this.goldBreakRemainingTime = duration
       this.goldBreakTotalDuration = duration
@@ -3762,10 +3762,10 @@ export class GameRenderer {
     const pick = (arr:number[]) => arr[Math.floor(Math.random() * arr.length)]
     switch(type){
       case 'COIN':    return this._roundMultiplier(m + pick(GameConfig.items.COIN.addValues))
-      case 'GOLD':    return m  // обрабатывается через goldBreak
+      case 'GOLD_TICK':    return m  // обрабатывается через goldBreak
       case 'DIAMOND': return this._roundMultiplier(m * pick(GameConfig.items.DIAMOND.multValues))
       case 'BOMB':    return this._roundMultiplier(Math.max(floor, m / GameConfig.items.BOMB.divisor))
-      case 'STONE':   return m  // обрабатывается через stoneBreak
+      case 'STONE_TICK':   return m  // обрабатывается через stoneBreak
       default:        return m
     }
   }
@@ -3790,13 +3790,13 @@ export class GameRenderer {
       if (t === 'LAVA') return { mult: this._roundMultiplier(m), won: false }
       if (ev.effect) {
         m = this._applyEventEffectForSimulation(ev, m)
-      } else if (t === 'STONE') {
+      } else if (t === 'STONE_TICK') {
         const stoneSub =
           GameConfig.items.STONE.subValues[
             Math.floor(Math.random() * GameConfig.items.STONE.subValues.length)
           ]!
         m = this._roundMultiplier(Math.max(GameConfig.multiplier.floor, m - stoneSub))
-      } else if (t === 'GOLD') {
+      } else if (t === 'GOLD_TICK') {
         const goldAdd =
           GameConfig.items.GOLD.addValues[
             Math.floor(Math.random() * GameConfig.items.GOLD.addValues.length)
