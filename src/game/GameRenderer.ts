@@ -13,13 +13,14 @@ import type { Spine } from '@esotericsoftware/spine-pixi-v8'
 import { GameConfig, computeSceneZoom, effectiveDevicePixelRatio, HERO_MAX_SIDE_PX } from './GameConfig'
 import { gameAudio } from '../audio/GameAudio'
 import { GameAssets } from './gameAssets'
-import { buildRoundPathV2, buildRoundPathV3, cavePathHitsTunnel, decorGenerationHorizontalExtent, distancePointToTunnelPolyline, pruneDecorObstaclesAfterPathChange, tunnelXAtWorldY } from './WorldMap'
+import { buildRoundPathV2, buildRoundPathV3, cavePathHitsTunnel, decorGenerationHorizontalExtent, distancePointToTunnelPolyline, getLastWorldMapDiagnostics, pruneDecorObstaclesAfterPathChange, tunnelXAtWorldY } from './WorldMap'
 import type { FullPathResult, PathPoint, RoadPoint } from './WorldMap'
 import { T } from '../i18n/t'
 import { GameLogger } from '../dev/GameLogger'
 import { perf, installPerfProfiler } from '../dev/PerfProfiler'
 import { tickTickerFpsLog } from '../dev/tickerFpsLog'
 import { isScratchDisabledForDiagnostics, isScratchLogActive, tickScratchLog } from '../dev/scratchDebug'
+import { isStartRoundLogActive, reportStartRoundDebug } from '../dev/startRoundDebug'
 
 // ── Переключение варианта пути ──────────────────────────────────────────────
 // 'V2' = Коридор + сетка (плавный путь с синусоидальным блужданием)
@@ -2247,23 +2248,31 @@ export class GameRenderer {
     )
     this.spawner.retainCollectedGfx = (o) => this._breakGfx !== null && this._breakGfx === o.gfx
     // ── Строим полный маршрут ДО спавна объектов ────────────────────────────
+    const _pathT0 = performance.now()
     this._roundPath = buildRoundPath(this.worldSeed, this.surfY, this.ppm, events, this.W)
+    const _pathT1 = performance.now()
     const initialPathX = tunnelXAtWorldY(this._roundPath.pathPoints, startY)
     this._shiftRoundPathX(startX - initialPathX)
+    const _pathT2 = performance.now()
     this._softenRoundPathStart(startX)
+    const _pathT3 = performance.now()
     this._roundPath.obstacles = pruneDecorObstaclesAfterPathChange(
       this._roundPath.pathPoints,
       this.surfY,
       this._roundPath.obstacles,
     )
+    const _pathT4 = performance.now()
     this._roundPath.obstacles = this._pruneDecorNearTunnelPath(this._roundPath.obstacles)
+    const _pathT5 = performance.now()
     this._waypoints   = this._roundPath.waypoints
     this._tunnelPath  = this._roundPath.pathPoints.map(p => ({ x: p.x, y: p.y }))
+    const _pathT6 = performance.now()
     this._lossLavaCenterX = null  // будет обновлён после спавна терминальной пещеры
     this._promotedCount = 0
     this.charX = tunnelXAtWorldY(this._tunnelPath, this.charY)
     this._tunnelCumPathLen = 0  // invalidate cache — new round, new geometry
     this._rebuildTunnelCumLengths()
+    const _pathT7 = performance.now()
     this._pathArcS = projectWorldXYToTunnelArcLength(this._tunnelPath, this._tunnelCumLen, this.charX, this.charY)
     {
       const pt0 = pointOnTunnelAtArcLength(this._tunnelPath, this._tunnelCumLen, this._pathArcS)
@@ -2271,6 +2280,7 @@ export class GameRenderer {
       this._pathTangentNy = pt0.ny
       this.miner.snapFacingToWorldDir(pt0.nx, pt0.ny)
     }
+    const _pathT8 = performance.now()
     this.camX = startCamX
     this.camY = startCamY
 
@@ -2359,7 +2369,9 @@ export class GameRenderer {
 
     const _t4 = performance.now() // after spawner.setRgsEvents
 
+    this.tileWorld.beginBuildDiagnostics(isStartRoundLogActive())
     this.tileWorld.update(this.camX,this.camY,this.W,this.H)
+    const chunkDiagnostics = this.tileWorld.getBuildDiagnostics()
     const _t5 = performance.now() // after tileWorld.update (chunk builds)
 
     this.minerLayer.addChild(this.miner.root)
@@ -2374,15 +2386,70 @@ export class GameRenderer {
     const _t6 = performance.now() // end of startRound
     performance.mark('dr-renderer-end')
     performance.measure('[DR] renderer.startRound total', 'dr-raf-fired', 'dr-renderer-end')
-    if (import.meta.env.DEV) {
-      console.table({
-        'tileWorld reset + lava':  { ms: (_t1 - _t0).toFixed(1) },
-        'buildRoundPath + geom':   { ms: (_t2 - _t1).toFixed(1) },
-        'setPathWaypoints + cave': { ms: (_t3 - _t2).toFixed(1) },
-        'spawner.setRgsEvents':    { ms: (_t4 - _t3).toFixed(1) },
-        'tileWorld.update (chunks)':{ ms: (_t5 - _t4).toFixed(1) },
-        'rest (miner/sync)':       { ms: (_t6 - _t5).toFixed(1) },
-        '── RENDERER TOTAL':       { ms: (_t6 - _t0).toFixed(1) },
+    if (isStartRoundLogActive()) {
+      const wm = getLastWorldMapDiagnostics()
+      const ob = wm?.obstacles
+      reportStartRoundDebug({
+        totalMs: _t6 - _t0,
+        tileWorldResetMs: _t1 - _t0,
+        pathAndGeomMs: _t2 - _t1,
+        setPathWaypointsAndCaveMs: _t3 - _t2,
+        spawnerMs: _t4 - _t3,
+        chunksMs: _t5 - _t4,
+        restMs: _t6 - _t5,
+        worldMap: wm ? {
+          totalMs: Number(wm.totalMs.toFixed(2)),
+          roughTunnelMs: Number(wm.roughTunnelMs.toFixed(2)),
+          roadAndGhostMs: Number(wm.roadAndGhostMs.toFixed(2)),
+          finalTunnelMs: Number(wm.finalTunnelMs.toFixed(2)),
+          snapRoadMs: Number(wm.snapRoadMs.toFixed(2)),
+          placeObstaclesMs: Number(wm.placeObstaclesMs.toFixed(2)),
+          resultBuildMs: Number(wm.resultBuildMs.toFixed(2)),
+          roughPathPoints: wm.roughPathPoints,
+          finalPathPoints: wm.finalPathPoints,
+          roadEvents: wm.roadEvents,
+          roadPoints: wm.roadPoints,
+          ghostTargets: wm.ghostTargets,
+          tunnelTargets: wm.tunnelTargets,
+          terminalY: Number(wm.terminalY.toFixed(0)),
+          isLoss: wm.isLoss,
+        } : undefined,
+        chunks: chunkDiagnostics,
+        counts: {
+          pathBuildMs: Number((_pathT1 - _pathT0).toFixed(2)),
+          shiftPathMs: Number((_pathT2 - _pathT1).toFixed(2)),
+          softenStartMs: Number((_pathT3 - _pathT2).toFixed(2)),
+          pruneAfterPathChangeMs: Number((_pathT4 - _pathT3).toFixed(2)),
+          pruneRuntimeDecorMs: Number((_pathT5 - _pathT4).toFixed(2)),
+          copyTunnelPathMs: Number((_pathT6 - _pathT5).toFixed(2)),
+          cumulativeLengthsMs: Number((_pathT7 - _pathT6).toFixed(2)),
+          initialProjectionFacingMs: Number((_pathT8 - _pathT7).toFixed(2)),
+          decorCount: wm?.decorCount ?? 0,
+          lavaCount: wm?.lavaCount ?? 0,
+          caveCount: wm?.caveCount ?? 0,
+          terminalCave: wm?.terminalCave ?? false,
+          obstacleLavaMs: ob ? Number(ob.lavaMs.toFixed(2)) : 0,
+          obstacleCavePrepassMs: ob ? Number(ob.cavePrepassMs.toFixed(2)) : 0,
+          obstacleMainDecorMs: ob ? Number(ob.mainDecorMs.toFixed(2)) : 0,
+          obstacleRoadDecorMs: ob ? Number(ob.roadDecorMs.toFixed(2)) : 0,
+          obstacleSegmentDecorMs: ob ? Number(ob.segmentDecorMs.toFixed(2)) : 0,
+          obstacleCoverageMs: ob ? Number(ob.coverageMs.toFixed(2)) : 0,
+          obstacleFinalizeMs: ob ? Number(ob.finalizeMs.toFixed(2)) : 0,
+          decorTryPlaceCalls: ob?.decorTryPlaceCalls ?? 0,
+          decorPlaced: ob?.decorPlaced ?? 0,
+          decorTunnelRejects: ob?.decorTunnelRejects ?? 0,
+          decorRoadRejects: ob?.decorRoadRejects ?? 0,
+          decorCaveRejects: ob?.decorCaveRejects ?? 0,
+          decorGridRejects: ob?.decorGridRejects ?? 0,
+          decorBoundsCacheHits: ob?.decorBoundsCacheHits ?? 0,
+          decorBoundsCacheMisses: ob?.decorBoundsCacheMisses ?? 0,
+          coveragePathPoints: ob?.coveragePathPoints ?? 0,
+          coverageFillAttempts: ob?.coverageFillAttempts ?? 0,
+          lavaCandidates: ob?.lavaCandidates ?? 0,
+          lavaPlaced: ob?.lavaPlaced ?? 0,
+          caveCandidates: ob?.caveCandidates ?? 0,
+          cavePlaced: ob?.cavePlaced ?? 0,
+        },
       })
     }
 

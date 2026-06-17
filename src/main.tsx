@@ -3,10 +3,12 @@ import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { installTickerFpsLogFromUrl } from './dev/tickerFpsLog'
 import { installScratchDebugFromUrl } from './dev/scratchDebug'
+import { installStartRoundDebugFromUrl } from './dev/startRoundDebug'
 import './dev/demoMathConsole'
 
 installTickerFpsLogFromUrl()
 installScratchDebugFromUrl()
+installStartRoundDebugFromUrl()
 
 if (import.meta.env.DEV) {
   const originalWarn = console.warn.bind(console)

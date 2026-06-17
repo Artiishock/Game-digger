@@ -15,6 +15,7 @@
 
 import { GameConfig } from './GameConfig'
 import type { RoundEvent, EventType } from '../rgs/client'
+import { isStartRoundLogActive } from '../dev/startRoundDebug'
 
 export const TILE = 120
 
@@ -38,6 +39,63 @@ export interface FullPathResult {
   roadEventsOrdered:   RoundEvent[]
   obstacles:           SafeObject[]
   terminalCave:        { x: number; y: number; seed: number } | null
+}
+
+export interface PlaceObstaclesDiagnostics {
+  totalMs: number
+  lavaMs: number
+  cavePrepassMs: number
+  mainDecorMs: number
+  roadDecorMs: number
+  segmentDecorMs: number
+  coverageMs: number
+  finalizeMs: number
+  lavaCandidates: number
+  lavaPlaced: number
+  lavaTunnelRejects: number
+  lavaGridRejects: number
+  caveCandidates: number
+  cavePlaced: number
+  decorTryPlaceCalls: number
+  decorPlaced: number
+  decorTunnelRejects: number
+  decorRoadRejects: number
+  decorCaveRejects: number
+  decorGridRejects: number
+  decorBoundsCacheHits: number
+  decorBoundsCacheMisses: number
+  coveragePathPoints: number
+  coverageFillAttempts: number
+}
+
+export interface WorldMapDiagnostics {
+  totalMs: number
+  roughTunnelMs: number
+  roadAndGhostMs: number
+  finalTunnelMs: number
+  snapRoadMs: number
+  placeObstaclesMs: number
+  resultBuildMs: number
+  roughPathPoints: number
+  finalPathPoints: number
+  roadEvents: number
+  roadPoints: number
+  ghostTargets: number
+  tunnelTargets: number
+  terminalY: number
+  isLoss: boolean
+  decorCount: number
+  lavaCount: number
+  caveCount: number
+  terminalCave: boolean
+  obstacles: PlaceObstaclesDiagnostics
+}
+
+let _lastWorldMapDiagnostics: WorldMapDiagnostics | null = null
+let _lastPlaceObstaclesDiagnostics: PlaceObstaclesDiagnostics | null = null
+
+export function getLastWorldMapDiagnostics(): WorldMapDiagnostics | null {
+  return _lastWorldMapDiagnostics
 }
 
 // ─── Константы ───────────────────────────────────────────────────────────────
@@ -642,6 +700,33 @@ export function placeObstacles(
   roadPoints: RoadPoint[] = [],
   viewportWidthPx?: number,
 ): SafeObject[] {
+  const _poT0 = performance.now()
+  const diag: PlaceObstaclesDiagnostics = {
+    totalMs: 0,
+    lavaMs: 0,
+    cavePrepassMs: 0,
+    mainDecorMs: 0,
+    roadDecorMs: 0,
+    segmentDecorMs: 0,
+    coverageMs: 0,
+    finalizeMs: 0,
+    lavaCandidates: 0,
+    lavaPlaced: 0,
+    lavaTunnelRejects: 0,
+    lavaGridRejects: 0,
+    caveCandidates: 0,
+    cavePlaced: 0,
+    decorTryPlaceCalls: 0,
+    decorPlaced: 0,
+    decorTunnelRejects: 0,
+    decorRoadRejects: 0,
+    decorCaveRejects: 0,
+    decorGridRejects: 0,
+    decorBoundsCacheHits: 0,
+    decorBoundsCacheMisses: 0,
+    coveragePathPoints: 0,
+    coverageFillAttempts: 0,
+  }
   const objects:  SafeObject[] = []
   const SPAWN_INTERVAL = TILE * GameConfig.spawn.decorIntervalTiles
   const maxRow = Math.ceil((terminalY + TILE * 8) / TILE)
@@ -667,22 +752,32 @@ export function placeObstacles(
 
   // ── Лава — размещается первой, регистрируется в общем grid ───────────────────
   const lavaSpots: Array<{ x: number; y: number; r: number; w: number; h: number }> = []
+  const _lavaT0 = performance.now()
   for (let tr = 10; tr <= maxRow; tr++) {
     const wy = tr * TILE
     const depth = tr % 200
     const collectLava = (tc: number, scX: number, offX: number, scY: number, thresh: number, seed: number) => {
       const wx = tc * TILE
       if (caveNoise(tc * scX + offX, tr * scY, seed) <= thresh) return
+      diag.lavaCandidates++
       const lavaR = TILE * 0.8        // радиус для проверки с туннелем
       const lavaCaveR = TILE * 2.15   // реальный размер пещеры — для grid
-      if (intersectsTunnel(wx, wy, lavaR, path, surfY, LAVA_MARGIN)) return
-      if (_pgHit(wx, wy, lavaCaveR)) return
+      if (intersectsTunnel(wx, wy, lavaR, path, surfY, LAVA_MARGIN)) {
+        diag.lavaTunnelRejects++
+        return
+      }
+      if (_pgHit(wx, wy, lavaCaveR)) {
+        diag.lavaGridRejects++
+        return
+      }
       _pgAdd(wx, wy, lavaCaveR)
       lavaSpots.push({ x: wx, y: wy, r: lavaR, w: TILE * 2, h: TILE * 2 })
+      diag.lavaPlaced++
     }
     if (depth >= 35  && depth <= 88)  for (let tc = -16; tc <= 16; tc++) collectLava(tc, 1.25, 50, 0.78, 0.56, worldSeed ^ 0xFF00)
     if (depth >= 118 && depth <= 192) for (let tc = -16; tc <= 16; tc++) collectLava(tc, 1.08, 30, 0.88, 0.52, worldSeed ^ 0xFF11)
   }
+  diag.lavaMs = performance.now() - _lavaT0
 
   // ── Декорации ──────────────────────────────────────────────────────────────
   const roadOccupancy = roadPoints.map(rp => {
@@ -693,13 +788,30 @@ export function placeObstacles(
 
   /** Минимум между центрами декора (чуть больше проплешин между объектами). */
   const decorClearance = TILE * 1.2
+  const defaultDecorAttempts = {
+    nearTunnel: 28,
+    flank: 22,
+    wideHalf: 12,
+    wall: 18,
+  }
+  // Main background decor is the hot path. Later road/segment/coverage passes keep their fuller search budget.
+  const mainDecorAttempts = {
+    nearTunnel: 8,
+    flank: 8,
+    wideHalf: 6,
+    wall: 6,
+  }
 
   /** Горизонтальные пределы (с кэшем: tunnelXEnvelopeAroundY дорогая, ~405 iter × path.len). */
   const _boundsCache = new Map<number, { minX: number; maxX: number; midX: number }>()
   const decorBoundsAtY = (worldY: number): { minX: number; maxX: number; midX: number } => {
     const key = Math.round(worldY / 10)
     const c = _boundsCache.get(key)
-    if (c) return c
+    if (c) {
+      diag.decorBoundsCacheHits++
+      return c
+    }
+    diag.decorBoundsCacheMisses++
     const { minX, maxX } = decorGenerationHorizontalExtent(path, worldY, viewportWidthPx)
     const r = { minX, maxX, midX: (minX + maxX) * 0.5 }
     _boundsCache.set(key, r)
@@ -713,22 +825,37 @@ export function placeObstacles(
     worldY: number,
     tunnelMargin = DECOR_TUNNEL_PLACE_MARGIN,
   ): boolean => {
+    diag.decorTryPlaceCalls++
     const sz = type === 'HOME' ? DECOR_HOME_PLACE_SZ : (ITEM_SZ[type] ?? 60)
     const r = type === 'HOME' ? (sz * Math.SQRT1_2) : (sz / 2)
     const b = decorBoundsAtY(worldY)
     const x = Math.max(b.minX, Math.min(b.maxX, worldX))
-    if (intersectsTunnel(x, worldY, r, path, surfY, tunnelMargin)) return false
     for (const rp of roadOccupancy) {
-      if (Math.hypot(x - rp.x, worldY - rp.y) < r + rp.r + TILE * 0.08) return false
+      if (Math.hypot(x - rp.x, worldY - rp.y) < r + rp.r + TILE * 0.08) {
+        diag.decorRoadRejects++
+        return false
+      }
     }
     const minD = r + decorClearance
-    if (_pgHit(x, worldY, minD)) return false
+    if (_pgHit(x, worldY, minD)) {
+      diag.decorGridRejects++
+      return false
+    }
+    if (intersectsTunnel(x, worldY, r, path, surfY, tunnelMargin)) {
+      diag.decorTunnelRejects++
+      return false
+    }
     _pgAdd(x, worldY, r)
     objects.push({ x, y: worldY, w: sz, h: sz, kind: 'decor', decorVisual: type })
+    diag.decorPlaced++
     return true
   }
 
-  const tryDecor = (type: EventType, yRow: number) => {
+  const tryDecor = (
+    type: EventType,
+    yRow: number,
+    attempts = defaultDecorAttempts,
+  ) => {
     const sz = type === 'HOME' ? DECOR_HOME_PLACE_SZ : (ITEM_SZ[type] ?? 60)
     // Для квадратного HOME используем описанную окружность, иначе углы дома
     // могут «въезжать» в коридор при круговой проверке intersectsTunnel.
@@ -736,19 +863,33 @@ export function placeObstacles(
     const ty = type.charCodeAt(0) ?? 0
 
     const tryPlace = (worldX: number, worldY: number, tunnelMargin = DECOR_TUNNEL_PLACE_MARGIN): boolean => {
+      diag.decorTryPlaceCalls++
       const b = decorBoundsAtY(worldY)
       const x = Math.max(b.minX, Math.min(b.maxX, worldX))
-      if (intersectsTunnel(x, worldY, r, path, surfY, tunnelMargin)) return false
       for (const rp of roadOccupancy) {
-        if (Math.hypot(x - rp.x, worldY - rp.y) < r + rp.r + TILE * 0.08) return false
+        if (Math.hypot(x - rp.x, worldY - rp.y) < r + rp.r + TILE * 0.08) {
+          diag.decorRoadRejects++
+          return false
+        }
       }
       for (const c of preCaveRects) {
-        if (Math.abs(x - c.cx) < CAVE_RHW + r && Math.abs(worldY - c.cy) < CAVE_RHH + r) return false
+        if (Math.abs(x - c.cx) < CAVE_RHW + r && Math.abs(worldY - c.cy) < CAVE_RHH + r) {
+          diag.decorCaveRejects++
+          return false
+        }
       }
       const minD = r + decorClearance
-      if (_pgHit(x, worldY, minD)) return false
+      if (_pgHit(x, worldY, minD)) {
+        diag.decorGridRejects++
+        return false
+      }
+      if (intersectsTunnel(x, worldY, r, path, surfY, tunnelMargin)) {
+        diag.decorTunnelRejects++
+        return false
+      }
       _pgAdd(x, worldY, r)
       objects.push({ x, y: worldY, w: sz, h: sz, kind: 'decor', decorVisual: type })
+      diag.decorPlaced++
       return true
     }
 
@@ -760,7 +901,7 @@ export function placeObstacles(
     // У визуального туннеля: часть предметов в 1–2px от «стенки» выкопа (не от широкой капсулы TUNNEL_R).
     const vm = DECOR_VISUAL_TUNNEL_MARGIN
     let placedAny = false
-    for (let i = 0; i < 28; i++) {
+    for (let i = 0; i < attempts.nearTunnel; i++) {
       for (const side of sides) {
         const u = rng(yRow ^ 0x4E11 ^ i * 73 ^ ty, worldSeed)
         const closePack = rng(yRow ^ 0x4A17 ^ i * 41 ^ ty, worldSeed) < 0.62
@@ -790,7 +931,7 @@ export function placeObstacles(
       yW: number,
     ): boolean => {
       if (!(edgeMax > edgeMin + Math.max(TILE * 0.38, r * 1.2))) return false
-      for (let fq = 0; fq < 22; fq++) {
+      for (let fq = 0; fq < attempts.flank; fq++) {
         const u = rng(yRow ^ 0xFA11 ^ fq * 79 ^ ty, worldSeed)
         const xx = edgeMin + u * (edgeMax - edgeMin)
         const jY =
@@ -816,7 +957,7 @@ export function placeObstacles(
     for (const half of halfOrder) {
       const minX = half === 'right' ? midX : bw.minX
       const maxX = half === 'right' ? bw.maxX : midX
-      for (let i = 0; i < 12; i++) {
+      for (let i = 0; i < attempts.wideHalf; i++) {
         const u = rng(yRow ^ 0x3111 ^ i * 73 ^ ty ^ (half === 'right' ? 0x51 : 0x19), worldSeed)
         const xWide = minX + u * (maxX - minX)
         const jY =
@@ -830,7 +971,7 @@ export function placeObstacles(
 
     const minOffV = vm + r + 2
     const maxOffV = minOffV + TILE * 0.22
-    for (let k = 0; k < 18; k++) {
+    for (let k = 0; k < attempts.wall; k++) {
       const wy =
         yRow + (rng(yRow ^ 0x41AA + k * 31 + ty, worldSeed) - 0.5) * SPAWN_INTERVAL * 0.92
       const tx = tunnelXAtWorldY(path, wy)
@@ -860,6 +1001,7 @@ export function placeObstacles(
   const CAVE_RHW = TILE * 2.15
   const CAVE_RHH = TILE * 1.15
   const cavePlacements: Array<{ cx: number; cy: number; cr: number }> = []
+  const _caveT0 = performance.now()
   {
     let cs = worldSeed ^ 0xCAFE1234
     let cY = surfY + TILE * 3
@@ -870,22 +1012,28 @@ export function placeObstacles(
       const ls = cs
       const cx1 = tunnelXAtWorldY(path, cY) + ((ls & 0xFF) / 0xFF - 0.5) * TILE * 12
       const cr1 = TILE * (3 + (ls & 0x3))
+      diag.caveCandidates++
       if (!intersectsTunnel(cx1, cY, cr1, path, surfY, CAVE_MARGIN)) {
         cavePlacements.push({ cx: cx1, cy: cY, cr: cr1 })
+        diag.cavePlaced++
       }
       const ls2 = (Math.imul(69069, ls) + 1) >>> 0
       if ((ls2 & 0xF) < 5) {
         const cx2 = cx1 + ((ls2 & 0xFF) / 0xFF - 0.5) * TILE * 8
         const cy2 = cY + TILE * (4 + (ls2 & 0x7))
         const cr2 = TILE * (2 + (ls2 & 0x2))
+        diag.caveCandidates++
         if (!intersectsTunnel(cx2, cy2, cr2, path, surfY, CAVE_MARGIN)) {
           cavePlacements.push({ cx: cx2, cy: cy2, cr: cr2 })
+          diag.cavePlaced++
         }
       }
     }
   }
+  diag.cavePrepassMs = performance.now() - _caveT0
   const preCaveRects = cavePlacements.map(p => ({ cx: p.cx, cy: p.cy }))
 
+  const _mainDecorT0 = performance.now()
   let dy = surfY + SPAWN_INTERVAL * (0.42 + rng(surfY ^ 0x51EC, worldSeed) * 0.86)
   let decorStepIdx = 0
   while (dy <= terminalY + TILE * 12) {
@@ -897,25 +1045,27 @@ export function placeObstacles(
       for (let n = 0; n < perRow; n++) {
         const rowShift = (n - (perRow - 1) / 2) * TILE * (0.34 + rng(Math.floor(dy) ^ n * 0x2D2D, worldSeed) * 0.3)
         const yTry = dy + rowShift
-        tryDecor(pickDecorType(yTry + n, rng(yTry ^ 0xABC ^ n * 0x55, worldSeed)), yTry)
+        tryDecor(pickDecorType(yTry + n, rng(yTry ^ 0xABC ^ n * 0x55, worldSeed)), yTry, mainDecorAttempts)
       }
 
       if (rng(dy ^ 0xBEEF, worldSeed) < Math.min(0.9, GameConfig.spawn.doubleChance * 0.92)) {
         const d2 = TILE * (0.38 + rng(dy ^ 0xF00D, worldSeed) * 0.55)
-        tryDecor(pickDecorType(dy + 11, rng(dy ^ 0xF00D, worldSeed)), dy + d2)
+        tryDecor(pickDecorType(dy + 11, rng(dy ^ 0xF00D, worldSeed)), dy + d2, mainDecorAttempts)
       }
       if (GameConfig.spawn.decorExtraChance > 0 && rng(dy ^ 0xC001, worldSeed) < Math.min(0.82, GameConfig.spawn.decorExtraChance * 0.9)) {
         const d3 = TILE * (0.82 + rng(dy ^ 0xD00D, worldSeed) * 0.9)
-        tryDecor(pickDecorType(dy + 17, rng(dy ^ 0xD00D, worldSeed)), dy + d3)
+        tryDecor(pickDecorType(dy + 17, rng(dy ^ 0xD00D, worldSeed)), dy + d3, mainDecorAttempts)
       }
     }
     const stepMul = 0.88 + rng(Math.floor(dy * 3) ^ decorStepIdx * 0x85EB, worldSeed) * 1.05
     dy += SPAWN_INTERVAL * stepMul
     decorStepIdx++
   }
+  diag.mainDecorMs = performance.now() - _mainDecorT0
 
   // Доп. декоративные "обманки" рядом с реальными road-точками маршрута.
   // Ставим после фонового декора, чтобы игрок чаще видел предметы "почти на линии движения".
+  const _roadDecorT0 = performance.now()
   for (let i = 0; i < roadPoints.length; i++) {
     const rp = roadPoints[i]
     if (!rp || rp.terminal) continue
@@ -926,8 +1076,10 @@ export function placeObstacles(
       tryDecor(pickDecorType(anchorY2 + 1, rng((anchorY2 | 0) ^ 0xE221 ^ i * 19, worldSeed)), anchorY2)
     }
   }
+  diag.roadDecorMs = performance.now() - _roadDecorT0
 
   // Декор вдоль туннеля между соседними road-точками (и от поверхности до первой цели).
+  const _segmentDecorT0 = performance.now()
   const segCfg = GameConfig.spawn.pathSegmentDecor
   const sortedRoad = [...roadPoints].sort((a, b) => a.worldY - b.worldY)
   const segMargin = TILE * segCfg.endMarginTiles
@@ -966,8 +1118,10 @@ export function placeObstacles(
   for (let i = 0; i < sortedRoad.length - 1; i++) {
     placeDecorAlongSegment(sortedRoad[i]!.worldY, sortedRoad[i + 1]!.worldY, i)
   }
+  diag.segmentDecorMs = performance.now() - _segmentDecorT0
 
   // ── Контроль наполненности по полю видимости вдоль каждой точки маршрута ───
+  const _coverageT0 = performance.now()
   // Индекс декора по Y — countInBand не сканирует весь objects на каждую точку пути.
   const decorYBucketInv = 1 / (TILE * 1.05)
   const decorYBuckets = new Map<number, Array<{ x: number; y: number }>>()
@@ -986,6 +1140,7 @@ export function placeObstacles(
 
   const ensureDecorCoverageAtPathPoint = (pt: PathPoint, idx: number): void => {
     if (pt.y < surfY + TILE * 0.35 || pt.y > terminalY + TILE * 7.5) return
+    diag.coveragePathPoints++
     const bounds = decorBoundsAtY(pt.y)
     const spanW = bounds.maxX - bounds.minX
     if (spanW < TILE * 1.2) return
@@ -1025,6 +1180,7 @@ export function placeObstacles(
       const need = targetPerSide - have
       const attempts = need * 12
       for (let a = 0; a < attempts && have < targetPerSide; a++) {
+        diag.coverageFillAttempts++
         const u = rng((idx + 1) * 0x9E37 ^ sideKey ^ a * 71, worldSeed)
         const yJ = (rng((idx + 1) * 0x85EB ^ sideKey ^ a * 29, worldSeed) - 0.5) * TILE * 1.3
         const x = xMin + u * (xMax - xMin)
@@ -1049,7 +1205,9 @@ export function placeObstacles(
     if (!pt) continue
     ensureDecorCoverageAtPathPoint(pt, i)
   }
+  diag.coverageMs = performance.now() - _coverageT0
 
+  const _finalizeT0 = performance.now()
   // ── Лава (только вне туннеля) ─────────────────────────────────────────────
   for (const lv of lavaSpots) {
     objects.push({ x: lv.x, y: lv.y, w: lv.w, h: lv.h, kind: 'lava' })
@@ -1060,6 +1218,9 @@ export function placeObstacles(
     const w = p.cr * 2 + TILE * 3
     objects.push({ x: p.cx, y: p.cy, w, h: w, kind: 'cave' })
   }
+  diag.finalizeMs = performance.now() - _finalizeT0
+  diag.totalMs = performance.now() - _poT0
+  _lastPlaceObstaclesDiagnostics = diag
 
   return objects
 }
@@ -1110,7 +1271,7 @@ export function buildRoundPath(
   // Pass 4: road items точно на финальном туннеле + на оси туннеля (проекция на полилинию)
   let roadPoints = placeRoadItems(roadEvents, path, surfY)
   roadPoints = snapRoadPointsOntoTunnelAxis(roadPoints, path)
-  if (import.meta.env.DEV) {
+  if (isStartRoundLogActive()) {
     for (const rp of roadPoints) {
       const d = distancePointToTunnelPolyline(rp.worldX, rp.worldY, path)
       if (d > 0.5 || !roadItemTouchesTunnelAxis(rp.worldX, rp.worldY, path, rp.type)) {
@@ -1123,7 +1284,7 @@ export function buildRoundPath(
   // Pass 5: объекты вне туннеля (капсульная проверка)
   const obstacles  = placeObstacles(path, surfY, terminalY, worldSeed, roadPoints, viewportWidthPx)
   const _wt5 = performance.now()
-  if (import.meta.env.DEV) {
+  if (isStartRoundLogActive()) {
     console.table({
       'P1 buildTunnel rough':    { ms: (_wt1-_wt0).toFixed(1), pts: roughPath.length },
       'P2 roadItems+ghost':      { ms: (_wt2-_wt1).toFixed(1) },
@@ -1151,10 +1312,59 @@ export function buildRoundPath(
     ? { x: pathLast.x + _caveSign * _caveHw, y: pathLast.y, seed: (worldSeed ^ 0xDEAD1234) >>> 0 }
     : null
 
-  if (import.meta.env.DEV) {
-    const dc = obstacles.filter(o => o.kind === 'decor').length
-    const lv = obstacles.filter(o => o.kind === 'lava').length
-    const cv = obstacles.filter(o => o.kind === 'cave').length
+  const dc = obstacles.filter(o => o.kind === 'decor').length
+  const lv = obstacles.filter(o => o.kind === 'lava').length
+  const cv = obstacles.filter(o => o.kind === 'cave').length
+  const _wt6 = performance.now()
+  _lastWorldMapDiagnostics = {
+    totalMs: _wt6 - _wt0,
+    roughTunnelMs: _wt1 - _wt0,
+    roadAndGhostMs: _wt2 - _wt1,
+    finalTunnelMs: _wt3 - _wt2,
+    snapRoadMs: _wt4 - _wt3,
+    placeObstaclesMs: _wt5 - _wt4,
+    resultBuildMs: _wt6 - _wt5,
+    roughPathPoints: roughPath.length,
+    finalPathPoints: path.length,
+    roadEvents: roadEvents.length,
+    roadPoints: roadPoints.length,
+    ghostTargets: ghostTargets.length,
+    tunnelTargets: tunnelTargets.length,
+    terminalY,
+    isLoss,
+    decorCount: dc,
+    lavaCount: lv,
+    caveCount: cv,
+    terminalCave: !!terminalCave,
+    obstacles: _lastPlaceObstaclesDiagnostics ?? {
+      totalMs: 0,
+      lavaMs: 0,
+      cavePrepassMs: 0,
+      mainDecorMs: 0,
+      roadDecorMs: 0,
+      segmentDecorMs: 0,
+      coverageMs: 0,
+      finalizeMs: 0,
+      lavaCandidates: 0,
+      lavaPlaced: 0,
+      lavaTunnelRejects: 0,
+      lavaGridRejects: 0,
+      caveCandidates: 0,
+      cavePlaced: 0,
+      decorTryPlaceCalls: 0,
+      decorPlaced: 0,
+      decorTunnelRejects: 0,
+      decorRoadRejects: 0,
+      decorCaveRejects: 0,
+      decorGridRejects: 0,
+      decorBoundsCacheHits: 0,
+      decorBoundsCacheMisses: 0,
+      coveragePathPoints: 0,
+      coverageFillAttempts: 0,
+    },
+  }
+
+  if (isStartRoundLogActive()) {
     console.log(`[WorldMap] туннель R=${TUNNEL_R}px | ${path.length} wp | декор: ${dc}, лава: ${lv}, пещеры: ${cv}${terminalCave ? ' | 🔥 терм. пещера' : ''}`)
     console.log(`[WorldMap] road: ${roadPoints.map(r => `${r.type}@(${r.worldX},${r.worldY.toFixed(0)})`).join(' → ')}`)
   }
