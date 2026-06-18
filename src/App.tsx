@@ -10,6 +10,7 @@ import { BurgerMenu } from "./ui/menus/BurgerMenu";
 import { ErrorScreen } from "./ui/modals/ErrorScreen";
 import { StartScreen } from "./ui/StartScreen";
 import { LogoSplashScreen } from "./ui/LogoSplashScreen";
+import { LoadingScreen } from "./ui/LoadingScreen";
 import { useGameStore } from "./store/gameStore";
 import { shallow } from "zustand/shallow";
 import { gameAudio } from "./audio/GameAudio";
@@ -36,14 +37,17 @@ export const App: React.FC = () => {
   const prevPhase = useRef<string>('')
   const [logoSplashDone, setLogoSplashDone] = useState(() => isReplayMode())
   const [assetsReady, setAssetsReady] = useState(false)
+  const [loadProgress, setLoadProgress] = useState(0)
   const [gameStarted, setGameStarted] = useState(() => isReplayMode())
   const [gameCanvasReady, setGameCanvasReady] = useState(() => isReplayMode())
   const [startScreenReady, setStartScreenReady] = useState(() => isReplayMode())
   const [startTransitionRequested, setStartTransitionRequested] = useState(false)
   const [startDismissing, setStartDismissing] = useState(false)
   const [startScreenGone, setStartScreenGone] = useState(() => isReplayMode())
+  const [bootFading, setBootFading] = useState(false)
+  const [bootGone, setBootGone] = useState(() => isReplayMode())
   const gameSurfaceMounted = assetsReady && phase !== "BOOT"
-  const showBootOverlay = !assetsReady || phase === "BOOT" || (!startScreenGone && !startScreenReady)
+  const loadingComplete = assetsReady && phase !== "BOOT" && (startScreenGone || startScreenReady)
   const handleGameCanvasReady = useCallback(() => {
     setGameCanvasReady(true)
     if (!isReplayMode()) return
@@ -100,6 +104,14 @@ export const App: React.FC = () => {
     };
   }, [startDismissing, startScreenGone]);
 
+  // ── Loading screen fade-out ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (!loadingComplete || bootFading || bootGone) return;
+    setBootFading(true);
+    const id = window.setTimeout(() => setBootGone(true), 500);
+    return () => window.clearTimeout(id);
+  }, [loadingComplete, bootFading, bootGone]);
+
   // ── Boot ─────────────────────────────────────────────────────────────────────
   // Preload и boot стартуют ПОСЛЕ завершения логотипа (logoSplashDone).
   // Причина: preloadStartupAssets() делает gl.texImage2D() для Pixi-текстур и Spine-атласов —
@@ -111,8 +123,9 @@ export const App: React.FC = () => {
     if (!logoSplashDone) return;
     let cancelled = false;
     (async () => {
-      await preloadStartupAssets();
+      await preloadStartupAssets((p) => { if (!cancelled) setLoadProgress(p) });
       if (cancelled) return;
+      setLoadProgress(1);
       setAssetsReady(true);
       gameEngine.boot();
     })();
@@ -122,8 +135,9 @@ export const App: React.FC = () => {
   }, [logoSplashDone]);
 
   useEffect(() => {
+    if (!startScreenGone) return
     gameAudio.syncPhase(phase, multiplier)
-  }, [phase, multiplier])
+  }, [phase, multiplier, startScreenGone])
 
   useEffect(() => {
     if (phase === "LOSE") useGameStore.getState().setPhase("IDLE")
@@ -261,20 +275,18 @@ ${d.toLocaleTimeString("en-GB", {
         </div>
       )}
 
-      {showBootOverlay && (
+      {!bootGone && (
         <div
           style={{
             position: "absolute",
             inset: 0,
             zIndex: 30,
-            background: "#1A0E08",
-            fontFamily: "'Barlow', sans-serif",
+            opacity: bootFading ? 0 : 1,
+            transition: bootFading ? "opacity 0.5s ease" : "none",
+            pointerEvents: bootFading ? "none" : "auto",
           }}
         >
-          <div className="ui-boot">
-            <div className="ui-boot-spinner" />
-            <div className="ui-boot-title">DEEP RUSH</div>
-          </div>
+          <LoadingScreen progress={loadProgress} />
         </div>
       )}
 

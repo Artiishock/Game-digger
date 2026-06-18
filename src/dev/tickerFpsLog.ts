@@ -106,7 +106,4 @@ export function installTickerFpsLogFromUrl(): void {
     __DR_FPS_LOG__.enable(sec)
     return
   }
-  if (import.meta.env.DEV && sp.get('nofps') === null) {
-    __DR_FPS_LOG__.enable(8)
-  }
 }

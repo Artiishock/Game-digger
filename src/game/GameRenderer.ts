@@ -2168,10 +2168,8 @@ export class GameRenderer {
     if (store.replayMode) {
       if (store.worldSeed !== 0) {
         this.worldSeed = store.worldSeed
-        console.log('[Replay] startRound — using SAVED worldSeed:', this.worldSeed)
       } else {
         this.worldSeed = events.reduce((a,e,i)=>a^(e.depth*31+i*97),0x1337) >>> 0
-        console.log('[Replay] startRound — using DETERMINISTIC worldSeed (Stake):', this.worldSeed)
       }
     } else {
       const baseSeed = events.reduce((a,e,i)=>a^(e.depth*31+i*97),0x1337) >>> 0
@@ -2185,7 +2183,6 @@ export class GameRenderer {
         }
       })()
       this.worldSeed = (baseSeed ^ randSalt) >>> 0
-      console.log('[Round] startRound — new worldSeed:', this.worldSeed, '(baseSeed:', baseSeed, ')')
       store.setWorldSeed(this.worldSeed)
     }
     if (!this.tileWorld) {
@@ -3323,10 +3320,6 @@ export class GameRenderer {
       // просто физическая лава догнала раньше чем SpawnedObj терминал
       const lavaIdx = this.rgsQueue.findIndex(e => e.type === 'LAVA')
       if (lavaIdx >= 0) this.rgsQueue.splice(lavaIdx, 1)
-      console.log(
-        `%c[MOVE] 🔥 лава настигла персонажа @ (${this.charX.toFixed(0)}, ${this.charY.toFixed(0)})  глубина: ${this.depth.toFixed(1)}м  arc: ${this._pathArcS.toFixed(0)}px`,
-        'color:#ff6b6b',
-      )
       this._logTerminal('simulation', 'LAVA')
       if (!this._tryStartLavaDeathCinematic()) {
         if (this._terminalOutcomeTimerId !== null) {
@@ -3401,39 +3394,9 @@ export class GameRenderer {
     type: EventType,
     before: number,
     after: number,
-    durationSec?: number,
+    _durationSec?: number,
     rgs?: { matched: boolean; effect?: { op: string; value: number } | null },
   ): void {
-    const tag    = type.padEnd(7)
-    const bStr   = `×${before.toFixed(2)}`
-    const aStr   = `×${after.toFixed(2)}`
-    const delta  = after - before
-    const dStr   = (delta >= 0 ? '+' : '') + delta.toFixed(2)
-    let effect: string
-    switch (type) {
-      case 'BOMB':    effect = rgs?.effect?.value != null ? `÷${rgs.effect.value}` : before > 0.001 ? `÷${(before / Math.max(after, 0.001)).toFixed(1)}` : `÷${GameConfig.items.BOMB.divisor}`; break
-      case 'DIAMOND': effect = `×${(after / Math.max(before, 0.001)).toFixed(2)}`; break
-      case 'GOLD': {
-        const secs = durationSec ?? 0
-        const gain = after - before
-        effect = `${secs.toFixed(1)}s → +${gain.toFixed(2)} к мульт`
-        break
-      }
-      case 'STONE': {
-        const secs = durationSec ?? 0
-        const pct  = before > 0 ? ((before - after) / before * 100) : 0
-        const sign = pct >= 0 ? '-' : '+'
-        effect = `${secs.toFixed(1)}s → ${sign}${Math.abs(pct).toFixed(1)}% от мульт`
-        break
-      }
-      case 'COIN':    effect = `+${delta.toFixed(2)}`; break
-      case 'HOME':    effect = 'WIN ✓'; break
-      case 'LAVA':    effect = 'LOSE ✗'; break
-      default:        effect = dStr
-    }
-    const rgsTag = rgs == null ? '' : rgs.matched ? ' ✅RGS' : ' ❌random'
-    console.log(`[${tag}]  до: ${bStr.padStart(6)}  →  после: ${aStr.padStart(6)}  (${dStr}) | ${effect}${rgsTag}`)
-
     GameLogger.itemCollect({
       type,
       multBefore: before,
@@ -3447,30 +3410,12 @@ export class GameRenderer {
     const payoutMultiplier = (type === 'HOME' && RGS.isDemo())
       ? (Demo.peekPendingBaseCoeff() || this.multiplier)
       : this.multiplier
-    console.log(`--- КОНЕЦ РАУНДА [${type}] источник=${source} mult=×${payoutMultiplier.toFixed(2)} ---`)
-    if (this.rgsQueue.length > 0) {
-      console.warn(
-        `[WARN] В rgsQueue остались необработанные события (${this.rgsQueue.length}):`,
-        this.rgsQueue.map(e => `${e.type}(depth=${e.depth})`).join(', ')
-      )
-      const staleLava = this.rgsQueue.filter(e => e.type === 'LAVA')
-      const staleItems = this.rgsQueue.filter(e => e.type !== 'HOME' && e.type !== 'LAVA')
-      if (staleLava.length > 0) {
-        console.error(
-          `[STALE LAVA] Найдено ${staleLava.length} LAVA-ивент(ов) в очереди! depth=${staleLava.map(e=>e.depth).join(',')}`,
-          '— это "старая лава" которая не была обработана как объект'
-        )
-      }
-      if (staleItems.length > 0) {
-        console.warn(`[SKIP] Пропущены предметы: ${staleItems.map(e=>e.type).join(', ')}`)
-      }
-    }
     GameLogger.roundEnd({
-      result:          type === 'HOME' ? 'HOME' : 'LAVA',
+      result:            type === 'HOME' ? 'HOME' : 'LAVA',
       source,
-      finalMultiplier: this.multiplier,
+      finalMultiplier:   this.multiplier,
       settledMultiplier: payoutMultiplier,
-      rgsRemainder:    [...this.rgsQueue],
+      rgsRemainder:      [...this.rgsQueue],
     })
   }
 

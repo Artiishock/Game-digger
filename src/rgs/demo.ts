@@ -109,7 +109,6 @@ export function devQueueForcedCoeff(desiredCoeff: number): void {
   if (!import.meta.env.DEV) return
   _devQueuedCoeff = desiredCoeff
   _devQueuedCelebrate = null
-  console.info('[demo dev] next round forced coeff (approx):', desiredCoeff)
 }
 
 /** Следующий demoPlay подберёт base_coeff так, чтобы оверлей bigwin/epicwin/megawin совпал с порогами. */
@@ -117,13 +116,11 @@ export function devQueueCelebrateAnimation(kind: WinCelebrateKind): void {
   if (!import.meta.env.DEV) return
   _devQueuedCelebrate = kind
   _devQueuedCoeff = null
-  console.info('[demo dev] next round queued animation:', kind)
 }
 
 export function devClearForcedCoefficientQueue(): void {
   _devQueuedCoeff = null
   _devQueuedCelebrate = null
-  if (import.meta.env.DEV) console.info('[demo dev] queues cleared')
 }
 
 export function devGetForcedCoefficientQueueHint(): {
@@ -140,7 +137,6 @@ function takeDevCoefficientForNextRound(winTable: CumTable): number | undefined 
 
   if (_devQueuedCoeff !== null) {
     const snapped = nearestCoefficient(_devQueuedCoeff, positives.length ? positives : coeffs)
-    console.info(`[demo dev] apply forced coeff ${snapped} (requested ${_devQueuedCoeff})`)
     _devQueuedCoeff = null
     _devQueuedCelebrate = null
     return snapped
@@ -149,7 +145,6 @@ function takeDevCoefficientForNextRound(winTable: CumTable): number | undefined 
   if (_devQueuedCelebrate !== null) {
     const k = _devQueuedCelebrate
     const c = pickCelebrateCoeffFromMath(k, positives.length ? positives : coeffs)
-    console.info(`[demo dev] apply celebrate ${k} → coeff ${c}`)
     _devQueuedCelebrate = null
     return c
   }
@@ -275,12 +270,6 @@ async function loadRoad(coeff: number, isLoss: boolean): Promise<string[]> {
     if (!lines.length) throw new Error('empty road file')
     const idx  = Math.floor(Math.random() * lines.length)
     const road = JSON.parse(lines[idx]) as string[]
-
-    console.log(
-      `[road] 📂 ${dir}/${file}\n` +
-      `       всего дорожек: ${lines.length}, выбрана #${idx + 1}\n` +
-      `       маршрут: ${JSON.stringify(road)}`
-    )
 
     return road
   } catch (err) {
@@ -457,28 +446,6 @@ export async function demoPlay(betDisplay: number): Promise<PlayResponse> {
   const events  = roadToEvents(road, isLoss, rng)
   const roundID = String(_roundSeq)
 
-  // ── Лог раунда ──────────────────────────────────────────────────────────────
-  const tokenSymbols = road.map(t => {
-    if (/^\d+$/.test(t))               return `💰${t}`
-    if (t.startsWith('*'))             return `💎${t}`
-    if (t.startsWith('/'))             return `💣${t}`
-    if (t.toLowerCase().startsWith('g')) return `✨${t}`
-    if (t.toLowerCase().startsWith('s')) return `🪨${t}`
-    return t
-  }).join(' → ')
-
-  console.log(
-    `\n${'═'.repeat(56)}\n` +
-    `[раунд #${_roundSeq}]  исход: ${isLoss ? '🔥 ЛАВА' : '🏠 ДОМ'}` +
-    (isLoss
-      ? `  (base=0, loss_coeff=${lossCoeff})`
-      : `  (base_coeff=${baseCoeff})`) +
-    `\n  ставка: $${betDisplay.toFixed(2)}` +
-    (isLoss ? '' : `  выплата: $${(betDisplay * baseCoeff).toFixed(2)}`) +
-    `\n  предметы: ${tokenSymbols}` +
-    `\n${'─'.repeat(56)}`
-  )
-
   const round: RgsRound = {
     roundID,
     payoutMultiplier: baseCoeff,
@@ -506,12 +473,6 @@ export async function demoEndRound(
   _balance += payoutApi
   _pendingBaseCoeff = 0
 
-  console.log(
-    `[end-round] 💵 выплата: $${(betDisplay * coeff).toFixed(2)}` +
-    `  (ставка $${betDisplay.toFixed(2)} × coeff ${coeff})` +
-    `  баланс: $${(_balance / MONEY_SCALE).toFixed(2)}`
-  )
-
   return { balance: { amount: _balance, currency: _demoCurrency } }
 }
 
@@ -529,5 +490,4 @@ if (typeof window !== 'undefined') {
     url.searchParams.set('currency', upper)
     window.location.href = url.toString()
   }
-  console.info(`[demo] __setCurrency(code) available — e.g. __setCurrency('USD')`)
 }
