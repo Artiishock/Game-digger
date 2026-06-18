@@ -1166,6 +1166,21 @@ export class TileWorld {
     }
   }
 
+  getChunkDebugSnapshot(): Array<{ col: number; row: number; x: number; y: number; w: number; h: number }> {
+    const out: Array<{ col: number; row: number; x: number; y: number; w: number; h: number }> = []
+    for (const chunk of this.chunks.values()) {
+      out.push({
+        col: chunk.col,
+        row: chunk.row,
+        x: chunk.col * CPW,
+        y: chunk.row * CPH,
+        w: CPW,
+        h: CPH,
+      })
+    }
+    return out
+  }
+
   // ── Update ─────────────────────────────────────────────────────────────────
 
   /**

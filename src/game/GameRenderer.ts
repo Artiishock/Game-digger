@@ -1492,6 +1492,8 @@ export class GameRenderer {
   private lavasCavePathUpdated: WeakSet<any> = new WeakSet()
   private lavaSimulation: LavaSimulation | null = null
   private _worldMask: PIXI.Graphics = new PIXI.Graphics()
+  private _chunkDebugOverlay: PIXI.Graphics | null = null
+  private _chunkDebugEnabled = false
 
   constructor(canvas:HTMLCanvasElement,w:number,h:number){
     this._canvas = canvas
@@ -1617,6 +1619,8 @@ export class GameRenderer {
         ;(window as any).__PIXI_APP__ = this.app
         initDevtools({ app: this.app })
         installPerfProfiler()
+        this._installRenderQualityDebug()
+        this._installChunkDebug()
         if ((window as any).__DR_TOP_LAYER_STATS__) {
           installTopLayerStats(this.app)
         }
@@ -1673,6 +1677,102 @@ export class GameRenderer {
     this.liveWinBadge.rotation = 0
     this.liveWinBadge.scale.set(1)
     this.liveWinBadge.visible = true
+  }
+
+  private _renderQualityReport(): void {
+    const renderer = this.app.renderer as PIXI.Renderer
+    const canvas = this._canvas
+    const rect = canvas.getBoundingClientRect()
+    const resolution = renderer.resolution ?? 1
+    const expectedW = Math.round(rect.width * resolution)
+    const expectedH = Math.round(rect.height * resolution)
+    const vv = typeof visualViewport !== 'undefined' ? visualViewport : null
+    const stageScale = this.app.stage.scale
+    console.table({
+      devicePixelRatio: typeof window !== 'undefined' ? window.devicePixelRatio : 1,
+      effectiveDevicePixelRatio: effectiveDevicePixelRatio(),
+      configuredDprCap: GameConfig.performance.maxDevicePixelRatio,
+      rendererResolution: resolution,
+      canvasCssClient: `${canvas.clientWidth}×${canvas.clientHeight}`,
+      canvasCssRect: `${Math.round(rect.width)}×${Math.round(rect.height)}`,
+      canvasBuffer: `${canvas.width}×${canvas.height}`,
+      expectedBuffer: `${expectedW}×${expectedH}`,
+      bufferMatchesExpected: canvas.width === expectedW && canvas.height === expectedH,
+      rendererScreen: `${renderer.screen.width}×${renderer.screen.height}`,
+      rendererCanvas: `${((renderer as any).canvas?.width ?? canvas.width)}×${((renderer as any).canvas?.height ?? canvas.height)}`,
+      sceneVirtualSize: `${Math.round(this.W)}×${Math.round(this.H)}`,
+      zoom: Number(this._zoom.toFixed(4)),
+      stageScale: `${stageScale.x.toFixed(4)}×${stageScale.y.toFixed(4)}`,
+      visualViewport: vv ? `${Math.round(vv.width)}×${Math.round(vv.height)} scale=${vv.scale}` : '—',
+      innerSize: typeof window !== 'undefined' ? `${window.innerWidth}×${window.innerHeight}` : '—',
+      outerSize: typeof window !== 'undefined' ? `${window.outerWidth}×${window.outerHeight}` : '—',
+      screenSize: typeof window !== 'undefined' ? `${window.screen.width}×${window.screen.height}` : '—',
+      webglAntialias: GameConfig.performance.webglAntialias,
+      maxTextureSize: (renderer as any).context?.gl?.getParameter((renderer as any).context.gl.MAX_TEXTURE_SIZE) ?? '—',
+    })
+    if (typeof window !== 'undefined' && window.devicePixelRatio > resolution) {
+      console.info(
+        `[DR render quality] DPR ${window.devicePixelRatio} > renderer.resolution ${resolution}. ` +
+          `Это ожидаемо при maxDevicePixelRatio=${GameConfig.performance.maxDevicePixelRatio}, но может смягчать Retina-картинку.`,
+      )
+    }
+  }
+
+  private _installRenderQualityDebug(): void {
+    ;(window as any).__DR_RENDER_QUALITY__ = {
+      report: () => this._renderQualityReport(),
+      help: () => console.log('[DR render quality] __DR_RENDER_QUALITY__.report()'),
+    }
+  }
+
+  private _installChunkDebug(): void {
+    const api = {
+      enable: () => {
+        this._chunkDebugEnabled = true
+        this._updateChunkDebugOverlay()
+        console.log('[DR chunk debug] enabled')
+      },
+      disable: () => {
+        this._chunkDebugEnabled = false
+        this._updateChunkDebugOverlay()
+        console.log('[DR chunk debug] disabled')
+      },
+      status: () => console.log('[DR chunk debug]', { enabled: this._chunkDebugEnabled }),
+      help: () => console.log('[DR chunk debug] ?chunkDebug=1 или __DR_CHUNK_DEBUG__.enable()/disable()/status()'),
+    }
+    ;(window as any).__DR_CHUNK_DEBUG__ = api
+    if (typeof location !== 'undefined') {
+      const sp = new URLSearchParams(location.search)
+      if (sp.get('chunkDebug') === '1') api.enable()
+    }
+  }
+
+  private _updateChunkDebugOverlay(): void {
+    if (!this._chunkDebugEnabled) {
+      if (this._chunkDebugOverlay) this._chunkDebugOverlay.visible = false
+      return
+    }
+    if (!this._chunkDebugOverlay) {
+      this._chunkDebugOverlay = new PIXI.Graphics()
+      this._chunkDebugOverlay.label = 'chunkDebugOverlay'
+      this._chunkDebugOverlay.zIndex = 999999
+      this._chunkDebugOverlay.eventMode = 'none'
+      this.worldChunkLayer.sortableChildren = true
+      this.worldChunkLayer.addChild(this._chunkDebugOverlay)
+    }
+    const g = this._chunkDebugOverlay
+    g.visible = true
+    g.clear()
+    if (!this.tileWorld) return
+    const chunks = this.tileWorld.getChunkDebugSnapshot()
+    for (const ch of chunks) {
+      const color = (ch.col + ch.row) % 2 === 0 ? 0x00e5ff : 0xffd23f
+      g.lineStyle(2 / Math.max(this._zoom, 0.001), color, 0.95)
+      g.drawRect(ch.x, ch.y, ch.w, ch.h)
+      g.beginFill(color, 0.08)
+      g.drawRect(ch.x, ch.y, ch.w, ch.h)
+      g.endFill()
+    }
   }
 
   private _syncLayerScroll() {
@@ -3457,6 +3557,7 @@ export class GameRenderer {
   }
 
   private _perfPushSceneSnapshot(): void {
+    this._updateChunkDebugOverlay()
     if (!this.tileWorld) return
     if (!perf.enabled && !isScratchLogActive()) return
     const tw = this.tileWorld.getPerfSnapshot()
@@ -4297,6 +4398,13 @@ export class GameRenderer {
   private _applyResize(w: number, h: number): void {
     if (w <= 0 || h <= 0 || !this.app?.renderer) return
 
+    const dpr = effectiveDevicePixelRatio()
+    const renderer = this.app.renderer as PIXI.Renderer
+    if (Math.abs((renderer.resolution ?? 1) - dpr) > 1e-6) {
+      ;(renderer as any).resolution = dpr
+      this._prevScrollSnapScale = NaN
+    }
+
     this._zoom = computeSceneZoom(w, h)
     this.W = w / this._zoom
     this.H = h / this._zoom
@@ -4320,8 +4428,8 @@ export class GameRenderer {
     }
     this._syncLayerScroll()
 
-    this.app.renderer.resize(w, h)
-    this.app.renderer.render({ container: this.app.stage })
+    renderer.resize(w, h)
+    renderer.render({ container: this.app.stage })
   }
 
   destroy(){
