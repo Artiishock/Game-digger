@@ -15,6 +15,10 @@ const CHUNK_VISUAL_OVERLAP_PX = 3
 const MASK_W = CPW + CHUNK_VISUAL_OVERLAP_PX * 2
 const MASK_H = CPH + CHUNK_VISUAL_OVERLAP_PX * 2
 
+function chunkTopVisualOverlap(row: number): number {
+  return row === 0 ? 0 : CHUNK_VISUAL_OVERLAP_PX
+}
+
 /** Буфер вокруг камеры при расчёте чанков (px) — меньше множитель → меньше активных чанков / нагрузка на Mac. */
 export const TILEWORLD_CHUNK_VIEW_BUF_PX = CPW * 0.75
 
@@ -1301,6 +1305,8 @@ export class TileWorld {
     const _diagT0 = this._buildDiagnostics.active ? performance.now() : 0
     const key  = `${col}_${row}`
     const offX = col*CPW, offY = row*CPH
+    const topOverlap = chunkTopVisualOverlap(row)
+    const visualH = CPH + topOverlap + CHUNK_VISUAL_OVERLAP_PX
 
     const content = new PIXI.Container()
     content.name = 'chunkContent'
@@ -1336,9 +1342,9 @@ export class TileWorld {
           if (this._buildDiagnostics.active) this._buildDiagnostics.spritesCreated++
           spr.name = 'earthBaked'
           spr.x = -CHUNK_VISUAL_OVERLAP_PX
-          spr.y = -CHUNK_VISUAL_OVERLAP_PX
+          spr.y = -topOverlap
           spr.width = CPW + CHUNK_VISUAL_OVERLAP_PX * 2
-          spr.height = CPH + CHUNK_VISUAL_OVERLAP_PX * 2
+          spr.height = visualH
           content.addChild(spr)
           earthLayer.destroy({ children: true })
         } else {
@@ -1348,11 +1354,11 @@ export class TileWorld {
         content.addChild(earthLayer)
       }
     } else if (TileWorld.groundTex) {
-      const spr = new PIXI.TilingSprite(TileWorld.groundTex, CPW + CHUNK_VISUAL_OVERLAP_PX * 2, CPH + CHUNK_VISUAL_OVERLAP_PX * 2)
+      const spr = new PIXI.TilingSprite(TileWorld.groundTex, CPW + CHUNK_VISUAL_OVERLAP_PX * 2, visualH)
       if (this._buildDiagnostics.active) this._buildDiagnostics.spritesCreated++
       spr.name = 'groundTiling'
       spr.x = -CHUNK_VISUAL_OVERLAP_PX
-      spr.y = -CHUNK_VISUAL_OVERLAP_PX
+      spr.y = -topOverlap
       spr.tileScale.set(TILE/TileWorld.groundTex.width, TILE/TileWorld.groundTex.height)
       content.addChild(spr)
     } else {
@@ -1360,7 +1366,7 @@ export class TileWorld {
       if (this._buildDiagnostics.active) this._buildDiagnostics.graphicsCreated++
       fb.name = 'groundFallback'
       fb.beginFill(0x5a2d14)
-        .drawRect(-CHUNK_VISUAL_OVERLAP_PX, -CHUNK_VISUAL_OVERLAP_PX, CPW + CHUNK_VISUAL_OVERLAP_PX * 2, CPH + CHUNK_VISUAL_OVERLAP_PX * 2)
+        .drawRect(-CHUNK_VISUAL_OVERLAP_PX, -topOverlap, CPW + CHUNK_VISUAL_OVERLAP_PX * 2, visualH)
         .endFill()
       content.addChild(fb)
     }
