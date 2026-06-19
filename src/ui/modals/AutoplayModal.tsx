@@ -214,6 +214,10 @@ export const AutoplayModal: React.FC = () => {
                 <input
                   className="ui-ap-input"
                   placeholder=""
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                   value={customRounds}
                   onFocus={() => setActiveInput("customRounds")}
                   onClick={(e) => {
@@ -391,6 +395,10 @@ const InputRow: React.FC<{
     >
       <input
         className="ui-input-row-field"
+        autoComplete="off"
+        data-1p-ignore
+        data-lpignore="true"
+        data-form-type="other"
         value={value}
         onFocus={() => onFocusInput(inputId)}
         onClick={(e) => {

@@ -3618,7 +3618,7 @@ export class GameRenderer {
     type: EventType,
     before: number,
     after: number,
-    _durationSec?: number,
+    durationSec?: number,
     rgs?: { matched: boolean; effect?: { op: string; value: number } | null },
   ): void {
     const tag    = type.padEnd(7)

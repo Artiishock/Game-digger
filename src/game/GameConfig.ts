@@ -379,10 +379,10 @@ export const GameConfig = {
     pauseTickerWhenPageHidden: true,
     /**
      * Потолок `devicePixelRatio` для внутреннего разрешения Pixi (`resolution` / backing store).
-     * 1.0 = рендер в логических пикселях, нет Retina-масштаба → ~56% меньше пикселей на Mac.
-     * На старых MacBook Air / Intel Mac это критичная экономия GPU.
+     * 2 = стандартный Retina-рендер: полная чёткость на всех устройствах, без занижения.
+     * (Снижали до 1.5 ради экономии GPU на старых Mac — сейчас стандартное качество для всех.)
      */
-    maxDevicePixelRatio: 1.5,
+    maxDevicePixelRatio: 2,
 
     /** Сколько чанков из буферной очереди собирать за один кадр (меньше — ровнее FPS, дольше «догруз»). */
     tileWorldChunkBuildsPerFrame: 2,
