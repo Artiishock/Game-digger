@@ -6,19 +6,21 @@ import { useGameStore } from '../store/gameStore'
 import type { RoundEvent, EventType } from '../rgs/client'
 import * as RGS from '../rgs/client'
 import * as Demo from '../rgs/demo'
-import { TileWorld, TILE, tileWorldMaxChunkWindowFromConfig } from './Tileworld'
+import { CHUNK_H, CHUNK_W, TileWorld, TILE, tileWorldMaxChunkWindowFromConfig } from './Tileworld'
 import { LavaSimulation } from './LavaSimulation'
 import { SpineAnimator, HERO_ANIM, ROCK_ANIM, GOLD_ANIM, GOLD_STAGE, STONE_STAGE, BREAK_ACTION_DURATION, getSpineItemSize } from './SpineAnimator'
 import type { Spine } from '@esotericsoftware/spine-pixi-v8'
 import { GameConfig, computeSceneZoom, effectiveDevicePixelRatio, HERO_MAX_SIDE_PX } from './GameConfig'
 import { gameAudio } from '../audio/GameAudio'
 import { GameAssets } from './gameAssets'
-import { buildRoundPathV2, buildRoundPathV3, cavePathHitsTunnel, decorGenerationHorizontalExtent, distancePointToTunnelPolyline, pruneDecorObstaclesAfterPathChange, tunnelXAtWorldY } from './WorldMap'
+import { buildRoundPathV2, buildRoundPathV3, cavePathHitsTunnel, decorGenerationHorizontalExtent, distancePointToTunnelPolyline, getLastWorldMapDiagnostics, pruneDecorObstaclesAfterPathChange, tunnelXAtWorldY } from './WorldMap'
 import type { FullPathResult, PathPoint, RoadPoint } from './WorldMap'
 import { T } from '../i18n/t'
 import { GameLogger } from '../dev/GameLogger'
 import { perf, installPerfProfiler } from '../dev/PerfProfiler'
 import { tickTickerFpsLog } from '../dev/tickerFpsLog'
+import { isScratchDisabledForDiagnostics, isScratchLogActive, tickScratchLog } from '../dev/scratchDebug'
+import { isStartRoundLogActive, reportStartRoundDebug } from '../dev/startRoundDebug'
 
 // ── Переключение варианта пути ──────────────────────────────────────────────
 // 'V2' = Коридор + сетка (плавный путь с синусоидальным блужданием)
@@ -1282,6 +1284,7 @@ const TREE_IDLE_COPY_STEP_PX = TILE * 24
 
 export class GameRenderer {
   app:PIXI.Application
+  private readonly _canvas: HTMLCanvasElement
   /** Resolves when PixiJS renderer + ticker are ready (app.init completes). */
   ready!:Promise<void>
   /** Подложка под выкопом (текстура земли / цвет из TileWorld.bgLight). */
@@ -1327,6 +1330,7 @@ export class GameRenderer {
   private _forestMask: PIXI.Graphics | null = null
   private _prevScrollCamX = NaN
   private _prevScrollCamY = NaN
+  private _prevScrollSnapScale = NaN
   private _lastSentDepth = -1
   private _lastSentDistance = -1
   private _lastSentMultiplier = -1
@@ -1488,8 +1492,11 @@ export class GameRenderer {
   private lavasCavePathUpdated: WeakSet<any> = new WeakSet()
   private lavaSimulation: LavaSimulation | null = null
   private _worldMask: PIXI.Graphics = new PIXI.Graphics()
+  private _chunkDebugOverlay: PIXI.Graphics | null = null
+  private _chunkDebugEnabled = false
 
   constructor(canvas:HTMLCanvasElement,w:number,h:number){
+    this._canvas = canvas
     // ── Адаптивный zoom по min(W,H): виртуальный мир крупнее экрана → объекты масштабируются ──
     this._zoom = computeSceneZoom(w, h)
     this.W = w / this._zoom   // виртуальная ширина мира (игровая логика работает в этих пикселях)
@@ -1612,6 +1619,8 @@ export class GameRenderer {
         ;(window as any).__PIXI_APP__ = this.app
         initDevtools({ app: this.app })
         installPerfProfiler()
+        this._installRenderQualityDebug()
+        this._installChunkDebug()
         if ((window as any).__DR_TOP_LAYER_STATS__) {
           installTopLayerStats(this.app)
         }
@@ -1670,13 +1679,116 @@ export class GameRenderer {
     this.liveWinBadge.visible = true
   }
 
+  private _renderQualityReport(): void {
+    const renderer = this.app.renderer as PIXI.Renderer
+    const canvas = this._canvas
+    const rect = canvas.getBoundingClientRect()
+    const resolution = renderer.resolution ?? 1
+    const expectedW = Math.round(rect.width * resolution)
+    const expectedH = Math.round(rect.height * resolution)
+    const vv = typeof visualViewport !== 'undefined' ? visualViewport : null
+    const stageScale = this.app.stage.scale
+    console.table({
+      devicePixelRatio: typeof window !== 'undefined' ? window.devicePixelRatio : 1,
+      effectiveDevicePixelRatio: effectiveDevicePixelRatio(),
+      configuredDprCap: GameConfig.performance.maxDevicePixelRatio,
+      rendererResolution: resolution,
+      canvasCssClient: `${canvas.clientWidth}×${canvas.clientHeight}`,
+      canvasCssRect: `${Math.round(rect.width)}×${Math.round(rect.height)}`,
+      canvasBuffer: `${canvas.width}×${canvas.height}`,
+      expectedBuffer: `${expectedW}×${expectedH}`,
+      bufferMatchesExpected: canvas.width === expectedW && canvas.height === expectedH,
+      rendererScreen: `${renderer.screen.width}×${renderer.screen.height}`,
+      rendererCanvas: `${((renderer as any).canvas?.width ?? canvas.width)}×${((renderer as any).canvas?.height ?? canvas.height)}`,
+      sceneVirtualSize: `${Math.round(this.W)}×${Math.round(this.H)}`,
+      zoom: Number(this._zoom.toFixed(4)),
+      stageScale: `${stageScale.x.toFixed(4)}×${stageScale.y.toFixed(4)}`,
+      visualViewport: vv ? `${Math.round(vv.width)}×${Math.round(vv.height)} scale=${vv.scale}` : '—',
+      innerSize: typeof window !== 'undefined' ? `${window.innerWidth}×${window.innerHeight}` : '—',
+      outerSize: typeof window !== 'undefined' ? `${window.outerWidth}×${window.outerHeight}` : '—',
+      screenSize: typeof window !== 'undefined' ? `${window.screen.width}×${window.screen.height}` : '—',
+      webglAntialias: GameConfig.performance.webglAntialias,
+      maxTextureSize: (renderer as any).context?.gl?.getParameter((renderer as any).context.gl.MAX_TEXTURE_SIZE) ?? '—',
+    })
+    if (typeof window !== 'undefined' && window.devicePixelRatio > resolution) {
+      console.info(
+        `[DR render quality] DPR ${window.devicePixelRatio} > renderer.resolution ${resolution}. ` +
+          `Это ожидаемо при maxDevicePixelRatio=${GameConfig.performance.maxDevicePixelRatio}, но может смягчать Retina-картинку.`,
+      )
+    }
+  }
+
+  private _installRenderQualityDebug(): void {
+    ;(window as any).__DR_RENDER_QUALITY__ = {
+      report: () => this._renderQualityReport(),
+      help: () => console.log('[DR render quality] __DR_RENDER_QUALITY__.report()'),
+    }
+  }
+
+  private _installChunkDebug(): void {
+    const api = {
+      enable: () => {
+        this._chunkDebugEnabled = true
+        this._updateChunkDebugOverlay()
+        console.log('[DR chunk debug] enabled')
+      },
+      disable: () => {
+        this._chunkDebugEnabled = false
+        this._updateChunkDebugOverlay()
+        console.log('[DR chunk debug] disabled')
+      },
+      status: () => console.log('[DR chunk debug]', { enabled: this._chunkDebugEnabled }),
+      help: () => console.log('[DR chunk debug] ?chunkDebug=1 или __DR_CHUNK_DEBUG__.enable()/disable()/status()'),
+    }
+    ;(window as any).__DR_CHUNK_DEBUG__ = api
+    if (typeof location !== 'undefined') {
+      const sp = new URLSearchParams(location.search)
+      if (sp.get('chunkDebug') === '1') api.enable()
+    }
+  }
+
+  private _updateChunkDebugOverlay(): void {
+    if (!this._chunkDebugEnabled) {
+      if (this._chunkDebugOverlay) this._chunkDebugOverlay.visible = false
+      return
+    }
+    if (!this._chunkDebugOverlay) {
+      this._chunkDebugOverlay = new PIXI.Graphics()
+      this._chunkDebugOverlay.label = 'chunkDebugOverlay'
+      this._chunkDebugOverlay.zIndex = 999999
+      this._chunkDebugOverlay.eventMode = 'none'
+      this.worldChunkLayer.sortableChildren = true
+      this.worldChunkLayer.addChild(this._chunkDebugOverlay)
+    }
+    const g = this._chunkDebugOverlay
+    g.visible = true
+    g.clear()
+    if (!this.tileWorld) return
+    const chunks = this.tileWorld.getChunkDebugSnapshot()
+    for (const ch of chunks) {
+      const color = (ch.col + ch.row) % 2 === 0 ? 0x00e5ff : 0xffd23f
+      g.lineStyle(2 / Math.max(this._zoom, 0.001), color, 0.95)
+      g.drawRect(ch.x, ch.y, ch.w, ch.h)
+      g.beginFill(color, 0.08)
+      g.drawRect(ch.x, ch.y, ch.w, ch.h)
+      g.endFill()
+    }
+  }
+
   private _syncLayerScroll() {
-    if (this.camX === this._prevScrollCamX && this.camY === this._prevScrollCamY) return
+    const dpr = (this.app.renderer as PIXI.Renderer | undefined)?.resolution ?? 1
+    const snapScale = this._zoom * dpr
+    if (
+      this.camX === this._prevScrollCamX &&
+      this.camY === this._prevScrollCamY &&
+      snapScale === this._prevScrollSnapScale
+    ) return
     this._prevScrollCamX = this.camX
     this._prevScrollCamY = this.camY
-    const dpr = (this.app.renderer as PIXI.Renderer | undefined)?.resolution ?? 1
-    const x = -Math.round(this.camX * dpr) / dpr
-    const y = -Math.round(this.camY * dpr) / dpr
+    this._prevScrollSnapScale = snapScale
+    const safeSnapScale = snapScale > 0 ? snapScale : dpr
+    const x = -Math.round(this.camX * safeSnapScale) / safeSnapScale
+    const y = -Math.round(this.camY * safeSnapScale) / safeSnapScale
     this.worldBgLayer.position.set(x, y)
     this._sceneryLayer.position.set(x, y)
     this.worldChunkLayer.position.set(x, y)
@@ -1707,6 +1819,7 @@ export class GameRenderer {
       if (this.tileWorld) {
       // При LAVA или подъезде к idle не стираем туннель в фоне.
       if (this._lavaDeathCinematic || this._lavaLossIdleGlideActive) return
+      if (isScratchDisabledForDiagnostics()) return
       this.tileWorld.scratchAt(sx, sy, this.camX, this.camY, this._pathTangentNx, this._pathTangentNy, tunnelLengthProgress)
     }
   }
@@ -2232,23 +2345,31 @@ export class GameRenderer {
     )
     this.spawner.retainCollectedGfx = (o) => this._breakGfx !== null && this._breakGfx === o.gfx
     // ── Строим полный маршрут ДО спавна объектов ────────────────────────────
+    const _pathT0 = performance.now()
     this._roundPath = buildRoundPath(this.worldSeed, this.surfY, this.ppm, events, this.W)
+    const _pathT1 = performance.now()
     const initialPathX = tunnelXAtWorldY(this._roundPath.pathPoints, startY)
     this._shiftRoundPathX(startX - initialPathX)
+    const _pathT2 = performance.now()
     this._softenRoundPathStart(startX)
+    const _pathT3 = performance.now()
     this._roundPath.obstacles = pruneDecorObstaclesAfterPathChange(
       this._roundPath.pathPoints,
       this.surfY,
       this._roundPath.obstacles,
     )
+    const _pathT4 = performance.now()
     this._roundPath.obstacles = this._pruneDecorNearTunnelPath(this._roundPath.obstacles)
+    const _pathT5 = performance.now()
     this._waypoints   = this._roundPath.waypoints
     this._tunnelPath  = this._roundPath.pathPoints.map(p => ({ x: p.x, y: p.y }))
+    const _pathT6 = performance.now()
     this._lossLavaCenterX = null  // будет обновлён после спавна терминальной пещеры
     this._promotedCount = 0
     this.charX = tunnelXAtWorldY(this._tunnelPath, this.charY)
     this._tunnelCumPathLen = 0  // invalidate cache — new round, new geometry
     this._rebuildTunnelCumLengths()
+    const _pathT7 = performance.now()
     this._pathArcS = projectWorldXYToTunnelArcLength(this._tunnelPath, this._tunnelCumLen, this.charX, this.charY)
     {
       const pt0 = pointOnTunnelAtArcLength(this._tunnelPath, this._tunnelCumLen, this._pathArcS)
@@ -2256,6 +2377,7 @@ export class GameRenderer {
       this._pathTangentNy = pt0.ny
       this.miner.snapFacingToWorldDir(pt0.nx, pt0.ny)
     }
+    const _pathT8 = performance.now()
     this.camX = startCamX
     this.camY = startCamY
 
@@ -2344,7 +2466,9 @@ export class GameRenderer {
 
     const _t4 = performance.now() // after spawner.setRgsEvents
 
+    this.tileWorld.beginBuildDiagnostics(isStartRoundLogActive())
     this.tileWorld.update(this.camX,this.camY,this.W,this.H)
+    const chunkDiagnostics = this.tileWorld.getBuildDiagnostics()
     const _t5 = performance.now() // after tileWorld.update (chunk builds)
 
     this.minerLayer.addChild(this.miner.root)
@@ -2359,15 +2483,70 @@ export class GameRenderer {
     const _t6 = performance.now() // end of startRound
     performance.mark('dr-renderer-end')
     performance.measure('[DR] renderer.startRound total', 'dr-raf-fired', 'dr-renderer-end')
-    if (import.meta.env.DEV) {
-      console.table({
-        'tileWorld reset + lava':  { ms: (_t1 - _t0).toFixed(1) },
-        'buildRoundPath + geom':   { ms: (_t2 - _t1).toFixed(1) },
-        'setPathWaypoints + cave': { ms: (_t3 - _t2).toFixed(1) },
-        'spawner.setRgsEvents':    { ms: (_t4 - _t3).toFixed(1) },
-        'tileWorld.update (chunks)':{ ms: (_t5 - _t4).toFixed(1) },
-        'rest (miner/sync)':       { ms: (_t6 - _t5).toFixed(1) },
-        '── RENDERER TOTAL':       { ms: (_t6 - _t0).toFixed(1) },
+    if (isStartRoundLogActive()) {
+      const wm = getLastWorldMapDiagnostics()
+      const ob = wm?.obstacles
+      reportStartRoundDebug({
+        totalMs: _t6 - _t0,
+        tileWorldResetMs: _t1 - _t0,
+        pathAndGeomMs: _t2 - _t1,
+        setPathWaypointsAndCaveMs: _t3 - _t2,
+        spawnerMs: _t4 - _t3,
+        chunksMs: _t5 - _t4,
+        restMs: _t6 - _t5,
+        worldMap: wm ? {
+          totalMs: Number(wm.totalMs.toFixed(2)),
+          roughTunnelMs: Number(wm.roughTunnelMs.toFixed(2)),
+          roadAndGhostMs: Number(wm.roadAndGhostMs.toFixed(2)),
+          finalTunnelMs: Number(wm.finalTunnelMs.toFixed(2)),
+          snapRoadMs: Number(wm.snapRoadMs.toFixed(2)),
+          placeObstaclesMs: Number(wm.placeObstaclesMs.toFixed(2)),
+          resultBuildMs: Number(wm.resultBuildMs.toFixed(2)),
+          roughPathPoints: wm.roughPathPoints,
+          finalPathPoints: wm.finalPathPoints,
+          roadEvents: wm.roadEvents,
+          roadPoints: wm.roadPoints,
+          ghostTargets: wm.ghostTargets,
+          tunnelTargets: wm.tunnelTargets,
+          terminalY: Number(wm.terminalY.toFixed(0)),
+          isLoss: wm.isLoss,
+        } : undefined,
+        chunks: chunkDiagnostics,
+        counts: {
+          pathBuildMs: Number((_pathT1 - _pathT0).toFixed(2)),
+          shiftPathMs: Number((_pathT2 - _pathT1).toFixed(2)),
+          softenStartMs: Number((_pathT3 - _pathT2).toFixed(2)),
+          pruneAfterPathChangeMs: Number((_pathT4 - _pathT3).toFixed(2)),
+          pruneRuntimeDecorMs: Number((_pathT5 - _pathT4).toFixed(2)),
+          copyTunnelPathMs: Number((_pathT6 - _pathT5).toFixed(2)),
+          cumulativeLengthsMs: Number((_pathT7 - _pathT6).toFixed(2)),
+          initialProjectionFacingMs: Number((_pathT8 - _pathT7).toFixed(2)),
+          decorCount: wm?.decorCount ?? 0,
+          lavaCount: wm?.lavaCount ?? 0,
+          caveCount: wm?.caveCount ?? 0,
+          terminalCave: wm?.terminalCave ?? false,
+          obstacleLavaMs: ob ? Number(ob.lavaMs.toFixed(2)) : 0,
+          obstacleCavePrepassMs: ob ? Number(ob.cavePrepassMs.toFixed(2)) : 0,
+          obstacleMainDecorMs: ob ? Number(ob.mainDecorMs.toFixed(2)) : 0,
+          obstacleRoadDecorMs: ob ? Number(ob.roadDecorMs.toFixed(2)) : 0,
+          obstacleSegmentDecorMs: ob ? Number(ob.segmentDecorMs.toFixed(2)) : 0,
+          obstacleCoverageMs: ob ? Number(ob.coverageMs.toFixed(2)) : 0,
+          obstacleFinalizeMs: ob ? Number(ob.finalizeMs.toFixed(2)) : 0,
+          decorTryPlaceCalls: ob?.decorTryPlaceCalls ?? 0,
+          decorPlaced: ob?.decorPlaced ?? 0,
+          decorTunnelRejects: ob?.decorTunnelRejects ?? 0,
+          decorRoadRejects: ob?.decorRoadRejects ?? 0,
+          decorCaveRejects: ob?.decorCaveRejects ?? 0,
+          decorGridRejects: ob?.decorGridRejects ?? 0,
+          decorBoundsCacheHits: ob?.decorBoundsCacheHits ?? 0,
+          decorBoundsCacheMisses: ob?.decorBoundsCacheMisses ?? 0,
+          coveragePathPoints: ob?.coveragePathPoints ?? 0,
+          coverageFillAttempts: ob?.coverageFillAttempts ?? 0,
+          lavaCandidates: ob?.lavaCandidates ?? 0,
+          lavaPlaced: ob?.lavaPlaced ?? 0,
+          caveCandidates: ob?.caveCandidates ?? 0,
+          cavePlaced: ob?.cavePlaced ?? 0,
+        },
       })
     }
 
@@ -2868,6 +3047,7 @@ export class GameRenderer {
     tickTickerFpsLog(ticker.deltaMS)
     const dt=Math.min(ticker.deltaTime/60, 0.1)  // cap 100ms — безопасно при лагге вкладки
     const store=useGameStore.getState()
+    this.tileWorld?.beginScratchFrameDiagnostics(perf.enabled || isScratchLogActive())
     // В режиме replay фиксируем скорость на 1× — иначе x2/x5 делает анимацию хаотичной.
     const spd = store.replayMode ? 1.0 : store.speed
     // gameDt — масштабированное время: вся игровая логика использует его,
@@ -3347,12 +3527,47 @@ export class GameRenderer {
   }
 
   /** Снимок сцены для __DR_PERF__ (чанки, лава, спавнер, FX) — нулевая цена, если профайлер выкл. */
+  private _cameraPixelDiagnostics(): Record<string, string | number | boolean> {
+    const renderer = this.app.renderer as PIXI.Renderer | undefined
+    const resolution = renderer?.resolution ?? 1
+    const snapScale = this._zoom * resolution
+    const frac = (v: number) => {
+      const m = v % 1
+      return Math.round((m < 0 ? m + 1 : m) * 10000) / 10000
+    }
+    const vv = typeof visualViewport !== 'undefined' ? visualViewport : null
+    return {
+      dpr: typeof window !== 'undefined' ? window.devicePixelRatio : 1,
+      rendererResolution: resolution,
+      zoom: Math.round(this._zoom * 10000) / 10000,
+      snapScale: Math.round(snapScale * 10000) / 10000,
+      canvasCssWxH: `${this._canvas.clientWidth}×${this._canvas.clientHeight}`,
+      canvasBufferWxH: `${this._canvas.width}×${this._canvas.height}`,
+      visualViewportWxH: vv ? `${Math.round(vv.width)}×${Math.round(vv.height)}` : '—',
+      cameraPhysicalFracX: frac(this.camX * snapScale),
+      cameraPhysicalFracY: frac(this.camY * snapScale),
+    }
+  }
+
   private _perfPushSceneSnapshot(): void {
-    if (!perf.enabled || !this.tileWorld) return
+    this._updateChunkDebugOverlay()
+    if (!this.tileWorld) return
+    if (!perf.enabled && !isScratchLogActive()) return
     const tw = this.tileWorld.getPerfSnapshot()
+    tickScratchLog({
+      calls: tw.scratchCalls,
+      stamps: tw.scratchStamps,
+      renderPasses: tw.scratchRenderOps,
+      affectedChunks: tw.scratchChunksTouched,
+      multiChunkCalls: tw.scratchMultiChunkCalls,
+      timeMs: tw.scratchTimeMs,
+      mode: this.idleActive ? 'idle' : this._turboActive ? 'turbo' : 'normal',
+    })
+    if (!perf.enabled) return
     const win = tileWorldMaxChunkWindowFromConfig()
     const lava = this.lavaSimulation?.getPerfSnapshot()
     const sp = this.spawner?.getPerfSnapshot()
+    const camera = this._cameraPixelDiagnostics()
     const phase = useGameStore.getState().phase
     const vp = GameConfig.viewportChunks
     const canvasMatchCfg = this.W === vp.widthPx && this.H === vp.heightPx
@@ -3376,6 +3591,15 @@ export class GameRenderer {
       earthTileSpritesUpperBound: win.earthTileSpritesUpperBound,
       tunnelBgPanels: tw.tunnelBgPanels,
       tilePendingCaves: tw.pendingCaves,
+      chunkSizeWxH: `${CHUNK_W * TILE}×${CHUNK_H * TILE}`,
+      ...camera,
+      scratchDisabled: isScratchDisabledForDiagnostics(),
+      scratchCalls: tw.scratchCalls,
+      scratchStamps: tw.scratchStamps,
+      scratchRenderOps: tw.scratchRenderOps,
+      scratchChunksTouched: tw.scratchChunksTouched,
+      scratchMultiChunkCalls: tw.scratchMultiChunkCalls,
+      scratchTimeMs: tw.scratchTimeMs,
       lavaCells: lava?.lavaCells ?? 0,
       lavaStaticPools: lava?.staticLavaPools ?? 0,
       particles: this.particles.length,
@@ -4119,6 +4343,13 @@ export class GameRenderer {
   private _applyResize(w: number, h: number): void {
     if (w <= 0 || h <= 0 || !this.app?.renderer) return
 
+    const dpr = effectiveDevicePixelRatio()
+    const renderer = this.app.renderer as PIXI.Renderer
+    if (Math.abs((renderer.resolution ?? 1) - dpr) > 1e-6) {
+      ;(renderer as any).resolution = dpr
+      this._prevScrollSnapScale = NaN
+    }
+
     this._zoom = computeSceneZoom(w, h)
     this.W = w / this._zoom
     this.H = h / this._zoom
@@ -4142,8 +4373,8 @@ export class GameRenderer {
     }
     this._syncLayerScroll()
 
-    this.app.renderer.resize(w, h)
-    this.app.renderer.render({ container: this.app.stage })
+    renderer.resize(w, h)
+    renderer.render({ container: this.app.stage })
   }
 
   destroy(){

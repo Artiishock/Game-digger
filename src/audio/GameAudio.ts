@@ -85,17 +85,58 @@ const REUSE_LOOPERS = new Set([
   'gold.ogg', 'stone.ogg',
 ])
 
+type AudioDebugReport = {
+  contexts: number
+  buffers: number
+  bufferKeys: string[]
+  playCalls: number
+  decodeCalls: number
+  cacheHits: number
+  cacheMisses: number
+  pending: number
+  activeSources: number
+  sourceNodesCreated: number
+  sourceNodesEnded: number
+  sourceNodesDisconnected: number
+}
+
+type AudioDebugTool = {
+  enable: () => void
+  disable: () => void
+  report: () => AudioDebugReport
+}
+
+declare global {
+  interface Window {
+    __DR_AUDIO_DEBUG__?: AudioDebugTool
+  }
+}
+
 class GameAudioModule {
   private ctx: AudioContext | null = null
   private buffers = new Map<string, AudioBuffer>()
+  private pendingDecodes = new Map<string, Promise<AudioBuffer | null>>()
   private loadStarted = false
   private loadDone = false
   private loopers = new Map<string, HTMLAudioElement>()
   private looperNodes = new Map<string, { src: AudioBufferSourceNode; gain: GainNode }>()
+  private activeSources = new Set<AudioBufferSourceNode>()
+  private silenceBuffer: AudioBuffer | null = null
   private fadeIntervals = new Map<string, ReturnType<typeof setInterval>>()
   private fadeTargetVolumes = new Map<string, number>()
   private readonly FADE_DURATION_MS = 2000
   private readonly FADE_STEP_MS = 50
+  private debugEnabled = false
+  private debug = {
+    contexts: 0,
+    playCalls: 0,
+    decodeCalls: 0,
+    cacheHits: 0,
+    cacheMisses: 0,
+    sourceNodesCreated: 0,
+    sourceNodesEnded: 0,
+    sourceNodesDisconnected: 0,
+  }
   private _loseInProgress = false
   /** Файлы, которые были активны до скрытия страницы (для resume при возврате). */
   private _bgPausedFiles: Set<string> | null = null
@@ -110,6 +151,74 @@ class GameAudioModule {
     } else {
       this._resumeFromBackground()
     }
+  }
+
+  constructor() {
+    if (import.meta.env.DEV && typeof window !== 'undefined') {
+      window.__DR_AUDIO_DEBUG__ = {
+        enable: () => {
+          this.debugEnabled = true
+          this.reportDebug()
+        },
+        disable: () => {
+          this.debugEnabled = false
+        },
+        report: () => this.reportDebug(),
+      }
+    }
+  }
+
+  private ensureContext(): AudioContext {
+    if (!this.ctx) {
+      this.ctx = new AudioContext({ latencyHint: 'interactive' })
+      this.debug.contexts += 1
+    }
+    return this.ctx
+  }
+
+  private _trackSource(src: AudioBufferSourceNode, onEnded?: () => void): void {
+    this.activeSources.add(src)
+    this.debug.sourceNodesCreated += 1
+    src.onended = () => {
+      this.debug.sourceNodesEnded += 1
+      onEnded?.()
+    }
+  }
+
+  private _disconnectSource(src: AudioBufferSourceNode, gain?: GainNode): void {
+    try { src.disconnect() } catch { /* already disconnected */ }
+    if (gain) {
+      try { gain.disconnect() } catch { /* already disconnected */ }
+    }
+    if (this.activeSources.delete(src)) {
+      this.debug.sourceNodesDisconnected += 1
+    }
+  }
+
+  private reportDebug(): AudioDebugReport {
+    const report: AudioDebugReport = {
+      contexts: this.debug.contexts,
+      buffers: this.buffers.size,
+      bufferKeys: [...this.buffers.keys()].sort(),
+      playCalls: this.debug.playCalls,
+      decodeCalls: this.debug.decodeCalls,
+      cacheHits: this.debug.cacheHits,
+      cacheMisses: this.debug.cacheMisses,
+      pending: this.pendingDecodes.size,
+      activeSources: this.activeSources.size,
+      sourceNodesCreated: this.debug.sourceNodesCreated,
+      sourceNodesEnded: this.debug.sourceNodesEnded,
+      sourceNodesDisconnected: this.debug.sourceNodesDisconnected,
+    }
+    if (this.debugEnabled || import.meta.env.DEV) {
+      console.log(
+        `[DR audio] buffers=${report.buffers} decodeCalls=${report.decodeCalls} ` +
+        `playCalls=${report.playCalls} cacheHits=${report.cacheHits} cacheMisses=${report.cacheMisses} ` +
+        `activeSources=${report.activeSources} contexts=${report.contexts} pending=${report.pending}`,
+        report,
+      )
+    }
+    return report
   }
 
   /**
@@ -180,14 +289,14 @@ class GameAudioModule {
 
   /** Вызывать по первому клику пользователя (DIG), чтобы снять блокировку autoplay. */
   unlock(): void {
-    if (!this.ctx) this.ctx = new AudioContext({ latencyHint: 'interactive' })
-    void this.ctx.resume().then(() => {
-      const ctx = this.ctx!
+    const ctx = this.ensureContext()
+    void ctx.resume().then(() => {
       // 1. Прогреваем аудиопайплайн тихим буфером — устраняет задержку первого звука (iOS/Android).
-      const silence = ctx.createBuffer(1, 1, ctx.sampleRate)
+      if (!this.silenceBuffer) this.silenceBuffer = ctx.createBuffer(1, 1, ctx.sampleRate)
       const s = ctx.createBufferSource()
-      s.buffer = silence
+      s.buffer = this.silenceBuffer
       s.connect(ctx.destination)
+      this._trackSource(s, () => this._disconnectSource(s))
       s.start()
       // 2. Повторяем play() ТОЛЬКО для файлов, заблокированных autoplay-политикой.
       //    Нельзя трогать все паузированные loopers — часть из них намеренно остановлена
@@ -648,6 +757,7 @@ class GameAudioModule {
         s.loop = true
         s.connect(g)
         g.connect(ctx.destination)
+        this._trackSource(s)
         s.start()
         this.looperNodes.set(file, { src: s, gain: g })
       }
@@ -660,8 +770,7 @@ class GameAudioModule {
       const existing = this.looperNodes.get(file)
       if (existing) {
         try { existing.src.stop() } catch { /* already stopped */ }
-        existing.src.disconnect()
-        existing.gain.disconnect()
+        this._disconnectSource(existing.src, existing.gain)
         this.looperNodes.delete(file)
       }
       const htmlFallback = this.loopers.get(file)
@@ -732,22 +841,52 @@ class GameAudioModule {
     }
     this.loadStarted = true
     try {
-      if (!this.ctx) this.ctx = new AudioContext({ latencyHint: 'interactive' })
-      const ctx = this.ctx
+      const ctx = this.ensureContext()
       const allFiles = ([...SFX_LIST] as string[]).concat([...GAPLESS_LOOPS])
-      for (const name of allFiles) {
-        const res = await fetch(url(name))
-        if (!res.ok) continue
-        const raw = await res.arrayBuffer()
-        const buf = await ctx.decodeAudioData(raw.slice(0))
-        this.buffers.set(name, buf)
-      }
+      for (const name of [...new Set(allFiles)]) await this.loadBuffer(name, ctx)
       this.upgradeFallbackLoops()
     } catch (e) {
       console.warn('[GameAudio] preload failed', e)
     } finally {
       this.loadDone = true
     }
+  }
+
+  private loadBuffer(file: string, ctx = this.ensureContext()): Promise<AudioBuffer | null> {
+    const cached = this.buffers.get(file)
+    if (cached) {
+      this.debug.cacheHits += 1
+      return Promise.resolve(cached)
+    }
+
+    const pending = this.pendingDecodes.get(file)
+    if (pending) {
+      this.debug.cacheHits += 1
+      return pending
+    }
+
+    this.debug.cacheMisses += 1
+    const pendingDecode = fetch(url(file))
+      .then(async res => {
+        if (!res.ok) return null
+        const raw = await res.arrayBuffer()
+        this.debug.decodeCalls += 1
+        return ctx.decodeAudioData(raw)
+      })
+      .then(buffer => {
+        if (buffer) this.buffers.set(file, buffer)
+        return buffer
+      })
+      .catch(e => {
+        console.warn(`[GameAudio] failed to load ${file}`, e)
+        return null
+      })
+      .finally(() => {
+        this.pendingDecodes.delete(file)
+      })
+
+    this.pendingDecodes.set(file, pendingDecode)
+    return pendingDecode
   }
 
   /** После загрузки буферов переводим GAPLESS_LOOPS с HTML5 fallback на WebAudio. */
@@ -770,6 +909,7 @@ class GameAudioModule {
         src.loop = true
         src.connect(g)
         g.connect(ctx.destination)
+        this._trackSource(src)
         src.start()
         this.looperNodes.set(f, { src, gain: g })
       }
@@ -782,8 +922,10 @@ class GameAudioModule {
   }
 
   private _playBuffer(file: string, vol: number): void {
+    this.debug.playCalls += 1
     const ctx = this.ctx
     const buf = this.buffers.get(file)
+    if (buf) this.debug.cacheHits += 1
     if (!ctx || !buf) {
       // Fallback for files that failed WebAudio decode on some devices/codecs.
       const a = new Audio(url(file))
@@ -798,6 +940,7 @@ class GameAudioModule {
       src.buffer = buf
       src.connect(g)
       g.connect(ctx.destination)
+      this._trackSource(src, () => this._disconnectSource(src, g))
       src.start()
     }
     // Если контекст уже запущен — играем немедленно (нет задержки).

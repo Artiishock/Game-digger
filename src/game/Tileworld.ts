@@ -10,6 +10,14 @@ export const CHUNK_H = 4
 
 const CPW = CHUNK_W * TILE
 const CPH = CHUNK_H * TILE
+/** Visual-only overlap to hide subpixel seam artifacts on Retina/macOS with fractional zoom/DPR. */
+const CHUNK_VISUAL_OVERLAP_PX = 3
+const MASK_W = CPW + CHUNK_VISUAL_OVERLAP_PX * 2
+const MASK_H = CPH + CHUNK_VISUAL_OVERLAP_PX * 2
+
+function chunkTopVisualOverlap(row: number): number {
+  return row === 0 ? 0 : CHUNK_VISUAL_OVERLAP_PX
+}
 
 /** Буфер вокруг камеры при расчёте чанков (px) — меньше множитель → меньше активных чанков / нагрузка на Mac. */
 export const TILEWORLD_CHUNK_VIEW_BUF_PX = CPW * 0.75
@@ -469,6 +477,30 @@ export interface CavePath {
   rect: { cx: number; cy: number; hw: number; hh: number; cr: number }
 }
 
+interface ScratchFrameStats {
+  active: boolean
+  calls: number
+  stamps: number
+  renderOps: number
+  chunksTouched: number
+  multiChunkCalls: number
+  timeMs: number
+}
+
+interface TileWorldBuildDiagnostics {
+  active: boolean
+  chunksBuilt: number
+  chunkBuildTotalMs: number
+  maxChunkBuildMs: number
+  renderTexturesCreated: number
+  renderCalls: number
+  spritesCreated: number
+  graphicsCreated: number
+  maskPoolReused: number
+  grassMaskPoolReused: number
+  tunnelBgPanelsBuilt: number
+}
+
 export class TileWorld {
   /** Только чанки (трава/земля); фон bgLight живёт в `bgContainer`. */
   private chunkContainer: PIXI.Container
@@ -488,6 +520,30 @@ export class TileWorld {
   private _scratchGb = new PIXI.Graphics()
   private _scratchGl = new PIXI.Graphics()
   private lastPt: {x:number,y:number}|null = null
+  private _scratchFrameStats: ScratchFrameStats = {
+    active: false,
+    calls: 0,
+    stamps: 0,
+    renderOps: 0,
+    chunksTouched: 0,
+    multiChunkCalls: 0,
+    timeMs: 0,
+  }
+  private _scratchFrameChunks = new Set<string>()
+  private _scratchCallChunks = new Set<string>()
+  private _buildDiagnostics: TileWorldBuildDiagnostics = {
+    active: false,
+    chunksBuilt: 0,
+    chunkBuildTotalMs: 0,
+    maxChunkBuildMs: 0,
+    renderTexturesCreated: 0,
+    renderCalls: 0,
+    spritesCreated: 0,
+    graphicsCreated: 0,
+    maskPoolReused: 0,
+    grassMaskPoolReused: 0,
+    tunnelBgPanelsBuilt: 0,
+  }
   renderer: PIXI.Renderer|null = null
 
   /** Буферные чанки, ожидающие сборки (не попадают в viewport). Строятся по 3 в кадр. */
@@ -540,7 +596,9 @@ export class TileWorld {
     const r = this.renderer
     if (!r) return null
     const rt = PIXI.RenderTexture.create({ width: w, height: h })
+    if (this._buildDiagnostics.active) this._buildDiagnostics.renderTexturesCreated++
     r.render({ container: displayObject, target: rt, clear: true })
+    if (this._buildDiagnostics.active) this._buildDiagnostics.renderCalls++
     return rt
   }
 
@@ -712,16 +770,23 @@ export class TileWorld {
           const tex = TileWorld.earthTex[vi]
           if (!tex) continue
           const cell = new PIXI.Sprite(tex)
+          if (this._buildDiagnostics.active) this._buildDiagnostics.spritesCreated++
           cell.width = TILE; cell.height = TILE
           cell.x = lx * TILE; cell.y = ly * TILE
           tmpLayer.addChild(cell)
         }
       }
       const rt = PIXI.RenderTexture.create({ width: CPW, height: CPH })
+      if (this._buildDiagnostics.active) this._buildDiagnostics.renderTexturesCreated++
       this.renderer.render({ container: tmpLayer, target: rt, clear: true })
+      if (this._buildDiagnostics.active) this._buildDiagnostics.renderCalls++
       tmpLayer.destroy({ children: true })
 
       const spr = new PIXI.Sprite(rt)
+      if (this._buildDiagnostics.active) {
+        this._buildDiagnostics.spritesCreated++
+        this._buildDiagnostics.tunnelBgPanelsBuilt++
+      }
       spr.x = pc * CPW; spr.y = pr * CPH
       spr.roundPixels = true
       this._tunnelBgContent.addChild(spr)
@@ -743,6 +808,8 @@ export class TileWorld {
     carveGrass: boolean,
   ) {
     if (!this.renderer) return
+    const stats = this._scratchFrameStats.active ? this._scratchFrameStats : null
+    if (stats) stats.stamps++
     const ts = GameConfig.tunnelScratch
     const steps = ts.ellipsePolySteps ?? 36
     // Толщина «нитки» между субточками ≈ ширина поперёк копания, не max(rx,ry) — иначе туннель раздувается.
@@ -755,13 +822,21 @@ export class TileWorld {
     for (let row = rowMin; row <= rowMax; row++) {
       for (let col = colMin; col <= colMax; col++) {
         if (row < 0) continue
-        const chunk = this.chunks.get(`${col}_${row}`)
+        const chunkKey = `${col}_${row}`
+        const chunk = this.chunks.get(chunkKey)
         if (!chunk) continue
-        const lx = wx - col * CPW, ly = wy - row * CPH
+        if (stats && !this._scratchFrameChunks.has(chunkKey)) {
+          this._scratchFrameChunks.add(chunkKey)
+          stats.chunksTouched = this._scratchFrameChunks.size
+        }
+        if (stats) this._scratchCallChunks.add(chunkKey)
+        const lx = wx - col * CPW + CHUNK_VISUAL_OVERLAP_PX
+        const ly = wy - row * CPH + CHUNK_VISUAL_OVERLAP_PX
         const poly = tunnelEllipsePolyRotatedLocal(lx, ly, rx, ry, ux, uy, steps)
         this.brush.clear()
         this.brush.beginFill(0x000000).drawPolygon(poly).endFill()
         this.renderer.render({ container: this.brush, target: (chunk as any).maskRT, clear: false })
+        if (stats) stats.renderOps++
 
         // Per-chunk lava mask is disabled (lava is rendered via LavaSimulation).
         const grassMaskRT = (chunk as any).grassMaskRT as PIXI.RenderTexture | undefined
@@ -774,20 +849,24 @@ export class TileWorld {
           }
           this._scratchGb.beginFill(0x000000).drawPolygon(polyG).endFill()
           this.renderer.render({ container: this._scratchGb, target: grassMaskRT, clear: false })
+          if (stats) stats.renderOps++
         }
 
         if (lineFrom) {
-          const plx = lineFrom.x - col * CPW, ply = lineFrom.y - row * CPH
+          const plx = lineFrom.x - col * CPW + CHUNK_VISUAL_OVERLAP_PX
+          const ply = lineFrom.y - row * CPH + CHUNK_VISUAL_OVERLAP_PX
           this.line.clear()
           this.line.lineStyle(lineW, 0x000000)
           this.line.moveTo(plx, ply).lineTo(lx, ly)
           this.renderer.render({ container: this.line, target: (chunk as any).maskRT, clear: false })
+          if (stats) stats.renderOps++
 
           if (grassMaskRT && carveGrass) {
             this._scratchGl.clear()
             this._scratchGl.lineStyle(lineW, 0x000000)
             this._scratchGl.moveTo(plx, ply + GRASS_MASK_HEADROOM).lineTo(lx, ly + GRASS_MASK_HEADROOM)
             this.renderer.render({ container: this._scratchGl, target: grassMaskRT, clear: false })
+            if (stats) stats.renderOps++
           }
         }
       }
@@ -808,6 +887,12 @@ export class TileWorld {
     tunnelLengthProgress: number | null = null,
   ) {
     if (!this.renderer) return
+    const stats = this._scratchFrameStats.active ? this._scratchFrameStats : null
+    const t0 = stats ? performance.now() : 0
+    if (stats) {
+      stats.calls++
+      if (this._scratchCallChunks.size > 0) this._scratchCallChunks.clear()
+    }
     const ts = GameConfig.tunnelScratch
     const rx = ts.ellipseRadiusXPx
     const ry = ts.ellipseRadiusYPx
@@ -871,6 +956,10 @@ export class TileWorld {
       const carveGrass = true
       this._scratchWorldTunnelStamp(wx, wy, rx, ry, stampUx, stampUy, prev, carveGrass)
       prev = { x: wx, y: wy }
+    }
+    if (stats) {
+      if (this._scratchCallChunks.size > 1) stats.multiChunkCalls++
+      stats.timeMs += performance.now() - t0
     }
 
     if (!carvePartialIntro) {
@@ -1012,6 +1101,12 @@ export class TileWorld {
     tunnelBgPanels: number
     pendingCaves: number
     viewportChunksWxH: string
+    scratchCalls: number
+    scratchStamps: number
+    scratchRenderOps: number
+    scratchChunksTouched: number
+    scratchMultiChunkCalls: number
+    scratchTimeMs: number
   } {
     const vp = GameConfig.viewportChunks
     return {
@@ -1020,7 +1115,74 @@ export class TileWorld {
       tunnelBgPanels: this._tunnelBgPanels.size,
       pendingCaves: this._pendingCaves.length,
       viewportChunksWxH: `${vp.widthPx}×${vp.heightPx}`,
+      scratchCalls: this._scratchFrameStats.calls,
+      scratchStamps: this._scratchFrameStats.stamps,
+      scratchRenderOps: this._scratchFrameStats.renderOps,
+      scratchChunksTouched: this._scratchFrameStats.chunksTouched,
+      scratchMultiChunkCalls: this._scratchFrameStats.multiChunkCalls,
+      scratchTimeMs: this._scratchFrameStats.timeMs,
     }
+  }
+
+  beginScratchFrameDiagnostics(active: boolean): void {
+    this._scratchFrameStats.active = active
+    this._scratchFrameStats.calls = 0
+    this._scratchFrameStats.stamps = 0
+    this._scratchFrameStats.renderOps = 0
+    this._scratchFrameStats.chunksTouched = 0
+    this._scratchFrameStats.multiChunkCalls = 0
+    this._scratchFrameStats.timeMs = 0
+    if (this._scratchFrameChunks.size > 0) this._scratchFrameChunks.clear()
+    if (this._scratchCallChunks.size > 0) this._scratchCallChunks.clear()
+  }
+
+  beginBuildDiagnostics(active: boolean): void {
+    this._buildDiagnostics.active = active
+    this._buildDiagnostics.chunksBuilt = 0
+    this._buildDiagnostics.chunkBuildTotalMs = 0
+    this._buildDiagnostics.maxChunkBuildMs = 0
+    this._buildDiagnostics.renderTexturesCreated = 0
+    this._buildDiagnostics.renderCalls = 0
+    this._buildDiagnostics.spritesCreated = 0
+    this._buildDiagnostics.graphicsCreated = 0
+    this._buildDiagnostics.maskPoolReused = 0
+    this._buildDiagnostics.grassMaskPoolReused = 0
+    this._buildDiagnostics.tunnelBgPanelsBuilt = 0
+  }
+
+  getBuildDiagnostics(): Record<string, string | number | boolean> {
+    const d = this._buildDiagnostics
+    const avgChunkMs = d.chunksBuilt > 0 ? d.chunkBuildTotalMs / d.chunksBuilt : 0
+    return {
+      chunksBuilt: d.chunksBuilt,
+      chunkBuildTotalMs: Number(d.chunkBuildTotalMs.toFixed(2)),
+      avgChunkBuildMs: Number(avgChunkMs.toFixed(2)),
+      maxChunkBuildMs: Number(d.maxChunkBuildMs.toFixed(2)),
+      renderTexturesCreated: d.renderTexturesCreated,
+      renderCalls: d.renderCalls,
+      spritesCreatedApprox: d.spritesCreated,
+      graphicsCreatedApprox: d.graphicsCreated,
+      maskPoolReused: d.maskPoolReused,
+      grassMaskPoolReused: d.grassMaskPoolReused,
+      tunnelBgPanelsBuilt: d.tunnelBgPanelsBuilt,
+      buildQueueAfter: this._buildQueue.length,
+      activeChunksAfter: this.chunks.size,
+    }
+  }
+
+  getChunkDebugSnapshot(): Array<{ col: number; row: number; x: number; y: number; w: number; h: number }> {
+    const out: Array<{ col: number; row: number; x: number; y: number; w: number; h: number }> = []
+    for (const chunk of this.chunks.values()) {
+      out.push({
+        col: chunk.col,
+        row: chunk.row,
+        x: chunk.col * CPW,
+        y: chunk.row * CPH,
+        w: CPW,
+        h: CPH,
+      })
+    }
+    return out
   }
 
   // ── Update ─────────────────────────────────────────────────────────────────
@@ -1140,8 +1302,11 @@ export class TileWorld {
   }
 
   private _buildChunk(col: number, row: number) {
+    const _diagT0 = this._buildDiagnostics.active ? performance.now() : 0
     const key  = `${col}_${row}`
     const offX = col*CPW, offY = row*CPH
+    const topOverlap = chunkTopVisualOverlap(row)
+    const visualH = CPH + topOverlap + CHUNK_VISUAL_OVERLAP_PX
 
     const content = new PIXI.Container()
     content.name = 'chunkContent'
@@ -1159,6 +1324,7 @@ export class TileWorld {
           const tex = TileWorld.earthTex[vi]
           if (!tex) continue
           const cell = new PIXI.Sprite(tex)
+          if (this._buildDiagnostics.active) this._buildDiagnostics.spritesCreated++
           cell.name = 'earthCell'
           cell.width = TILE
           cell.height = TILE
@@ -1173,9 +1339,12 @@ export class TileWorld {
         if (baked) {
           earthRT = baked
           const spr = new PIXI.Sprite(baked)
+          if (this._buildDiagnostics.active) this._buildDiagnostics.spritesCreated++
           spr.name = 'earthBaked'
-          spr.x = 0
-          spr.y = 0
+          spr.x = -CHUNK_VISUAL_OVERLAP_PX
+          spr.y = -topOverlap
+          spr.width = CPW + CHUNK_VISUAL_OVERLAP_PX * 2
+          spr.height = visualH
           content.addChild(spr)
           earthLayer.destroy({ children: true })
         } else {
@@ -1185,14 +1354,20 @@ export class TileWorld {
         content.addChild(earthLayer)
       }
     } else if (TileWorld.groundTex) {
-      const spr = new PIXI.TilingSprite(TileWorld.groundTex, CPW, CPH)
+      const spr = new PIXI.TilingSprite(TileWorld.groundTex, CPW + CHUNK_VISUAL_OVERLAP_PX * 2, visualH)
+      if (this._buildDiagnostics.active) this._buildDiagnostics.spritesCreated++
       spr.name = 'groundTiling'
+      spr.x = -CHUNK_VISUAL_OVERLAP_PX
+      spr.y = -topOverlap
       spr.tileScale.set(TILE/TileWorld.groundTex.width, TILE/TileWorld.groundTex.height)
       content.addChild(spr)
     } else {
       const fb = new PIXI.Graphics()
+      if (this._buildDiagnostics.active) this._buildDiagnostics.graphicsCreated++
       fb.name = 'groundFallback'
-      fb.beginFill(0x5a2d14).drawRect(0,0,CPW,CPH).endFill()
+      fb.beginFill(0x5a2d14)
+        .drawRect(-CHUNK_VISUAL_OVERLAP_PX, -topOverlap, CPW + CHUNK_VISUAL_OVERLAP_PX * 2, visualH)
+        .endFill()
       content.addChild(fb)
     }
 
@@ -1201,17 +1376,24 @@ export class TileWorld {
     // чтобы она стиралась вместе с грунтом при прокапывании туннеля/пещер.
     if (row===0 && TileWorld.grassTex) {
       const spr = new PIXI.Sprite(TileWorld.grassTex)
+      if (this._buildDiagnostics.active) this._buildDiagnostics.spritesCreated++
       spr.name = 'topGrass'
-      spr.x = 0
+      spr.x = -CHUNK_VISUAL_OVERLAP_PX
       spr.y = GRASS_SPRITE_Y_OFFSET
-      spr.width = CPW
+      spr.width = CPW + CHUNK_VISUAL_OVERLAP_PX * 2
       spr.height = TILE
       topGrassSpr = spr
     }
 
-    const maskRT  = this._maskRTPool.pop() ?? PIXI.RenderTexture.create({width:CPW, height:CPH})
+    const pooledMaskRT = this._maskRTPool.pop()
+    if (this._buildDiagnostics.active && pooledMaskRT) this._buildDiagnostics.maskPoolReused++
+    const maskRT  = pooledMaskRT ?? PIXI.RenderTexture.create({width:MASK_W, height:MASK_H})
+    if (this._buildDiagnostics.active && !pooledMaskRT) this._buildDiagnostics.renderTexturesCreated++
     const maskSpr = new PIXI.Sprite(maskRT)
+    if (this._buildDiagnostics.active) this._buildDiagnostics.spritesCreated++
     maskSpr.name = 'maskSpr'
+    maskSpr.x = -CHUNK_VISUAL_OVERLAP_PX
+    maskSpr.y = -CHUNK_VISUAL_OVERLAP_PX
     maskSpr.renderable = false
 
     // Perf: darkBg/darkMaskRT removed — darkInsetPx=5 (5px border, barely visible),
@@ -1220,20 +1402,27 @@ export class TileWorld {
     let grassMaskRT: PIXI.RenderTexture | null = null
     let grassMaskSpr: PIXI.Sprite | null = null
     if (topGrassSpr) {
-      grassMaskRT = this._grassMaskRTPool.pop() ?? PIXI.RenderTexture.create({width: CPW, height: CPH + GRASS_MASK_HEADROOM})
+      const pooledGrassMaskRT = this._grassMaskRTPool.pop()
+      if (this._buildDiagnostics.active && pooledGrassMaskRT) this._buildDiagnostics.grassMaskPoolReused++
+      grassMaskRT = pooledGrassMaskRT ?? PIXI.RenderTexture.create({width: MASK_W, height: MASK_H + GRASS_MASK_HEADROOM})
+      if (this._buildDiagnostics.active && !pooledGrassMaskRT) this._buildDiagnostics.renderTexturesCreated++
       grassMaskSpr = new PIXI.Sprite(grassMaskRT)
+      if (this._buildDiagnostics.active) this._buildDiagnostics.spritesCreated++
       grassMaskSpr.name = 'grassMaskSpr'
-      grassMaskSpr.y = -GRASS_MASK_HEADROOM
+      grassMaskSpr.x = -CHUNK_VISUAL_OVERLAP_PX
+      grassMaskSpr.y = -GRASS_MASK_HEADROOM - CHUNK_VISUAL_OVERLAP_PX
       grassMaskSpr.renderable = false
     }
 
     if (this.renderer) {
       // Perf: reuse scratch Graphics instead of allocating new ones per chunk.
-      this._scratchDb.clear().beginFill(0xffffff).drawRect(0, 0, CPW, CPH).endFill()
+      this._scratchDb.clear().beginFill(0xffffff).drawRect(0, 0, MASK_W, MASK_H).endFill()
       this.renderer.render({ container: this._scratchDb, target: maskRT, clear: true })
+      if (this._buildDiagnostics.active) this._buildDiagnostics.renderCalls++
       if (grassMaskRT) {
-        this._scratchWb.clear().beginFill(0xffffff).drawRect(0, 0, CPW, CPH + GRASS_MASK_HEADROOM).endFill()
+        this._scratchWb.clear().beginFill(0xffffff).drawRect(0, 0, MASK_W, MASK_H + GRASS_MASK_HEADROOM).endFill()
         this.renderer.render({ container: this._scratchWb, target: grassMaskRT, clear: true })
+        if (this._buildDiagnostics.active) this._buildDiagnostics.renderCalls++
       }
     }
 
@@ -1256,6 +1445,12 @@ export class TileWorld {
 
     this.chunkContainer.addChild(container)
     this.chunks.set(key, {gfx:container, col, row, ...{maskRT, lavaRT, grassMaskRT, earthRT, lavaContainer}} as any)
+    if (this._buildDiagnostics.active) {
+      const elapsed = performance.now() - _diagT0
+      this._buildDiagnostics.chunksBuilt++
+      this._buildDiagnostics.chunkBuildTotalMs += elapsed
+      if (elapsed > this._buildDiagnostics.maxChunkBuildMs) this._buildDiagnostics.maxChunkBuildMs = elapsed
+    }
   }
 
   private _applyCavePathToChunk(
@@ -1274,8 +1469,8 @@ export class TileWorld {
 
     if (cave.rect) {
       const { cx, cy, hw, hh, cr } = cave.rect
-      const rx0 = cx - hw - offX
-      const ry0 = cy - hh - offY
+      const rx0 = cx - hw - offX + CHUNK_VISUAL_OVERLAP_PX
+      const ry0 = cy - hh - offY + CHUNK_VISUAL_OVERLAP_PX
       const rw = 2 * hw
       const rh = 2 * hh
       if (rx0 + rw > 0 && rx0 < CPW && ry0 + rh > 0 && ry0 < CPH) {
@@ -1284,7 +1479,8 @@ export class TileWorld {
       }
     } else if (cave.points.length === 1) {
       const p  = cave.points[0]!
-      const lx = p.x - offX, ly = p.y - offY
+      const lx = p.x - offX + CHUNK_VISUAL_OVERLAP_PX
+      const ly = p.y - offY + CHUNK_VISUAL_OVERLAP_PX
       if (lx + p.r >= 0 && lx - p.r <= CPW && ly + p.r >= 0 && ly - p.r <= CPH) {
         hasContent = true
         g.beginFill(0x000000).drawCircle(lx, ly, p.r).endFill()
@@ -1293,8 +1489,10 @@ export class TileWorld {
       for (let i = 0; i < cave.points.length - 1; i++) {
         const a   = cave.points[i]!
         const b   = cave.points[i + 1]!
-        const lax = a.x - offX, lay = a.y - offY
-        const lbx = b.x - offX, lby = b.y - offY
+        const lax = a.x - offX + CHUNK_VISUAL_OVERLAP_PX
+        const lay = a.y - offY + CHUNK_VISUAL_OVERLAP_PX
+        const lbx = b.x - offX + CHUNK_VISUAL_OVERLAP_PX
+        const lby = b.y - offY + CHUNK_VISUAL_OVERLAP_PX
 
         const minX = Math.min(lax, lbx) - Math.max(a.r, b.r)
         const maxX = Math.max(lax, lbx) + Math.max(a.r, b.r)
@@ -1310,9 +1508,11 @@ export class TileWorld {
     if (!hasContent) return
 
     this.renderer.render({ container: g, target: maskRT, clear: false })
+    if (this._buildDiagnostics.active) this._buildDiagnostics.renderCalls++
 
     if (lavaRT && lavaContainer) {
       const gWhite = new PIXI.Graphics()
+      if (this._buildDiagnostics.active) this._buildDiagnostics.graphicsCreated++
       if (cave.rect) {
         const { cx, cy, hw, hh, cr } = cave.rect
         const rx0 = cx - hw - offX
@@ -1335,6 +1535,7 @@ export class TileWorld {
         }
       }
       this.renderer.render({ container: gWhite, target: lavaRT, clear: false })
+      if (this._buildDiagnostics.active) this._buildDiagnostics.renderCalls++
       gWhite.destroy()
     }
   }
