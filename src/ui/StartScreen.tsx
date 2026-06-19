@@ -18,7 +18,7 @@ const slides = [
 const criticalImageUrls = [
   resolvePublicUrl("rules/background.png"),
   resolvePublicUrl("rules/logo_magnetic.svg"),
-  resolvePublicUrl("rules/banner.png"),
+  resolvePublicUrl("rules/banner_logo.png"),
   resolvePublicUrl("rules/button_left.svg"),
   resolvePublicUrl("rules/button_right.svg"),
   resolvePublicUrl("rules/point.svg"),
@@ -104,7 +104,7 @@ const RulesArrowButton: React.FC<RulesArrowButtonProps> = ({
 
 export const StartScreen: React.FC<StartScreenProps> = ({ width, height, onStart, onReady }) => {
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
-  const [bannerSrc, setBannerSrc] = useState(resolvePublicUrl("rules/banner.png"));
+  const [bannerSrc, setBannerSrc] = useState(resolvePublicUrl("rules/banner_logo.png"));
   const [slideAnimation, setSlideAnimation] = useState<"left" | "right" | null>(null);
   const [loadedArrowObjects, setLoadedArrowObjects] = useState(0);
   const backgroundImage = `url("${resolvePublicUrl("rules/background.png")}")`;

@@ -5,7 +5,7 @@ import { resolvePublicUrl } from "../../utils/publicUrl";
 import "../ui.css";
 
 export const TopBar: React.FC = () => {
-  const [logoSrc, setLogoSrc] = useState(resolvePublicUrl("rules/banner.png"));
+  const [logoSrc, setLogoSrc] = useState(resolvePublicUrl("rules/banner_logo.png"));
   const settings = useGameStore((s) => s.settings);
   const toggleMasterSound = useGameStore((s) => s.toggleMasterSound);
   const setMenu = useGameStore((s) => s.setMenuOpen);

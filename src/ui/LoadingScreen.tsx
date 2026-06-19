@@ -6,7 +6,7 @@ interface Props {
 }
 
 const bgUrl     = resolvePublicUrl('rules/background.png')
-const bannerUrl = resolvePublicUrl('rules/banner.png')
+const bannerUrl = resolvePublicUrl('rules/banner_logo.png')
 
 export const LoadingScreen: React.FC<Props> = ({ progress }) => {
   const clipTop = Math.max(0, Math.min(100, (1 - progress) * 100))

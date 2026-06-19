@@ -36,7 +36,7 @@ export const GameAssets = {
 
 const StartScreenAssets = [
   'rules/background.png',
-  'rules/banner.png',
+  'rules/banner_logo.png',
   'rules/logo_magnetic.svg',
   'rules/multipliers.png',
   'rules/treats.png',
