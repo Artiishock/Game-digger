@@ -136,21 +136,19 @@ export const LogoSplashScreen: React.FC<LogoSplashScreenProps> = ({
           const img = imageMap.get(info.page);
           if (!img) return;
 
-          // Центрируем с сохранением пропорций (letter/pillarbox)
+          // Центрируем с сохранением пропорций (letter/pillarbox), масштаб ×0.5
           const srcAspect = info.w / info.h;
           const dstAspect = canvas.width / canvas.height;
-          let dw: number, dh: number, dx: number, dy: number;
+          let dw: number, dh: number;
           if (dstAspect > srcAspect) {
-            dh = canvas.height;
+            dh = canvas.height / 2;
             dw = dh * srcAspect;
-            dx = (canvas.width - dw) / 2;
-            dy = 0;
           } else {
-            dw = canvas.width;
+            dw = canvas.width / 2;
             dh = dw / srcAspect;
-            dx = 0;
-            dy = (canvas.height - dh) / 2;
           }
+          const dx = (canvas.width - dw) / 2;
+          const dy = (canvas.height - dh) / 2;
 
           ctx.fillStyle = "#000";
           ctx.fillRect(0, 0, canvas.width, canvas.height);

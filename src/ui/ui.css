@@ -2602,6 +2602,132 @@
   }
 }
 
+/* ═══════════════════════════════════════════════════════
+   AUTOPLAY MODAL — 320px portrait fix (Mobile S)
+   Контент не помещался: padding 45px → 12px,
+   пилюли и input-строки пересчитаны под 276px контента.
+   ═══════════════════════════════════════════════════════ */
+
+@media (max-aspect-ratio: 1/1) and (max-width: 359px) {
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-close {
+    top: 10px;
+    right: 10px;
+    width: 20px;
+    height: 20px;
+    background-size: 20px 20px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-modal--sm {
+    width: calc(100vw - 16px);
+    min-height: 0;
+    max-height: calc(100vh - 16px);
+    padding: 14px 12px;
+    row-gap: 22px;
+    overflow-y: auto;
+    box-sizing: border-box;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-section-label {
+    font-size: 13px;
+    margin-bottom: 10px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-stop-conditions {
+    gap: 7px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-check-row,
+  .ui-overlay:has(.ui-modal--sm) .ui-input-row {
+    min-height: 22px;
+    font-size: 13px;
+  }
+
+  /* checkbox + label (auto) */
+  .ui-overlay:has(.ui-modal--sm) .ui-check-row {
+    grid-template-columns: 19px auto;
+    gap: 6px;
+  }
+
+  /* checkbox + label (auto) + field */
+  .ui-overlay:has(.ui-modal--sm) .ui-input-row {
+    grid-template-columns: 19px auto 68px;
+    gap: 6px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-checkbox {
+    width: 19px;
+    height: 19px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-checkbox-tick {
+    width: 10px;
+    height: 6px;
+    border-left-width: 2px;
+    border-bottom-width: 2px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-input-row-field-wrap {
+    width: 68px;
+    height: 22px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-input-row-field {
+    padding: 0 5px;
+    font-size: 11px;
+  }
+
+  /* 3 колонки на 1fr — равномерно на всю ширину */
+  .ui-overlay:has(.ui-modal--sm) .ui-pills {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px 4px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-pill {
+    width: auto;
+    height: 22px;
+    gap: 6px;
+    font-size: 12px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-pill::after {
+    width: 9px;
+    height: 9px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-custom {
+    margin-top: 10px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-custom-label {
+    font-size: 13px;
+    margin-bottom: 7px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-input {
+    width: 68px;
+    height: 22px;
+    font-size: 11px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-start-btn {
+    width: 26px;
+    height: 22px;
+  }
+
+  .ui-overlay:has(.ui-modal--sm) .ui-ap-start-btn::after {
+    width: 10px;
+    height: 10px;
+  }
+
+  .ui-input-row .ui-num-keyboard {
+    left: 0;
+  }
+
+  .ui-ap-custom .ui-num-keyboard {
+    left: 0;
+  }
+}
+
 
 
 /* ═══════════════════════════════════════════════════════
@@ -3175,37 +3301,6 @@
   background: rgba(255, 184, 48, 0.28);
 }
 
-/* ═══════════════════════════════════════════════════════
-   BOOT SPINNER (App.tsx)
-   ═══════════════════════════════════════════════════════ */
-
-.ui-boot {
-  position: absolute;
-  inset: 0;
-  z-index: 300;
-  background: var(--bg-base);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-}
-
-.ui-boot-spinner {
-  width: 56px;
-  height: 56px;
-  border: 4px solid rgba(255, 184, 48, 0.2);
-  border-top-color: var(--gold);
-  border-radius: 50%;
-  animation: spin 0.9s linear infinite;
-}
-
-.ui-boot-title {
-  font-family: var(--font-display);
-  font-size: 32px;
-  color: var(--gold);
-  letter-spacing: 0.1em;
-}
 
 /* ═══════════════════════════════════════════════════════
    BET MODAL PANEL

@@ -77,27 +77,40 @@ function preloadDomImage(url: string): Promise<void> {
 /**
  * Предзагрузка ассетов перед показом игры.
  * Грузим все PNG и все Spine-наборы один раз за сессию.
+ * onProgress вызывается с 0→1 по мере завершения каждого ассета.
  */
-export function preloadStartupAssets(): Promise<void> {
+export function preloadStartupAssets(onProgress?: (progress: number) => void): Promise<void> {
   if (_startupPreloadPromise) return _startupPreloadPromise
+
   _startupPreloadPromise = (async () => {
     const textureUrls = Object.values(GameAssets)
-    const textureLoads = textureUrls.map(async (url) => {
-      try {
-        await Assets.load<PIXI.Texture>(url)
-      } catch {
-        console.warn(`[preload] failed texture: ${url}`)
-      }
-    })
-    const startScreenLoads = StartScreenAssets.map((url) => preloadDomImage(resolvePublicUrl(url)))
-
-    await Promise.all([
-      ...textureLoads,
-      ...startScreenLoads,
+    const spinePromises = [
       SpineAnimator.load(),
       SpineAnimator.loadHero(),
       SpineAnimator.loadGoldStone(),
-    ])
+    ]
+
+    const total = textureUrls.length + StartScreenAssets.length + spinePromises.length
+    let done = 0
+    const tick = () => { onProgress?.(++done / total) }
+
+    const textureLoads = textureUrls.map(async (url) => {
+      try { await Assets.load<PIXI.Texture>(url) } catch { /* ignore */ }
+      tick()
+    })
+
+    const startScreenLoads = StartScreenAssets.map(async (url) => {
+      await preloadDomImage(resolvePublicUrl(url))
+      tick()
+    })
+
+    const spineLoads = spinePromises.map(async (p) => {
+      await p
+      tick()
+    })
+
+    await Promise.all([...textureLoads, ...startScreenLoads, ...spineLoads])
   })()
+
   return _startupPreloadPromise
 }

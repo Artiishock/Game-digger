@@ -1906,7 +1906,6 @@ export class SpineAnimator {
       ]);
       this._goldSkeletonData = goldData;
       this._stoneSkeletonData = stoneData;
-      console.log("[SpineAnimator] ✓ Gold/Stone loaded OK");
       return true;
     } catch (e) {
       console.warn("[SpineAnimator] loadGoldStone failed:", e);
@@ -1941,7 +1940,6 @@ export class SpineAnimator {
         "./animations/hero/character_1.json",
         "./animations/hero/character_1.png",
       );
-      console.log("[SpineAnimator] ✓ Hero loaded OK");
       return true;
     } catch (e) {
       console.warn("[SpineAnimator] loadHero failed:", e);
@@ -1994,7 +1992,6 @@ export class SpineAnimator {
       this._pickupSkeletonData.BOMB = bombData;
       this._pickupSkeletonData.DIAMOND = diamondData;
 
-      console.log("[SpineAnimator] ✓ Pickup Spine loaded OK");
       return true;
     } catch (e) {
       console.warn("[SpineAnimator] Failed to load pickup Spine:", e);

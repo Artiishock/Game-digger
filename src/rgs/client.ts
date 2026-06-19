@@ -452,7 +452,6 @@ export async function fetchReplayDataByEventId(eventId: string): Promise<ReplayD
 
   const mode = p.get('mode') ?? 'base'
   const base = rgsUrl.startsWith('http') ? rgsUrl.replace(/\/$/, '') : `https://${rgsUrl}`
-  console.log(`[RGS] fetchReplayDataByEventId: ${game}/${version}/${mode}/${eventId}`)
   return _fetchReplayFromUrl(`${base}/bet/replay/${game}/${version}/${mode}/${eventId}`)
 }
 

@@ -140,8 +140,6 @@ class GameEngine {
     store.setReplayPending(false)
     store.resetStats()
     store.setEvents(events, roundID ?? store.roundID)
-    const baseSeed = events.reduce((a,e,i)=>a^(e.depth*31+i*97),0x1337) >>> 0
-    console.log('[Replay] startReplay — roundID:', roundID ?? store.roundID, '| worldSeed passed:', worldSeed, '| baseSeed from events:', baseSeed, '| events:', events.length)
     performance.mark('dr-phase-running')
     this._setPhase(store, 'RUNNING')
   }
