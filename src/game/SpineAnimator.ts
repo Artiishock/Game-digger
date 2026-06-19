@@ -23,10 +23,10 @@ const USE_SPINE = true;
 
 const ANIM_MAP: Partial<Record<EventType, string>> = {
   COIN: "coin_idle",
-  GOLD: "gold/gold_idle",
+  GOLD_TICK: "gold/gold_idle",
   DIAMOND: "diamond_idle",
   BOMB: "bomb_idle",
-  STONE: "rock/rock_idle",
+  STONE_TICK: "rock/rock_idle",
 };
 
 // Анимации персонажа
@@ -2004,8 +2004,8 @@ export class SpineAnimator {
   /** Создать анимированный Spine-спрайт для пикапа */
   static createItem(type: EventType): Spine | null {
     if (!USE_SPINE) return null;
-    if (type === "GOLD") return this.createGold();
-    if (type === "STONE") return this.createStone();
+    if (type === "GOLD_TICK") return this.createGold();
+    if (type === "STONE_TICK") return this.createStone();
     const animName = ANIM_MAP[type];
     if (!animName) return null;
 

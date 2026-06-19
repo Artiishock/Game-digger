@@ -287,14 +287,14 @@ async function loadRoad(coeff: number, isLoss: boolean): Promise<string[]> {
 
 // ─── Token → EventType ────────────────────────────────────────────────────────
 
-type PickupType = 'COIN' | 'DIAMOND' | 'BOMB' | 'GOLD' | 'STONE'
+type PickupType = 'COIN' | 'DIAMOND' | 'BOMB' | 'GOLD_TICK' | 'STONE_TICK'
 
 function tokenToType(token: string): PickupType {
   if (/^\d+$/.test(token))                    return 'COIN'
   if (token.startsWith('*'))                  return 'DIAMOND'
   if (token.startsWith('/'))                  return 'BOMB'
-  if (token.toLowerCase().startsWith('g'))    return 'GOLD'
-  if (token.toLowerCase().startsWith('s'))    return 'STONE'
+  if (token.toLowerCase().startsWith('g'))    return 'GOLD_TICK'
+  if (token.toLowerCase().startsWith('s'))    return 'STONE_TICK'
   return 'COIN'
 }
 
@@ -317,7 +317,7 @@ function parseToken(token: string): {
     const d = parseInt(token.slice(1), 10)
     return { type, effect: { op: 'div', value: d } }
   }
-  if (type === 'GOLD') {
+  if (type === 'GOLD_TICK') {
     // gN: +N за N×0.5 с паузы
     const t = Math.max(1, parseInt(token.slice(1), 10) || 1)
     return { type, effect: { op: 'add', value: t }, durationMs: t * 500 }
