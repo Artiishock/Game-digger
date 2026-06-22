@@ -21,6 +21,7 @@ import { perf, installPerfProfiler } from '../dev/PerfProfiler'
 import { tickTickerFpsLog } from '../dev/tickerFpsLog'
 import { isScratchDisabledForDiagnostics, isScratchLogActive, tickScratchLog } from '../dev/scratchDebug'
 import { isStartRoundLogActive, reportStartRoundDebug } from '../dev/startRoundDebug'
+import { roundDebug, type RoundDebugCounters, type RoundDebugFramePayload } from '../dev/roundDebug'
 
 // ── Переключение варианта пути ──────────────────────────────────────────────
 // 'V2' = Коридор + сетка (плавный путь с синусоидальным блужданием)
@@ -1285,6 +1286,7 @@ const TREE_IDLE_COPY_STEP_PX = TILE * 24
 export class GameRenderer {
   app:PIXI.Application
   private readonly _canvas: HTMLCanvasElement
+  private readonly _boundTick = (ticker: PIXI.Ticker) => this._tick(ticker)
   /** Resolves when PixiJS renderer + ticker are ready (app.init completes). */
   ready!:Promise<void>
   /** Подложка под выкопом (текстура земли / цвет из TileWorld.bgLight). */
@@ -1599,7 +1601,8 @@ export class GameRenderer {
       this.skyLayer.addChild(this._sceneryLayer)
       this._lastWorldMaskGrassTop = Infinity  // сброс кэша, чтобы _updateWorldMask точно отрисовал
       this._updateWorldMask(this.W, this.H)
-      this.app.ticker.add(this._tick.bind(this))
+      this.app.ticker.remove(this._boundTick)
+      this.app.ticker.add(this._boundTick)
       this._installPageVisibilityPowerSave()
       this._syncTickerPowerSave()
       if (
@@ -2212,6 +2215,61 @@ export class GameRenderer {
     })
   }
 
+  private _debugCountPixiChildren(root: PIXI.Container | null | undefined): number {
+    if (!root) return 0
+    let n = 1
+    for (const child of root.children) {
+      n += this._debugCountPixiChildren(child as PIXI.Container)
+    }
+    return n
+  }
+
+  private _debugCounters(): RoundDebugCounters {
+    const tw = this.tileWorld?.getPerfSnapshot()
+    const lava = this.lavaSimulation?.getPerfSnapshot()
+    const sp = this.spawner?.getPerfSnapshot()
+    const tickerAny = this.app?.ticker as PIXI.Ticker & { count?: number; started?: boolean }
+    return {
+      terminalTimerActive: this._terminalOutcomeTimerId !== null,
+      lavaResultTimerActive: this._lavaLossResultTimerId !== null,
+      tickerStarted: tickerAny?.started,
+      tickerCount: typeof tickerAny?.count === 'number' ? tickerAny.count : undefined,
+      objectsLayerChildren: this.objectsLayer.children.length,
+      spawnerObjects: sp?.spawnedObjects ?? 0,
+      spawnerRoadItems: sp?.roadItems ?? 0,
+      lavaStaticPools: lava?.staticLavaPools ?? 0,
+      tilePendingCaves: tw?.pendingCaves ?? 0,
+      activePixiChildren: this.app?.stage ? this._debugCountPixiChildren(this.app.stage) : 0,
+    }
+  }
+
+  private _debugFramePayload(): RoundDebugFramePayload {
+    const pathTotalLength = this._tunnelCumLen[this._tunnelCumLen.length - 1] ?? 0
+    const lavaX = this._lossLavaCenterX
+    const lavaY = this._roundPath?.terminalCave?.y ?? (this._lossRound && this._tunnelPath.length ? this._tunnelPath[this._tunnelPath.length - 1]!.y : null)
+    const distanceHeroToLava =
+      lavaX !== null && lavaY !== null
+        ? Math.hypot(this.charX - lavaX, this.charY - lavaY)
+        : null
+    return {
+      heroX: this.charX,
+      heroY: this.charY,
+      heroDepth: this.depth,
+      heroArc: this._pathArcS,
+      pathTotalLength,
+      pathProgress: pathTotalLength > 0 ? this._pathArcS / pathTotalLength : 0,
+      lavaX,
+      lavaY,
+      lavaDepth: lavaY !== null && this.ppm > 0 ? (lavaY - this.surfY) / this.ppm : null,
+      distanceHeroToLava,
+      phase: useGameStore.getState().phase,
+      running: this.running,
+      lossTerminalDescent: this._lossTerminalDescent,
+      turbo: this._turboActive,
+      counters: this._debugCounters(),
+    }
+  }
+
   // ─── Round ────────────────────────────────────────────────────────────────
 
   startRound(events:RoundEvent[],_spd:number){
@@ -2568,6 +2626,31 @@ export class GameRenderer {
       this._syncSurfaceScenery()
     }
     this._rendererRoundId = useGameStore.getState().roundID
+    if (import.meta.env.DEV) {
+      const pathTotalLength = this._tunnelCumLen[this._tunnelCumLen.length - 1] ?? 0
+      const lastEvent = events[events.length - 1]
+      const terminalY = this._tunnelPath.length ? this._tunnelPath[this._tunnelPath.length - 1]!.y : null
+      const terminalDepth = terminalY !== null && this.ppm > 0 ? (terminalY - this.surfY) / this.ppm : null
+      roundDebug.roundStart({
+        roundID: useGameStore.getState().roundID,
+        outcome: lastEvent?.type === 'HOME' || lastEvent?.type === 'LAVA' ? lastEvent.type : 'UNKNOWN',
+        speed: _spd,
+        autoplay: useGameStore.getState().autoplay.active,
+        turbo: this._turboActive,
+        startHeroX: startX,
+        startHeroY: startY,
+        startCamX,
+        startCamY,
+        pathTotalLength,
+        expectedTerminalY: terminalY,
+        expectedTerminalDepth: terminalDepth,
+        expectedLavaX: this._lossLavaCenterX,
+        expectedLavaY: this._roundPath?.terminalCave?.y ?? (this._lossRound ? terminalY : null),
+        terminalCaveExists: !!this._roundPath?.terminalCave || (this._lossRound && this._lossLavaCenterX !== null),
+        homeExists: events.some(e => e.type === 'HOME'),
+        counters: this._debugCounters(),
+      })
+    }
     // skyLayer visibility is managed dynamically in _tick based on camera depth
     this.skyLayer.visible = true
     this._syncTickerPowerSave()
@@ -2939,6 +3022,13 @@ export class GameRenderer {
     }
 
     this._logTerminal('simulation', won ? 'HOME' : 'LAVA')
+    if (import.meta.env.DEV) {
+      roundDebug.terminalHit({
+        ...this._debugFramePayload(),
+        visualOutcome: won ? 'HOME' : 'LAVA',
+        source: 'instant',
+      })
+    }
 
     await gameEngine.onRoundComplete(won ? mult : 0, won)
     this._returnToIdle()
@@ -3481,6 +3571,10 @@ export class GameRenderer {
       perf.end('collide', _pco)
     }
 
+    if (import.meta.env.DEV && this._lossRound && !this._ended) {
+      roundDebug.frame(this._debugFramePayload())
+    }
+
     // Проверяем лаву только после минимального погружения (TILE*5 ≈ первые метры)
     // чтобы исключить ложное срабатывание в самом начале раунда
     const minDepthForLava = this.surfY + TILE * GameConfig.lava.minDepthTiles
@@ -3501,6 +3595,13 @@ export class GameRenderer {
       const lavaIdx = this.rgsQueue.findIndex(e => e.type === 'LAVA')
       if (lavaIdx >= 0) this.rgsQueue.splice(lavaIdx, 1)
       this._logTerminal('simulation', 'LAVA')
+      if (import.meta.env.DEV) {
+        roundDebug.terminalHit({
+          ...this._debugFramePayload(),
+          visualOutcome: 'LAVA',
+          source: 'simulation',
+        })
+      }
       if (!this._tryStartLavaDeathCinematic()) {
         if (this._terminalOutcomeTimerId !== null) {
           clearTimeout(this._terminalOutcomeTimerId)
@@ -3845,6 +3946,13 @@ export class GameRenderer {
       }
 
       this._logTerminal('object', won ? 'HOME' : 'LAVA')
+      if (import.meta.env.DEV) {
+        roundDebug.terminalHit({
+          ...this._debugFramePayload(),
+          visualOutcome: won ? 'HOME' : 'LAVA',
+          source: 'object',
+        })
+      }
       if (this._terminalOutcomeTimerId !== null) {
         clearTimeout(this._terminalOutcomeTimerId)
         this._terminalOutcomeTimerId = null
@@ -4126,6 +4234,9 @@ export class GameRenderer {
     this._perfPushSceneSnapshot()
     this.stoneBreakActive = false
     this._destroyBreakObj()
+    if (import.meta.env.DEV) {
+      roundDebug.cleanup({ completed: true, counters: this._debugCounters() })
+    }
     this._syncTickerPowerSave()
   }
 
@@ -4412,6 +4523,17 @@ export class GameRenderer {
       cancelAnimationFrame(this._resizeRaf)
       this._resizeRaf = 0
     }
+    if (this._terminalOutcomeTimerId !== null) {
+      clearTimeout(this._terminalOutcomeTimerId)
+      this._terminalOutcomeTimerId = null
+    }
+    if (this._lavaLossResultTimerId !== null) {
+      clearTimeout(this._lavaLossResultTimerId)
+      this._lavaLossResultTimerId = null
+    }
+    this._pendingOutcomeFn = null
+    this._pendingLossResultFn = null
+    this.app?.ticker?.remove(this._boundTick)
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', this._onPageVisibility)
     }

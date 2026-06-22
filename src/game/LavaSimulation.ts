@@ -124,6 +124,88 @@ export class LavaSimulation {
     return qx * qx + qy * qy <= cr * cr
   }
 
+  private _segmentIntersectsAabb(
+    ax: number,
+    ay: number,
+    bx: number,
+    by: number,
+    minX: number,
+    minY: number,
+    maxX: number,
+    maxY: number,
+  ): boolean {
+    const dx = bx - ax
+    const dy = by - ay
+    let t0 = 0
+    let t1 = 1
+    const clip = (p: number, q: number): boolean => {
+      if (Math.abs(p) < 1e-9) return q >= 0
+      const r = q / p
+      if (p < 0) {
+        if (r > t1) return false
+        if (r > t0) t0 = r
+      } else {
+        if (r < t0) return false
+        if (r < t1) t1 = r
+      }
+      return true
+    }
+    return (
+      clip(-dx, ax - minX) &&
+      clip(dx, maxX - ax) &&
+      clip(-dy, ay - minY) &&
+      clip(dy, maxY - ay)
+    )
+  }
+
+  private _segmentIntersectsCircle(
+    ax: number,
+    ay: number,
+    bx: number,
+    by: number,
+    cx: number,
+    cy: number,
+    r: number,
+  ): boolean {
+    const dx = bx - ax
+    const dy = by - ay
+    const len2 = dx * dx + dy * dy
+    if (len2 < 1e-9) return (ax - cx) ** 2 + (ay - cy) ** 2 <= r * r
+    const t = Math.max(0, Math.min(1, ((cx - ax) * dx + (cy - ay) * dy) / len2))
+    const px = ax + dx * t
+    const py = ay + dy * t
+    return (px - cx) ** 2 + (py - cy) ** 2 <= r * r
+  }
+
+  private _segmentIntersectsRoundedRect(
+    ax: number,
+    ay: number,
+    bx: number,
+    by: number,
+    cx: number,
+    cy: number,
+    hw: number,
+    hh: number,
+    cr: number,
+  ): boolean {
+    if (this._pointInRoundedRect(ax, ay, cx, cy, hw, hh, cr)) return true
+    if (this._pointInRoundedRect(bx, by, cx, cy, hw, hh, cr)) return true
+
+    const r = Math.max(0, Math.min(cr, hw, hh))
+    const iw = hw - r
+    const ih = hh - r
+    if (this._segmentIntersectsAabb(ax, ay, bx, by, cx - iw, cy - hh, cx + iw, cy + hh)) return true
+    if (this._segmentIntersectsAabb(ax, ay, bx, by, cx - hw, cy - ih, cx + hw, cy + ih)) return true
+    if (r <= 0) return false
+
+    return (
+      this._segmentIntersectsCircle(ax, ay, bx, by, cx - iw, cy - ih, r) ||
+      this._segmentIntersectsCircle(ax, ay, bx, by, cx + iw, cy - ih, r) ||
+      this._segmentIntersectsCircle(ax, ay, bx, by, cx - iw, cy + ih, r) ||
+      this._segmentIntersectsCircle(ax, ay, bx, by, cx + iw, cy + ih, r)
+    )
+  }
+
   /** Одна лавовая пещера: геометрия пещеры в маску контейнера + бассейн для текстуры и хитов. */
   addStaticLavaPool(rect: LavaPoolRect) {
     const cr0 = Math.max(0, rect.cr ?? 0)
@@ -250,16 +332,24 @@ export class LavaSimulation {
 
   touchesSegment(ax: number, ay: number, bx: number, by: number, charRadius: number = CELL_PX * 0.45): boolean {
     if (this.touchesPoint(ax, ay, charRadius) || this.touchesPoint(bx, by, charRadius)) return true
-    const dx = bx - ax, dy = by - ay
-    const len = Math.hypot(dx, dy)
-    if (len < 1e-4) return false
-    const step = (CELL_PX * 0.5) * 0.35
-    const n = Math.min(40, Math.max(2, Math.ceil(len / step)))
-    for (let i = 1; i < n; i++) {
-      const t = i / n
-      if (this.touchesPoint(ax + dx * t, ay + dy * t, charRadius)) return true
+    for (const r of this._pools) {
+      const ew = r.hw + charRadius
+      const eh = r.hh + charRadius
+      const ecr = Math.min(r.cr + charRadius, Math.min(ew, eh))
+      if (this._segmentIntersectsRoundedRect(ax, ay, bx, by, r.cx, r.cy, ew, eh, ecr)) return true
     }
     return false
+  }
+
+  getNearestPoolSnapshot(wx: number, wy: number): { x: number; y: number; depthY: number; distance: number } | null {
+    let best: { x: number; y: number; depthY: number; distance: number } | null = null
+    for (const r of this._pools) {
+      const dx = Math.max(Math.abs(wx - r.cx) - r.hw, 0)
+      const dy = Math.max(Math.abs(wy - r.cy) - r.hh, 0)
+      const d = Math.hypot(dx, dy)
+      if (!best || d < best.distance) best = { x: r.cx, y: r.cy, depthY: r.cy, distance: d }
+    }
+    return best
   }
 
   reset() {
