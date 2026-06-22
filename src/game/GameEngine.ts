@@ -15,6 +15,7 @@ import * as RGS from '../rgs/client'
 import * as Demo from '../rgs/demo'
 import { GameConfig } from './GameConfig'
 import { GameLogger } from '../dev/GameLogger'
+import { roundDebugPhaseChange } from '../dev/roundDebug'
 import { t } from '../i18n/t'
 
 class GameEngine {
@@ -26,10 +27,17 @@ class GameEngine {
   private _roundEndTime = 0
   /** performance.now() до которого нельзя стартовать новый раунд после пропуска анимации лавы. */
   private _postSkipProtectionUntil = 0
+  private _autoplayTimerId: ReturnType<typeof setTimeout> | null = null
 
   private _setPhase(store: ReturnType<typeof useGameStore.getState>, phase: GamePhase): void {
-    GameLogger.phaseChange(useGameStore.getState().phase, phase)
+    const from = useGameStore.getState().phase
+    GameLogger.phaseChange(from, phase)
     store.setPhase(phase)
+    roundDebugPhaseChange({
+      from,
+      to: phase,
+      activeAutoplayTimers: this.getDebugSnapshot().activeAutoplayTimers,
+    })
   }
 
   static get instance(): GameEngine {
@@ -161,6 +169,10 @@ class GameEngine {
     this._rendererInstantFinish = fn
   }
 
+  getDebugSnapshot(): { activeAutoplayTimers: number } {
+    return { activeAutoplayTimers: this._autoplayTimerId === null ? 0 : 1 }
+  }
+
   /**
    * Во время RUNNING: сразу завершить раунд так, будто собраны все предметы
    * по текущей дорожке RGS (итог HOME/LAVA и множитель — из полной цепочки событий).
@@ -175,6 +187,10 @@ class GameEngine {
     let store = useGameStore.getState()
     if (store.phase === 'BETTING' || store.phase === 'RUNNING') return
     if (performance.now() < this._postSkipProtectionUntil) return
+    if (this._autoplayTimerId !== null) {
+      clearTimeout(this._autoplayTimerId)
+      this._autoplayTimerId = null
+    }
 
     performance.mark('dr-round-click')
     // Один кадр перед BETTING: на тач-устройствах иначе иногда «съедается» жест вместе с обновлением React.
@@ -362,7 +378,11 @@ class GameEngine {
           if (!ap.infinite) {
             store.decrementAutoplay()
           }
-          setTimeout(() => this.startRound(), GameConfig.round.autoplayDelayMs)
+          if (this._autoplayTimerId !== null) clearTimeout(this._autoplayTimerId)
+          this._autoplayTimerId = setTimeout(() => {
+            this._autoplayTimerId = null
+            void this.startRound()
+          }, GameConfig.round.autoplayDelayMs)
         }
       }
 
@@ -413,6 +433,10 @@ class GameEngine {
 
   stopAutoplay(): void {
     this._abortAutoplay = true
+    if (this._autoplayTimerId !== null) {
+      clearTimeout(this._autoplayTimerId)
+      this._autoplayTimerId = null
+    }
     const store = useGameStore.getState()
     store.setAutoplay({ active: false, remainingRounds: 0, infinite: false })
   }

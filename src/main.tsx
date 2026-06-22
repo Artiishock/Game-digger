@@ -4,11 +4,15 @@ import { App } from './App'
 import { installTickerFpsLogFromUrl } from './dev/tickerFpsLog'
 import { installScratchDebugFromUrl } from './dev/scratchDebug'
 import { installStartRoundDebugFromUrl } from './dev/startRoundDebug'
+import { installStressSpinsFromUrl } from './dev/stressSpins'
+import { installRoundDebugFromUrl } from './dev/roundDebug'
 import './dev/demoMathConsole'
 
 installTickerFpsLogFromUrl()
 installScratchDebugFromUrl()
 installStartRoundDebugFromUrl()
+installRoundDebugFromUrl()
+installStressSpinsFromUrl()
 
 if (import.meta.env.DEV) {
   const originalWarn = console.warn.bind(console)
