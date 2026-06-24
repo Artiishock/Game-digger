@@ -1936,9 +1936,9 @@ export class SpineAnimator {
 
     try {
       this._heroSkeletonData = await load(
-        "./animations/hero/character_1.atlas.txt",
+        "./animations/hero/character_1.atlas",
         "./animations/hero/character_1.json",
-        "./animations/hero/character_1.png",
+        "./animations/hero/character_1.webp",
       );
       return true;
     } catch (e) {
