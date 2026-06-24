@@ -361,7 +361,7 @@ export const GameConfig = {
      * 852×393 → minSide 393 → ~52px; 744×1133 → minSide 744 → ~105px.
      */
     calibration: [
-      { minSidePx: 393, heroScreenHeightPx: 52 },
+      { minSidePx: 393, heroScreenHeightPx: 79 },
       { minSidePx: 744, heroScreenHeightPx: 105 },
       { minSidePx: 1080, heroScreenHeightPx: HERO_MAX_SIDE_PX },
     ] as const,
@@ -382,7 +382,21 @@ export const GameConfig = {
      * 2 = стандартный Retina-рендер: полная чёткость на всех устройствах, без занижения.
      * (Снижали до 1.5 ради экономии GPU на старых Mac — сейчас стандартное качество для всех.)
      */
-    maxDevicePixelRatio: 2,
+    maxDevicePixelRatio: 3,
+
+    /**
+     * Принудительное разрешение рендера для ДЕСКТОПА (игнорирует родной DPR).
+     * 3 = на любом экране (PC DPR=1, Mac DPR=2) рендер в 3× → суперсэмплинг.
+     * Дороже по GPU/памяти; на low-DPR экранах чёткость почти не растёт. 0 = выкл (обычный min(DPR, cap)).
+     * На мобильных НЕ применяется — там действует `maxDevicePixelRatioMobile`.
+     */
+    forceDevicePixelRatio: 3,
+
+    /**
+     * Потолок DPR для мобильных устройств (телефоны/планшеты). Ниже = легче по GPU/памяти.
+     * Итог на мобильных = min(родной DPR, это значение). Напр. iPhone Pro (DPR 3) → 2.
+     */
+    maxDevicePixelRatioMobile: 2,
 
     /** Сколько чанков из буферной очереди собирать за один кадр (меньше — ровнее FPS, дольше «догруз»). */
     tileWorldChunkBuildsPerFrame: 2,
@@ -399,7 +413,7 @@ export const GameConfig = {
      * WebGL multisampling (antialias). На встроенных GPU (MacBook Air, старые Intel) даёт заметную цену кадра;
      * на дискретных Windows часто почти бесплатно — при необходимости поставьте true.
      */
-    webglAntialias: false,
+    webglAntialias: true,
   },
 
   // ─── Коллизии ────────────────────────────────────────────────────────────────
@@ -427,7 +441,27 @@ export const GameConfig = {
 } // as const убран — некоторые конфигурации Vite не распознают экспорт с as const
 
 /** Единый потолок DPR для Pixi / Spine‑оверлеев (см. `GameConfig.performance.maxDevicePixelRatio`). */
+/** Мобильное устройство: URL-параметр `?device=mobile` (от Stake) или userAgent. */
+function isMobileDevice(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    if (new URLSearchParams(window.location.search).get('device') === 'mobile') return true
+  } catch { /* ignore */ }
+  return typeof navigator !== 'undefined' && /Android|iP(hone|od|ad)|Mobile/i.test(navigator.userAgent)
+}
+
 export function effectiveDevicePixelRatio(): number {
   const cap = GameConfig.performance.maxDevicePixelRatio
-  return Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, cap)
+  const deviceDpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
+
+  // Мобильные: отдельный (более низкий) потолок — экономия GPU/памяти, форс не применяем.
+  if (isMobileDevice()) {
+    return Math.min(deviceDpr, GameConfig.performance.maxDevicePixelRatioMobile, cap)
+  }
+
+  // forceDevicePixelRatio: рендер всегда в этом разрешении (суперсэмплинг на low-DPR экранах).
+  // 0/undefined = обычный режим min(DPR, cap).
+  const forced = GameConfig.performance.forceDevicePixelRatio
+  if (forced && forced > 0) return Math.min(forced, cap)
+  return Math.min(deviceDpr, cap)
 }

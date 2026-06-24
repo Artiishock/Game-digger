@@ -402,6 +402,85 @@
   text-shadow: 0 2px 0 rgba(0, 0, 0, 1);
 }
 
+/* VOLATILITY + CREDIT — левая колонка (волатильность над балансом).
+   Колонка выше панели HUD, поэтому прижата к низу: баланс остаётся на месте,
+   а панель волатильности «вырастает» вверх над HUD (Figma top: 789px). */
+.ui-credit-col {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  align-self: flex-end;
+  gap: clamp(8px, 1.11vmin, 12px);
+  margin-bottom: clamp(20px, 3.24vmin, 35px);
+  flex-shrink: 0;
+}
+
+/* VOLATILITY — панель над CREDIT (Figma: Speed, bet) */
+.ui-volatility {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: clamp(8px, 1.11vmin, 12px);
+  padding: clamp(12px, 1.67vmin, 18px) clamp(7px, 0.93vmin, 10px);
+  background: rgba(6, 6, 6, 0.5);
+  border: 1px solid #9f9f9f;
+  box-shadow: inset 0 0 10px 0 rgba(0, 0, 0, 0.15);
+  border-radius: 24px;
+}
+
+.ui-volatility-label {
+  font-size: clamp(16px, 2.41vmin, 26px);
+  font-weight: 900;
+  color: #facb32;
+  line-height: 1;
+  text-transform: uppercase;
+  font-family: "Inter", sans-serif;
+  -webkit-text-stroke: 2px #000000;
+  paint-order: stroke fill;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 1);
+}
+
+/* Тёмный «бокс» под значением (Figma: Back). Клик переключает волатильность. */
+.ui-volatility-value-box {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(130px, 17.13vmin, 185px);
+  height: clamp(42px, 5.56vmin, 60px);
+  padding: 0 clamp(7px, 0.93vmin, 10px);
+  background-color: transparent;
+  background-image: url("../ui/Back.svg");
+  background-size: 100% 100%;
+  background-position: center;
+  background-repeat: no-repeat;
+  border: none;
+  outline: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Заблокировано во время спина — как .sys-seg--disabled */
+.ui-volatility-value-box--disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.ui-volatility-value {
+  font-size: clamp(18px, 2.96vmin, 32px);
+  font-weight: 900;
+  color: #f2fdff;
+  line-height: 1;
+  text-transform: uppercase;
+  font-family: "Inter", sans-serif;
+}
+
 .ui-group-wrapper {
   display: flex;
   gap: 40px;
@@ -718,6 +797,43 @@
   color: #f2fdff;
   pointer-events: none;
   z-index: 3;
+}
+
+/* VOLATILITY под кнопкой спина — только в адаптиве ≤1350 / portrait.
+   На десктопе скрыта (живёт в .ui-credit-col). Размеры задаются в брейкпоинтах. */
+.ui-spin-volatility {
+  display: none;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background-color: transparent;
+  background-image: url("../ui/Back_mobil.svg");
+  background-size: 100% 100%;
+  background-position: center;
+  background-repeat: no-repeat;
+  border: none;
+  outline: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Заблокировано во время спина — как .sys-seg--disabled */
+.ui-spin-volatility--disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.ui-spin-volatility-value {
+  font-weight: 900;
+  color: #f2fdff;
+  line-height: 1;
+  text-transform: uppercase;
+  font-family: "Inter", sans-serif;
 }
 
 /* AUTOSPIN */
@@ -5521,6 +5637,27 @@
     font-weight: 900;
   }
 
+  /* VOLATILITY уезжает из колонки баланса под кнопку спина (.ui-spin-volatility) */
+  .ui-credit-col {
+    align-self: center;
+    margin-bottom: 0;
+  }
+
+  .ui-volatility {
+    display: none;
+  }
+
+  /* Figma: Back 205.87×104.81, Medium 32.45px (масштаб от vh-точки ~744px) */
+  .ui-spin-volatility {
+    display: flex;
+    width: clamp(105px, calc(51.5464vh - 178.5px), 205px);
+    height: clamp(52px, calc(26.8041vh - 95.4px), 104px);
+  }
+
+  .ui-spin-volatility-value {
+    font-size: clamp(18px, calc(7.4485vh - 22.96px), 32px);
+  }
+
   .ui-group-wrapper {
     padding: 0;
     gap: clamp(0px, calc(10.3093vh - 56.701px), 20px);
@@ -5706,7 +5843,7 @@
     bottom: 25%;
   }
 
-  .ui-credit {
+  .ui-credit-col {
     bottom: 15px;
     left: 20px;
     position: absolute;
@@ -5885,6 +6022,26 @@
   .ui-credit-value {
     font-size: clamp(10px, calc(2.6vw + 0.12px), 28px);
     font-weight: 900;
+  }
+
+  /* VOLATILITY уезжает из колонки баланса под кнопку спина (.ui-spin-volatility) */
+  .ui-credit-col {
+    align-self: center;
+    margin-bottom: 0;
+  }
+
+  .ui-volatility {
+    display: none;
+  }
+
+  .ui-spin-volatility {
+    display: flex;
+    width: clamp(105px, calc(18vw + 33px), 205px);
+    height: clamp(54px, calc(9.2vw + 16px), 104px);
+  }
+
+  .ui-spin-volatility-value {
+    font-size: clamp(18px, calc(3.4vw + 6px), 32px);
   }
 
   .ui-group-wrapper {
@@ -6075,7 +6232,7 @@
     bottom: 45%;
   }
 
-  .ui-credit {
+  .ui-credit-col {
     bottom: clamp(16px, 5vw, 20px);
     left: clamp(8px, 2.5vw, 10px);
     position: absolute;

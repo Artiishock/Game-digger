@@ -57,7 +57,7 @@ function _ensureCurrent(): RoundRecord {
 
 // ─── Public API ────────────────────────────────────────────────────────────────
 
-export const GameLogger = {
+const _gameLoggerReal = {
 
   roundStart(params: {
     roundID: string
@@ -180,6 +180,30 @@ export const GameLogger = {
   get current(): RoundRecord | null     { return _current },
   get fpsLog():  readonly FpsSnapshot[] { return _fpsSnapshots },
 }
+
+type GameLoggerApi = typeof _gameLoggerReal
+
+/** No-op заглушка для production: тот же API, ничего не пишет, tree-shake-able. */
+const _gameLoggerNoop: GameLoggerApi = {
+  roundStart: () => {},
+  itemCollect: () => {},
+  roundEnd: () => {},
+  phaseChange: () => {},
+  pathPlan: () => {},
+  treeLayout: () => {},
+  charToTarget: () => {},
+  report: () => {},
+  recordFpsSnapshot: () => {},
+  rounds: [],
+  current: null,
+  fpsLog: [],
+}
+
+/**
+ * В production экспортируется пустышка, а реальный логгер (с буферами раундов)
+ * вырезается из бандла. В dev — полноценный `_gameLoggerReal`.
+ */
+export const GameLogger: GameLoggerApi = import.meta.env.DEV ? _gameLoggerReal : _gameLoggerNoop
 
 // ─── Dev inspector (browser console: __DEEP_RUSH_LOG.rounds()) ─────────────────
 

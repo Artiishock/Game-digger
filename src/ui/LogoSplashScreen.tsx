@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef } from "react";
 import { resolvePublicUrl } from "../utils/publicUrl";
+import { getUrlParams } from "../rgs/client";
 
 interface LogoSplashScreenProps {
   width: number;
@@ -59,6 +60,22 @@ export const LogoSplashScreen: React.FC<LogoSplashScreenProps> = ({
   const doneRef = useRef(false);
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
+
+  // Учитываем плотность пикселей экрана: без этого буфер канваса рисуется
+  // в CSS-разрешении, а потом растягивается браузером до физических пикселей
+  // → размытие. Делаем буфер в физических пикселях, а CSS-размер оставляем
+  // 100% — кадры 1920×1080 рендерятся чётко.
+  // На мобильных ограничиваем DPR=1: буфер минимальный, анимация максимально
+  // плавная и лёгкая по памяти. На десктопе — до 3 для чёткости.
+  const isMobile =
+    getUrlParams().device === "mobile" ||
+    (typeof navigator !== "undefined" &&
+      /Android|iP(hone|od|ad)|Mobile/i.test(navigator.userAgent));
+  const maxDpr = isMobile ? 1 : 3;
+  const dpr =
+    typeof window !== "undefined"
+      ? Math.min(Math.max(window.devicePixelRatio || 1, 1), maxDpr)
+      : 1;
 
   const complete = useCallback(() => {
     if (doneRef.current) return;
@@ -135,6 +152,10 @@ export const LogoSplashScreen: React.FC<LogoSplashScreenProps> = ({
           if (!info) return;
           const img = imageMap.get(info.page);
           if (!img) return;
+
+          // Качественное сглаживание при даунскейле кадра 1920×1080.
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = "high";
 
           // Центрируем с сохранением пропорций (letter/pillarbox), масштаб ×0.5
           const srcAspect = info.w / info.h;
@@ -217,8 +238,8 @@ export const LogoSplashScreen: React.FC<LogoSplashScreenProps> = ({
   return (
     <canvas
       ref={canvasRef}
-      width={width}
-      height={height}
+      width={Math.round(width * dpr)}
+      height={Math.round(height * dpr)}
       style={{
         display: "block",
         width: "100%",

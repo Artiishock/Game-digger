@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { t, T } from '../../i18n/t'
-import { useGameStore, type SettingsState, type VolatilityMode } from '../../store/gameStore'
+import { useGameStore, type SettingsState } from '../../store/gameStore'
 import { gameAudio } from '../../audio/GameAudio'
 import { resolvePublicUrl } from '../../utils/publicUrl'
 import '../ui.css'
@@ -68,16 +68,6 @@ export const SettingsPanel: React.FC = () => {
       </div>
 
       <div className="sys-settings-section">
-        <div className="sys-settings-vol">
-          <div className="sys-settings-vol-info">
-            <div className="sys-settings-toggle-title">{T('select volatility')}</div>
-            <div className="sys-settings-toggle-desc">
-              {t('select volatility desc')}
-            </div>
-          </div>
-          <VolatilitySegment />
-        </div>
-
         <div className="sys-settings-toggle-item">
           <div>
             <div className="sys-settings-toggle-title">{T('depth hud')}</div>
@@ -123,36 +113,6 @@ const SysToggle: React.FC<{ checked: boolean; onChange: (v: boolean) => void }> 
     <div className="sys-toggle-knob" />
   </div>
 )
-
-const VOLATILITY_OPTIONS: { mode: VolatilityMode; label: string; desc: string }[] = [
-  { mode: 'low',    label: 'LOW',    desc: '42% win · safe' },
-  { mode: 'medium', label: 'MEDIUM', desc: '30% win · balanced' },
-  { mode: 'high',   label: 'HIGH',   desc: '15% win · big wins' },
-]
-
-const VolatilitySegment: React.FC = () => {
-  const volatility    = useGameStore(s => s.volatility)
-  const setVolatility = useGameStore(s => s.setVolatility)
-  const phase         = useGameStore(s => s.phase)
-
-  const disabled = phase === 'BETTING' || phase === 'RUNNING'
-
-  return (
-    <div className={`sys-seg ${disabled ? 'sys-seg--disabled' : ''}`}>
-      {VOLATILITY_OPTIONS.map(({ mode, label, desc }) => (
-        <button
-          key={mode}
-          type="button"
-          title={desc}
-          className={`sys-seg-btn ${volatility === mode ? 'sys-seg-btn--on' : ''}`}
-          onClick={() => { gameAudio.playUiClick(); setVolatility(mode) }}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  )
-}
 
 const SysSlider: React.FC<{ value: number; onChange: (v: number) => void }> = ({ value, onChange }) => {
   const trackRef = useRef<HTMLDivElement>(null)

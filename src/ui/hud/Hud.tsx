@@ -4,6 +4,7 @@ import { formatMoney, toDisplay, isReplayMode, type RgsConfig } from "../../rgs/
 import { resolvePublicUrl } from "../../utils/publicUrl";
 import "../ui.css";
 import { T } from "../../i18n/t";
+import { useVolatilityControl } from "../volatilityControl";
 import { BalanceBetModal } from "../modals/BalanceBetModal";
 
 // ── Генерация уровней ставок ──────────────────────────────────────────────────
@@ -152,6 +153,13 @@ export const Hud: React.FC = () => {
   const phase = useGameStore((s) => s.phase);
   const setBet = useGameStore((s) => s.setBet);
 
+  // Волатильность — та же логика, что у sys-seg (клик переключает уровень).
+  const {
+    label: volatilityLabel,
+    disabled: volatilityDisabled,
+    cycle: cycleVolatility,
+  } = useVolatilityControl();
+
   const turboDisabled = !!config?.jurisdiction.disabledTurbo;
   const betDisabled =
     phase === "RUNNING" || phase === "BETTING" || phase === "BOOT";
@@ -220,13 +228,29 @@ export const Hud: React.FC = () => {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="ui-hud">
-      {/* CREDIT — hidden in replay mode */}
+      {/* VOLATILITY + CREDIT column — hidden in replay mode */}
       {!inReplay && (
-        <div className="ui-credit">
-          <span className="ui-credit-label">{T('balance')}</span>
-          <span className="ui-credit-value">
-            {formatMoney(balance, currency)}
-          </span>
+        <div className="ui-credit-col">
+          {/* VOLATILITY — клик переключает уровень (как sys-seg) */}
+          <div className="ui-volatility">
+            <span className="ui-volatility-label">{T('volatility')}</span>
+            <button
+              type="button"
+              className={`ui-volatility-value-box${volatilityDisabled ? " ui-volatility-value-box--disabled" : ""}`}
+              onClick={cycleVolatility}
+              disabled={volatilityDisabled}
+              aria-label={`${T('volatility')}: ${volatilityLabel}`}
+            >
+              <span className="ui-volatility-value">{volatilityLabel}</span>
+            </button>
+          </div>
+
+          <div className="ui-credit">
+            <span className="ui-credit-label">{T('balance')}</span>
+            <span className="ui-credit-value">
+              {formatMoney(balance, currency)}
+            </span>
+          </div>
         </div>
       )}
 

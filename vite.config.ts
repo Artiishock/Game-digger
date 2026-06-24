@@ -13,7 +13,21 @@ export default defineConfig({
       png: { palette: false, compressionLevel: 9, effort: 10 },
       svg: {
         plugins: [
-          { name: 'preset-default', params: { overrides: { removeViewBox: false } } },
+          {
+            name: 'preset-default',
+            params: {
+              overrides: {
+                removeViewBox: false,
+                // Анимированные SMIL-иконки (spin/autoplay push) ломаются дефолтным SVGO:
+                //  • cleanupIds переименовывает id="clickArea" → id="a", из-за чего
+                //    querySelector("#clickArea") в DigButton не находит триггер;
+                //  • removeHiddenElems удаляет группу active/stop icon (она opacity="0"),
+                //    и переключать уже нечего.
+                cleanupIds: false,
+                removeHiddenElems: false,
+              },
+            },
+          },
         ],
       },
     }),

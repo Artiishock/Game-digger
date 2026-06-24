@@ -3,7 +3,9 @@ import { useGameStore } from "../../store/gameStore";
 import { gameEngine } from "../../game/GameEngine";
 import { gameAudio } from "../../audio/GameAudio";
 import { resolvePublicUrl } from "../../utils/publicUrl";
+import { isReplayMode } from "../../rgs/client";
 import { T } from "../../i18n/t";
+import { useVolatilityControl } from "../volatilityControl";
 import "../ui.css";
 
 /** У inline SVG убираем &lt;title&gt; — иначе браузер показывает служебную подсказку из файла. */
@@ -40,6 +42,13 @@ export const DigButton: React.FC = () => {
   const setAP = useGameStore((s) => s.setAutoplayOpen);
   const isAPOpen = useGameStore((s) => s.autoplayOpen);
   const spaceEnabled = useGameStore((s) => s.settings.spaceEnabled);
+
+  // Волатильность — та же логика, что у sys-seg (клик переключает уровень).
+  const {
+    label: volatilityLabel,
+    disabled: volatilityDisabled,
+    cycle: cycleVolatility,
+  } = useVolatilityControl();
 
   /** Touchend + preventDefault глушит synthetic click; если он всё же приходит — один раз пропускаем. */
   const ignoreNextSpinClick = useRef(false);
@@ -233,6 +242,21 @@ export const DigButton: React.FC = () => {
           dangerouslySetInnerHTML={{ __html: iconMarkup }}
         />
       </button>
+
+      {/* VOLATILITY — показывается под кнопкой спина только в адаптиве ≤1350 / portrait
+         (на десктопе живёт в .ui-credit-col над балансом). Скрыта в replay.
+         Клик переключает уровень — та же логика, что у sys-seg. */}
+      {!isReplayMode() && (
+        <button
+          type="button"
+          className={`ui-spin-volatility${volatilityDisabled ? " ui-spin-volatility--disabled" : ""}`}
+          onClick={cycleVolatility}
+          disabled={volatilityDisabled}
+          aria-label={`${T("volatility")}: ${volatilityLabel}`}
+        >
+          <span className="ui-spin-volatility-value">{volatilityLabel}</span>
+        </button>
+      )}
     </div>
   );
 };

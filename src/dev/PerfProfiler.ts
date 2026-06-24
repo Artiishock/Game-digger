@@ -73,7 +73,7 @@ function _p95(s: Stats): number {
   return sorted[Math.floor(sorted.length * 0.95)]!
 }
 
-export const perf = {
+const _perfReal = {
 
   get enabled() { return _enabled },
 
@@ -207,6 +207,30 @@ export const perf = {
     console.log('[DR perf] авто-вывод остановлен')
   },
 }
+
+type PerfApi = typeof _perfReal
+
+/** No-op заглушка для production: тот же API, нулевые накладные расходы, tree-shake-able. */
+const _perfNoop: PerfApi = {
+  enabled: false,
+  begin: () => 0,
+  end: () => {},
+  report: () => {},
+  top: () => {},
+  setSceneSnapshot: () => {},
+  scene: () => {},
+  enable: () => {},
+  disable: () => {},
+  reset: () => {},
+  auto: () => {},
+  stopAuto: () => {},
+}
+
+/**
+ * В production (`import.meta.env.DEV === false`) экспортируется пустышка, а весь
+ * реальный профайлер вырезается esbuild'ом из бандла. В dev — полноценный `_perfReal`.
+ */
+export const perf: PerfApi = import.meta.env.DEV ? _perfReal : _perfNoop
 
 /**
  * Ставит `window.__DR_PERF__`. Авто-отчёт и сбор включаются только с `?perf` в URL
