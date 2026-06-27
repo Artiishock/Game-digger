@@ -22,6 +22,9 @@ import { toDisplay, isReplayMode } from "./rgs/client";
 import { preloadStartupAssets } from "./game/gameAssets";
 import "./ui/ui.css";
 
+const BOOT_LOADING_MIN_VISIBLE_MS = 900;
+const BOOT_LOADING_COMPLETE_HOLD_MS = 450;
+
 // Import Bebas Neue from Google Fonts
 const fontLink = document.createElement("link");
 fontLink.rel = "stylesheet";
@@ -47,6 +50,8 @@ export const App: React.FC = () => {
   const [startScreenGone, setStartScreenGone] = useState(() => isReplayMode())
   const [bootFading, setBootFading] = useState(false)
   const [bootGone, setBootGone] = useState(() => isReplayMode())
+  const bootLoadingShownAtRef = useRef<number>(isReplayMode() ? performance.now() : 0)
+  const bootLoadingCompleteAtRef = useRef<number>(0)
   const gameSurfaceMounted = assetsReady && phase !== "BOOT"
   const loadingComplete = assetsReady && phase !== "BOOT" && (startScreenGone || startScreenReady)
   const handleGameCanvasReady = useCallback(() => {
@@ -107,10 +112,34 @@ export const App: React.FC = () => {
 
   // ── Loading screen fade-out ───────────────────────────────────────────────────
   useEffect(() => {
+    if (!logoSplashDone || bootLoadingShownAtRef.current > 0) return;
+    bootLoadingShownAtRef.current = performance.now();
+  }, [logoSplashDone]);
+
+  useEffect(() => {
+    if (loadProgress < 1 || bootLoadingCompleteAtRef.current > 0) return;
+    bootLoadingCompleteAtRef.current = performance.now();
+  }, [loadProgress]);
+
+  useEffect(() => {
     if (!loadingComplete || bootFading || bootGone) return;
-    setBootFading(true);
-    const id = window.setTimeout(() => setBootGone(true), 500);
-    return () => window.clearTimeout(id);
+    const now = performance.now();
+    const shownAt = bootLoadingShownAtRef.current || now;
+    const completeAt = bootLoadingCompleteAtRef.current || now;
+    const minVisibleRemaining = Math.max(0, BOOT_LOADING_MIN_VISIBLE_MS - (now - shownAt));
+    const completeHoldRemaining = Math.max(0, BOOT_LOADING_COMPLETE_HOLD_MS - (now - completeAt));
+    const fadeDelay = Math.max(minVisibleRemaining, completeHoldRemaining);
+
+    const fadeId = window.setTimeout(() => {
+      setBootFading(true);
+    }, fadeDelay);
+    const goneId = window.setTimeout(() => {
+      setBootGone(true);
+    }, fadeDelay + 500);
+    return () => {
+      window.clearTimeout(fadeId);
+      window.clearTimeout(goneId);
+    };
   }, [loadingComplete, bootFading, bootGone]);
 
   // ── Boot ─────────────────────────────────────────────────────────────────────
