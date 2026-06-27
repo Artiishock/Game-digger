@@ -413,7 +413,7 @@ export const GameConfig = {
      * WebGL multisampling (antialias). На встроенных GPU (MacBook Air, старые Intel) даёт заметную цену кадра;
      * на дискретных Windows часто почти бесплатно — при необходимости поставьте true.
      */
-    webglAntialias: true,
+    webglAntialias: false,
   },
 
   // ─── Коллизии ────────────────────────────────────────────────────────────────
