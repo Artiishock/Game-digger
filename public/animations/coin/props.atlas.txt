@@ -1,9 +1,7 @@
-props.png
-size:428,340
+props.webp
+size:512,512
 filter:Linear,Linear
-pma:true
 Star_fx
-bounds:340,218,84,117
+bounds:328,295,84,117
 coin
-bounds:2,2,333,336
-rotate:90
+bounds:2,76,333,336

@@ -62,12 +62,12 @@ async function fetchWinAlertsJson(kind: WinCelebrateKind): Promise<Record<string
   }
 }
 
-/** Строки-имена текстурных страниц в атласе Spine (`name.png`). */
+/** Строки-имена текстурных страниц в атласе Spine (`name.png` / `name.webp`). */
 function atlasPageFiles(atlasText: string): string[] {
   const out: string[] = []
   for (const raw of atlasText.split('\n')) {
     const line = raw.trim()
-    if (/^[\w.-]+\.png$/i.test(line)) out.push(line)
+    if (/^[\w.-]+\.(png|webp)$/i.test(line)) out.push(line)
   }
   return [...new Set(out)]
 }
