@@ -1,6 +1,5 @@
-diamond.png
-size:300,276
+props.webp
+size:512,512
 filter:Linear,Linear
-pma:true
 gem
-bounds:2,2,293,269
+bounds:2,26,293,269
