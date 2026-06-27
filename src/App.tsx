@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { GameCanvas } from "./game/GameCanvas";
+import { GameErrorBoundary } from "./game/GameErrorBoundary";
 import { Hud } from "./ui/hud/Hud";
 import { DigButton } from "./ui/controls/DigButton";
 import { TopBar } from "./ui/controls/TopBar";
@@ -251,11 +252,13 @@ ${d.toLocaleTimeString("en-GB", {
           }}
         >
           {/* ── PixiJS canvas ── */}
-          <GameCanvas
-            width={width}
-            height={height}
-            onReady={handleGameCanvasReady}
-          />
+          <GameErrorBoundary>
+            <GameCanvas
+              width={width}
+              height={height}
+              onReady={handleGameCanvasReady}
+            />
+          </GameErrorBoundary>
 
           {/* ── HUD (bottom bar) ── */}
           {gameStarted && <Hud />}

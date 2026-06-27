@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react'
+import { useErrorBoundary } from 'react-error-boundary'
 import { GameRenderer } from './GameRenderer'
 import { gameEngine } from './GameEngine'
 import { useGameStore } from '../store/gameStore'
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export const GameCanvas: React.FC<Props> = ({ width, height, onReady }) => {
+  const { showBoundary } = useErrorBoundary()
   const canvasRef   = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<GameRenderer | null>(null)
   const startRafRef = useRef<number | null>(null)
@@ -34,17 +36,26 @@ export const GameCanvas: React.FC<Props> = ({ width, height, onReady }) => {
     let renderer: GameRenderer | null = null
     let destroyed = false
     const rafId = requestAnimationFrame(() => {
-      if (!canvasRef.current) return
-      renderer = new GameRenderer(canvas, width, height)
-      rendererRef.current = renderer
-      gameEngine.setRendererInstantFinish(async () => renderer!.activateTurbo())
-      renderer.ready
-        .then(() => {
-          if (!destroyed) onReadyRef.current?.()
+      try {
+        if (!canvasRef.current) return
+        renderer = new GameRenderer(canvas, width, height, showBoundary)
+        rendererRef.current = renderer
+        gameEngine.setRendererInstantFinish(async () => {
+          if (!renderer) return
+          await renderer.activateTurbo()
         })
-        .catch(err => {
-          console.error('[GameCanvas] renderer init failed:', err)
-        })
+        renderer.ready
+          .then(() => {
+            if (!destroyed) onReadyRef.current?.()
+          })
+          .catch(err => {
+            console.error('[GameCanvas] renderer init failed:', err)
+            if (!destroyed) showBoundary(err)
+          })
+      } catch (err) {
+        console.error('[GameCanvas] renderer create failed:', err)
+        if (!destroyed) showBoundary(err)
+      }
     })
 
     return () => {
@@ -54,14 +65,17 @@ export const GameCanvas: React.FC<Props> = ({ width, height, onReady }) => {
         cancelAnimationFrame(startRafRef.current)
         startRafRef.current = null
       }
-      if (renderer) {
-        renderer.destroy()
+      try {
+        renderer?.destroy()
+      } catch (err) {
+        console.error('[GameCanvas] renderer destroy failed:', err)
+      } finally {
         renderer = null
+        gameEngine.setRendererInstantFinish(null)
+        rendererRef.current = null
       }
-      gameEngine.setRendererInstantFinish(null)
-      rendererRef.current = null
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [width, height, showBoundary])
 
   // Start round when events arrive — deferred one rAF so the browser can paint
   // the BETTING→RUNNING UI transition before startRound() blocks the main thread.
@@ -75,16 +89,21 @@ export const GameCanvas: React.FC<Props> = ({ width, height, onReady }) => {
     const isReplay = useGameStore.getState().replayMode
 
     const runStart = () => {
-      startRafRef.current = null
-      performance.mark('dr-raf-fired')
-      performance.measure('[DR] RUNNING→RAF (React repaint)', 'dr-phase-running', 'dr-raf-fired')
-      rendererRef.current?.startRound(eventsSnap, speedSnap)
+      try {
+        startRafRef.current = null
+        performance.mark('dr-raf-fired')
+        performance.measure('[DR] RUNNING→RAF (React repaint)', 'dr-phase-running', 'dr-raf-fired')
+        rendererRef.current?.startRound(eventsSnap, speedSnap)
+      } catch (err) {
+        console.error('[GameCanvas] startRound failed:', err)
+        showBoundary(err)
+      }
     }
 
     if (isReplay) {
       // Two frames: first lets the menu/overlay repaint, second starts the round.
       startRafRef.current = requestAnimationFrame(() => {
-        requestAnimationFrame(runStart)
+        startRafRef.current = requestAnimationFrame(runStart)
       })
     } else {
       startRafRef.current = requestAnimationFrame(runStart)
@@ -96,11 +115,18 @@ export const GameCanvas: React.FC<Props> = ({ width, height, onReady }) => {
         startRafRef.current = null
       }
     }
-  }, [phase, events]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [phase, events, showBoundary]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Skip lava death cinematic on key / tap по игровому полю (не перехватываем UI — иначе гонки с кнопкой Spin на тач).
   useEffect(() => {
-    const skip = () => { if (rendererRef.current?.skipLavaDeath()) gameEngine.markLavaDeathSkip() }
+    const skip = () => {
+      try {
+        if (rendererRef.current?.skipLavaDeath()) gameEngine.markLavaDeathSkip()
+      } catch (err) {
+        console.error('[GameCanvas] skip lava death failed:', err)
+        showBoundary(err)
+      }
+    }
     const onKey = () => skip()
     const onPointerDown = (e: PointerEvent) => {
       const t = e.target
@@ -120,14 +146,19 @@ export const GameCanvas: React.FC<Props> = ({ width, height, onReady }) => {
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('pointerdown', onPointerDown)
     }
-  }, [])
+  }, [showBoundary])
 
   // Resize
   useEffect(() => {
     if (rendererRef.current && width > 0 && height > 0) {
-      rendererRef.current.resize(width, height)
+      try {
+        rendererRef.current.resize(width, height)
+      } catch (err) {
+        console.error('[GameCanvas] resize failed:', err)
+        showBoundary(err)
+      }
     }
-  }, [width, height])
+  }, [width, height, showBoundary])
 
   return (
     <canvas
