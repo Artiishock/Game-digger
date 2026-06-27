@@ -577,6 +577,14 @@ export class TileWorld {
   private _flattenWrapper: PIXI.Container = new PIXI.Container()
   /** Чанки, чей maskRT изменился за текущий scratchAt → пересобрать displayRT (дедуп за кадр). */
   private _flattenDirtyKeys: Set<string> = new Set()
+  /** Невидимые чанки после clearRuntimeDigging догоняем постепенно, чтобы не делать GPU-пик на смене раунда. */
+  private _resetFlattenQueue: string[] = []
+  private _resetFlattenQueueKeys = new Set<string>()
+  private _hasLastVisibleWindow = false
+  private _lastVisibleColMin = 0
+  private _lastVisibleColMax = 0
+  private _lastVisibleRowMin = 0
+  private _lastVisibleRowMax = 0
 
   lavaSimulation: LavaSimulation | null = null
   private _lavaViewportW = -1
@@ -1000,6 +1008,51 @@ export class TileWorld {
 
   resetScratch() { this.lastPt = null }
 
+  private _rebakeBakedChunk(chunk: Chunk): void {
+    if (!USE_BAKED_TUNNEL_MASK) return
+    const displayRT = (chunk as any).displayRT as PIXI.RenderTexture | null | undefined
+    const content = (chunk as any).content as PIXI.Container | null | undefined
+    if (displayRT && content) this._flattenBakedChunk(content, displayRT)
+  }
+
+  private _chunkInLastVisibleWindow(chunk: Chunk): boolean {
+    if (!this._hasLastVisibleWindow) return true
+    return (
+      chunk.col >= this._lastVisibleColMin &&
+      chunk.col <= this._lastVisibleColMax &&
+      chunk.row >= this._lastVisibleRowMin &&
+      chunk.row <= this._lastVisibleRowMax
+    )
+  }
+
+  private _queueResetFlatten(key: string): void {
+    if (this._resetFlattenQueueKeys.has(key)) return
+    this._resetFlattenQueueKeys.add(key)
+    this._resetFlattenQueue.push(key)
+  }
+
+  private _processResetFlattenQueue(maxCount: number, visibleOnly = false): void {
+    if (!USE_BAKED_TUNNEL_MASK || this._resetFlattenQueue.length === 0) return
+    let processed = 0
+    for (let i = 0; i < this._resetFlattenQueue.length && processed < maxCount;) {
+      const key = this._resetFlattenQueue[i]!
+      const chunk = this.chunks.get(key)
+      if (!chunk) {
+        this._resetFlattenQueueKeys.delete(key)
+        this._resetFlattenQueue.splice(i, 1)
+        continue
+      }
+      if (visibleOnly && !this._chunkInLastVisibleWindow(chunk)) {
+        i++
+        continue
+      }
+      this._rebakeBakedChunk(chunk)
+      this._resetFlattenQueueKeys.delete(key)
+      this._resetFlattenQueue.splice(i, 1)
+      processed++
+    }
+  }
+
   /**
    * Полный сброс следов копания/пещер на текущих чанках без пересоздания TileWorld.
    * Используется при возврате в idle, чтобы старый туннель не оставался на экране.
@@ -1014,10 +1067,13 @@ export class TileWorld {
     this.invalidateOverrides()
     this._buildQueue.length = 0
     this._buildQueueKeys.clear()
+    this._flattenDirtyKeys.clear()
+    this._resetFlattenQueue.length = 0
+    this._resetFlattenQueueKeys.clear()
 
     // Сбрасываем маски чанков в "цельный грунт" (white) и очищаем лаву (black).
     if (!this.renderer) return
-    for (const chunk of this.chunks.values()) {
+    for (const [key, chunk] of this.chunks) {
       const maskRT = (chunk as any).maskRT as PIXI.RenderTexture | undefined
       const lavaRT = (chunk as any).lavaRT as PIXI.RenderTexture | undefined
       const grassMaskRT = (chunk as any).grassMaskRT as PIXI.RenderTexture | undefined
@@ -1031,6 +1087,10 @@ export class TileWorld {
       if (lavaRT) {
         this._scratchDb.clear().beginFill(0x000000).drawRect(0, 0, lavaRT.width, lavaRT.height).endFill()
         this.renderer.render({ container: this._scratchDb, target: lavaRT, clear: true })
+      }
+      if (USE_BAKED_TUNNEL_MASK) {
+        if (this._chunkInLastVisibleWindow(chunk)) this._rebakeBakedChunk(chunk)
+        else this._queueResetFlatten(key)
       }
     }
   }
@@ -1264,6 +1324,14 @@ export class TileWorld {
     const vc1 = Math.ceil((camX + vw) / CPW)
     const vr0 = Math.max(0, Math.floor(camY / CPH))
     const vr1 = Math.ceil((camY + vh) / CPH)
+    this._hasLastVisibleWindow = true
+    this._lastVisibleColMin = vc0
+    this._lastVisibleColMax = vc1
+    this._lastVisibleRowMin = vr0
+    this._lastVisibleRowMax = vr1
+
+    // If a previously offscreen, reset-but-not-rebaked chunk becomes visible, heal it before draw.
+    this._processResetFlattenQueue(Number.POSITIVE_INFINITY, true)
 
     for (let row = rowMin; row <= rowMax; row++) {
       for (let col = colMin; col <= colMax; col++) {
@@ -1289,6 +1357,8 @@ export class TileWorld {
       if (!this.chunks.has(k)) this._buildChunk(item.col, item.row)
     }
 
+    this._processResetFlattenQueue(maxDrain)
+
     this._extendBg(colMin, colMax, rowMin, rowMax)
 
     const cull = TILEWORLD_CHUNK_CULL_MARGIN
@@ -1307,6 +1377,7 @@ export class TileWorld {
         const evictGrassRT = (chunk as any).grassMaskRT as PIXI.RenderTexture | undefined
         if (evictMaskRT) this._maskRTPool.push(evictMaskRT)
         if (evictGrassRT) this._grassMaskRTPool.push(evictGrassRT)
+        this._resetFlattenQueueKeys.delete(key)
         chunk.gfx.destroy({children:true})
         ;(chunk as any).lavaRT?.destroy(true)
         ;(chunk as any).earthRT?.destroy(true)
@@ -1644,6 +1715,8 @@ export class TileWorld {
   destroy() {
     this._buildQueue.length = 0
     this._buildQueueKeys.clear()
+    this._resetFlattenQueue.length = 0
+    this._resetFlattenQueueKeys.clear()
     for(const c of this.chunks.values()){
       this._forgetEarthVariantsForChunk(c.col, c.row)
       for (const child of c.gfx.children) {
