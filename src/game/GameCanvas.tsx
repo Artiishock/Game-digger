@@ -4,6 +4,13 @@ import { GameRenderer } from './GameRenderer'
 import { gameEngine } from './GameEngine'
 import { useGameStore } from '../store/gameStore'
 
+let rendererCreateCount = 0
+let rendererDestroyCount = 0
+
+function logRendererLifecycle(message: string): void {
+  if (import.meta.env.DEV) console.log(message)
+}
+
 interface Props {
   width: number;
   height: number;
@@ -14,68 +21,112 @@ export const GameCanvas: React.FC<Props> = ({ width, height, onReady }) => {
   const { showBoundary } = useErrorBoundary()
   const canvasRef   = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<GameRenderer | null>(null)
+  const initRafRef  = useRef<number | null>(null)
   const startRafRef = useRef<number | null>(null)
   const onReadyRef  = useRef(onReady)
+  const showBoundaryRef = useRef(showBoundary)
+  const sizeRef = useRef({ width, height })
+  const mountedRef = useRef(false)
 
   const phase  = useGameStore(s => s.phase)
   const events = useGameStore(s => s.events)
   const speed  = useGameStore(s => s.speed)
 
   useEffect(() => {
+    showBoundaryRef.current = showBoundary
+  }, [showBoundary])
+
+  useEffect(() => {
     onReadyRef.current = onReady
   }, [onReady])
 
-  // Mount / unmount
-  // rAF delay: lets browser paint the canvas and attach a fresh WebGL context
-  // before PIXI reads MAX_FRAGMENT_UNIFORM_VECTORS.
-  // Also handles React StrictMode double-mount cleanly.
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
+    sizeRef.current = { width, height }
+  }, [width, height])
 
-    let renderer: GameRenderer | null = null
-    let destroyed = false
-    const rafId = requestAnimationFrame(() => {
-      try {
-        if (!canvasRef.current) return
-        renderer = new GameRenderer(canvas, width, height, showBoundary)
-        rendererRef.current = renderer
-        gameEngine.setRendererInstantFinish(async () => {
-          if (!renderer) return
-          await renderer.activateTurbo()
-        })
-        renderer.ready
-          .then(() => {
-            if (!destroyed) onReadyRef.current?.()
-          })
-          .catch(err => {
-            console.error('[GameCanvas] renderer init failed:', err)
-            if (!destroyed) showBoundary(err)
-          })
-      } catch (err) {
-        console.error('[GameCanvas] renderer create failed:', err)
-        if (!destroyed) showBoundary(err)
-      }
-    })
-
+  // Mount / unmount cleanup. Renderer creation is guarded separately so width/height
+  // changes can never tear down and recreate the WebGL context.
+  useEffect(() => {
+    mountedRef.current = true
     return () => {
-      destroyed = true
-      cancelAnimationFrame(rafId)
+      mountedRef.current = false
+      if (initRafRef.current !== null) {
+        cancelAnimationFrame(initRafRef.current)
+        initRafRef.current = null
+      }
       if (startRafRef.current !== null) {
         cancelAnimationFrame(startRafRef.current)
         startRafRef.current = null
       }
+
+      const renderer = rendererRef.current
       try {
-        renderer?.destroy()
+        if (renderer) {
+          rendererDestroyCount += 1
+          logRendererLifecycle(`[GameCanvas] renderer destroy #${rendererDestroyCount}`)
+          renderer.destroy()
+        }
       } catch (err) {
         console.error('[GameCanvas] renderer destroy failed:', err)
       } finally {
-        renderer = null
         gameEngine.setRendererInstantFinish(null)
         rendererRef.current = null
       }
     }
-  }, [width, height, showBoundary])
+  }, [])
+
+  // Create the renderer once, after the canvas has a valid initial size.
+  // rAF delay: lets browser paint the canvas and attach a fresh WebGL context
+  // before PIXI reads MAX_FRAGMENT_UNIFORM_VECTORS.
+  // Also handles React StrictMode double-mount cleanly.
+  useEffect(() => {
+    if (rendererRef.current || initRafRef.current !== null) return
+    if (width <= 0 || height <= 0) return
+
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    initRafRef.current = requestAnimationFrame(() => {
+      initRafRef.current = null
+      try {
+        if (!mountedRef.current || !canvasRef.current || rendererRef.current) return
+
+        const { width: initialWidth, height: initialHeight } = sizeRef.current
+        if (initialWidth <= 0 || initialHeight <= 0) return
+
+        rendererCreateCount += 1
+        logRendererLifecycle(`[GameCanvas] renderer create #${rendererCreateCount}`)
+        const renderer = new GameRenderer(
+          canvas,
+          initialWidth,
+          initialHeight,
+          (error) => {
+            if (mountedRef.current) showBoundaryRef.current(error)
+          },
+        )
+        rendererRef.current = renderer
+        gameEngine.setRendererInstantFinish(async () => {
+          if (rendererRef.current !== renderer || renderer.destroyed) return
+          await renderer.activateTurbo()
+        })
+        renderer.ready
+          .then(() => {
+            if (mountedRef.current && rendererRef.current === renderer && !renderer.destroyed) {
+              onReadyRef.current?.()
+            }
+          })
+          .catch(err => {
+            console.error('[GameCanvas] renderer init failed:', err)
+            if (mountedRef.current && rendererRef.current === renderer && !renderer.destroyed) {
+              showBoundaryRef.current(err)
+            }
+          })
+      } catch (err) {
+        console.error('[GameCanvas] renderer create failed:', err)
+        if (mountedRef.current) showBoundaryRef.current(err)
+      }
+    })
+  }, [width, height])
 
   // Start round when events arrive — deferred one rAF so the browser can paint
   // the BETTING→RUNNING UI transition before startRound() blocks the main thread.
@@ -152,13 +203,14 @@ export const GameCanvas: React.FC<Props> = ({ width, height, onReady }) => {
   useEffect(() => {
     if (rendererRef.current && width > 0 && height > 0) {
       try {
+        logRendererLifecycle(`[GameCanvas] renderer resize ${width}x${height}`)
         rendererRef.current.resize(width, height)
       } catch (err) {
         console.error('[GameCanvas] resize failed:', err)
-        showBoundary(err)
+        showBoundaryRef.current(err)
       }
     }
-  }, [width, height, showBoundary])
+  }, [width, height])
 
   return (
     <canvas

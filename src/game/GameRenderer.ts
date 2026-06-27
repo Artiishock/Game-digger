@@ -1287,6 +1287,7 @@ export class GameRenderer {
   app:PIXI.Application
   private readonly _canvas: HTMLCanvasElement
   private readonly _onRuntimeError?: (error: unknown) => void
+  private _destroyed = false
   private _runtimeErrorReported = false
   private readonly _boundTick = (ticker: PIXI.Ticker) => {
     try {
@@ -1297,6 +1298,7 @@ export class GameRenderer {
   }
   /** Resolves when PixiJS renderer + ticker are ready (app.init completes). */
   ready!:Promise<void>
+  get destroyed(): boolean { return this._destroyed }
   /** Подложка под выкопом (текстура земли / цвет из TileWorld.bgLight). */
   private worldBgLayer:   PIXI.Container
   /** Чанки травы/земли и лава — поверх неба и деревьев. */
@@ -1582,7 +1584,7 @@ export class GameRenderer {
     void this._loadTextures().catch((error) => this._handleRuntimeError(error))
     void SpineAnimator.load().catch((error) => this._handleRuntimeError(error))
     void SpineAnimator.loadHero().then(() => {
-      if (!this.app) return
+      if (this._destroyed || !this.app) return
       const heroSpine = SpineAnimator.createHero(HERO_SPINE_SCALE)
       if (heroSpine) {
         this.miner.setHeroSpine(heroSpine)
@@ -1604,7 +1606,7 @@ export class GameRenderer {
       hello:false,
       powerPreference:'high-performance',
     } as any).then(() => {
-      if (!this.app) return  // компонент размонтирован до завершения init
+      if (this._destroyed || !this.app) return  // компонент размонтирован до завершения init
       // Маска skyLayer требует инициализированного AlphaMaskPipe — только после init()
       this.app.stage.addChild(this._worldMask)
       this.skyLayer.mask = this._worldMask
@@ -1653,6 +1655,7 @@ export class GameRenderer {
   }
 
   private _handleRuntimeError(error: unknown): void {
+    if (this._destroyed) return
     if (this._runtimeErrorReported) return
     this._runtimeErrorReported = true
     console.error('[GameRenderer] runtime error:', error)
@@ -1881,6 +1884,7 @@ export class GameRenderer {
   }
 
   private _makeIdleWorld() {
+    if (this._destroyed) return
     if (this.tileWorld) {
       this.tileWorld.destroy()
       this.tileWorld = null
@@ -1888,15 +1892,16 @@ export class GameRenderer {
     // Сначала трава/чанки, затем дожидаемся текстур (constructor уже вызывает _loadTextures()).
     // Иначе первый _syncSurfaceScenery уходит без forest/tree — пустой сценарий на старте.
     void TileWorld.loadGrassTex().then(async () => {
+      if (this._destroyed) return
       await this.ready  // гарантируем что app.renderer доступен
-      if (!this.app) return
+      if (this._destroyed || !this.app) return
       this.tileWorld = new TileWorld(this.worldBgLayer, this.worldChunkLayer, this.worldSeed)
       this.tileWorld.renderer = this.app.renderer as PIXI.Renderer
       this.tileWorld.initMasks()
       this.tileWorld.update(-this.W * 2, this.idleCamY, this.W, this.H, { w: this.W * 5, h: this.H * 2 })
       this._initLavaSimulation()
       await this._loadTextures()
-      if (!this.app) return
+      if (this._destroyed || !this.app) return
       this._syncSurfaceScenery()
     }).catch((error) => this._handleRuntimeError(error))
   }
@@ -2762,6 +2767,7 @@ export class GameRenderer {
   // ─── Draw helpers ─────────────────────────────────────────────────────────
 
   private async _loadTextures() {
+    if (this._destroyed) return
     if (this._texturesLoading) return this._texturesLoading
     this._texturesLoading = (async () => {
       const loads: [string, string][] = [
@@ -2785,8 +2791,10 @@ export class GameRenderer {
         ['tree3', GameAssets.tree3],
       ]
       for (const [key, url] of loads) {
+        if (this._destroyed) return
         try {
           const tex = await Assets.load<PIXI.Texture>(url)
+          if (this._destroyed) return
           if (key === 'bg') {
             tex.source.mipLevelCount = 1
           }
@@ -2802,11 +2810,13 @@ export class GameRenderer {
       } else {
         try {
           const heroTex = await Assets.load<PIXI.Texture>(GameAssets.hero)
+          if (this._destroyed) return
           this.miner.setHeroTexture(heroTex)
         } catch {
           console.warn('[GameRenderer] Failed to load hero texture')
         }
       }
+      if (this._destroyed) return
       this.skyLayer.removeChildren()
       this._buildSky()
       this._syncSurfaceScenery()
@@ -4516,6 +4526,7 @@ export class GameRenderer {
   }
 
   resize(w:number,h:number){
+    if (this._destroyed) return
     if (w <= 0 || h <= 0) return
     this._pendingResizeW = w
     this._pendingResizeH = h
@@ -4532,6 +4543,7 @@ export class GameRenderer {
 
   /** Один кадр на пачку resize-событий; сцена обновляется до resize WebGL, затем синхронный render. */
   private _applyResize(w: number, h: number): void {
+    if (this._destroyed) return
     if (w <= 0 || h <= 0 || !this.app?.renderer) return
 
     const dpr = effectiveDevicePixelRatio()
@@ -4569,6 +4581,8 @@ export class GameRenderer {
   }
 
   destroy(){
+    if (this._destroyed) return
+    this._destroyed = true
     if (this._resizeRaf) {
       cancelAnimationFrame(this._resizeRaf)
       this._resizeRaf = 0
