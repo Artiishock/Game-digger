@@ -16,6 +16,12 @@ import * as Demo from '../rgs/demo'
 import { GameConfig } from './GameConfig'
 import { GameLogger } from '../dev/GameLogger'
 import { roundDebugPhaseChange } from '../dev/roundDebug'
+import {
+  recordRoundCancel,
+  recordRoundComplete,
+  recordRoundPreparationDone,
+  recordRoundStart,
+} from '../dev/performanceMetrics'
 import { t } from '../i18n/t'
 
 class GameEngine {
@@ -142,12 +148,14 @@ class GameEngine {
   startReplay(events: RGS.RoundEvent[], worldSeed: number, roundID?: string): void {
     const store = useGameStore.getState()
     if (store.phase === 'BETTING' || store.phase === 'RUNNING') return
+    recordRoundStart()
     store.setMenuOpen(false)
     store.setWorldSeed(worldSeed)
     store.setReplayMode(true)
     store.setReplayPending(false)
     store.resetStats()
     store.setEvents(events, roundID ?? store.roundID)
+    recordRoundPreparationDone()
     performance.mark('dr-phase-running')
     this._setPhase(store, 'RUNNING')
   }
@@ -242,6 +250,7 @@ class GameEngine {
     }
     // ────────────────────────────────────────────────────────────────────────
 
+    recordRoundStart()
     this._setPhase(store, 'BETTING')
     store.resetStats()
 
@@ -261,6 +270,7 @@ class GameEngine {
         throw new RGS.RgsError('ERR_GEN')
       }
       store.setEvents(evs, response.round?.roundID ?? '')
+      recordRoundPreparationDone()
       performance.mark('dr-phase-running')
       this._setPhase(store, 'RUNNING')
 
@@ -315,6 +325,7 @@ class GameEngine {
         store.setLastWin(0)
         this._setPhase(store, 'LOSE')
       }
+      recordRoundComplete()
       return
     }
 
@@ -350,7 +361,10 @@ class GameEngine {
       store.setBalance(newBalance)
 
       // Guard: if a new round started while waiting for RGS, don't overwrite its phase.
-      if (useGameStore.getState().roundID !== roundIDSnapshot) return
+      if (useGameStore.getState().roundID !== roundIDSnapshot) {
+        recordRoundCancel()
+        return
+      }
 
       this._roundEndTime = performance.now()
 
@@ -365,6 +379,7 @@ class GameEngine {
         store.setLastWin(0)
         this._setPhase(store, 'LOSE')
       }
+      recordRoundComplete()
 
       // ── Autoplay continuation ──────────────────────────────────────────────
       const ap = store.autoplay
@@ -462,6 +477,7 @@ class GameEngine {
   // ─── Error handling ────────────────────────────────────────────────────────
 
   private _handleRgsError(err: unknown): void {
+    recordRoundCancel()
     const store = useGameStore.getState()
     if (err instanceof RGS.RgsError) {
       const msg = RGS.rgsErrorMessage(err.code)

@@ -2,6 +2,7 @@ import * as PIXI from 'pixi.js'
 import { Assets } from 'pixi.js'
 import { SpineAnimator } from './SpineAnimator'
 import { resolvePublicUrl } from '../utils/publicUrl'
+import { recordAssetLoadEnd, recordAssetLoadStart } from '../dev/performanceMetrics'
 
 /**
  * Пути к PNG в public/assets (Vite отдаёт как /assets/...).
@@ -84,6 +85,12 @@ export function preloadStartupAssets(onProgress?: (progress: number) => void): P
 
   _startupPreloadPromise = (async () => {
     const textureUrls = Object.values(GameAssets)
+    const assetMetrics = {
+      textureCount: textureUrls.length,
+      spineResourceCount: 3,
+      domAssetCount: StartScreenAssets.length,
+    }
+    recordAssetLoadStart(assetMetrics)
     const spinePromises = [
       SpineAnimator.load(),
       SpineAnimator.loadHero(),
@@ -109,7 +116,11 @@ export function preloadStartupAssets(onProgress?: (progress: number) => void): P
       tick()
     })
 
-    await Promise.all([...textureLoads, ...startScreenLoads, ...spineLoads])
+    try {
+      await Promise.all([...textureLoads, ...startScreenLoads, ...spineLoads])
+    } finally {
+      recordAssetLoadEnd(assetMetrics)
+    }
   })()
 
   return _startupPreloadPromise

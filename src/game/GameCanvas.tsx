@@ -3,13 +3,13 @@ import { useErrorBoundary } from 'react-error-boundary'
 import { GameRenderer } from './GameRenderer'
 import { gameEngine } from './GameEngine'
 import { useGameStore } from '../store/gameStore'
-
-let rendererCreateCount = 0
-let rendererDestroyCount = 0
-
-function logRendererLifecycle(message: string): void {
-  if (import.meta.env.DEV) console.log(message)
-}
+import {
+  recordRendererCreate,
+  recordRendererDestroy,
+  recordRendererResize,
+  recordRendererStartRoundEnd,
+  recordRendererStartRoundStart,
+} from '../dev/performanceMetrics'
 
 interface Props {
   width: number;
@@ -62,8 +62,7 @@ export const GameCanvas: React.FC<Props> = ({ width, height, onReady }) => {
       const renderer = rendererRef.current
       try {
         if (renderer) {
-          rendererDestroyCount += 1
-          logRendererLifecycle(`[GameCanvas] renderer destroy #${rendererDestroyCount}`)
+          recordRendererDestroy()
           renderer.destroy()
         }
       } catch (err) {
@@ -94,8 +93,7 @@ export const GameCanvas: React.FC<Props> = ({ width, height, onReady }) => {
         const { width: initialWidth, height: initialHeight } = sizeRef.current
         if (initialWidth <= 0 || initialHeight <= 0) return
 
-        rendererCreateCount += 1
-        logRendererLifecycle(`[GameCanvas] renderer create #${rendererCreateCount}`)
+        recordRendererCreate()
         const renderer = new GameRenderer(
           canvas,
           initialWidth,
@@ -144,7 +142,12 @@ export const GameCanvas: React.FC<Props> = ({ width, height, onReady }) => {
         startRafRef.current = null
         performance.mark('dr-raf-fired')
         performance.measure('[DR] RUNNING→RAF (React repaint)', 'dr-phase-running', 'dr-raf-fired')
-        rendererRef.current?.startRound(eventsSnap, speedSnap)
+        recordRendererStartRoundStart()
+        try {
+          rendererRef.current?.startRound(eventsSnap, speedSnap)
+        } finally {
+          recordRendererStartRoundEnd()
+        }
       } catch (err) {
         console.error('[GameCanvas] startRound failed:', err)
         showBoundary(err)
@@ -203,7 +206,7 @@ export const GameCanvas: React.FC<Props> = ({ width, height, onReady }) => {
   useEffect(() => {
     if (rendererRef.current && width > 0 && height > 0) {
       try {
-        logRendererLifecycle(`[GameCanvas] renderer resize ${width}x${height}`)
+        recordRendererResize(width, height)
         rendererRef.current.resize(width, height)
       } catch (err) {
         console.error('[GameCanvas] resize failed:', err)

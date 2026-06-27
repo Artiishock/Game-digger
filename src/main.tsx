@@ -8,6 +8,12 @@ import { installStartRoundDebugFromUrl } from './dev/startRoundDebug'
 import { installRoundDebugFromUrl } from './dev/roundDebug'
 import './dev/demoMathConsole'
 
+if (import.meta.env.DEV) {
+  void import('./dev/performanceMetrics').then(({ installDeepRushPerformanceMetrics }) => {
+    installDeepRushPerformanceMetrics()
+  })
+}
+
 installTickerFpsLogFromUrl()
 installScratchDebugFromUrl()
 installStartRoundDebugFromUrl()
