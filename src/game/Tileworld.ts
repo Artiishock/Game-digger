@@ -15,6 +15,18 @@ const CHUNK_VISUAL_OVERLAP_PX = 3
 const MASK_W = CPW + CHUNK_VISUAL_OVERLAP_PX * 2
 const MASK_H = CPH + CHUNK_VISUAL_OVERLAP_PX * 2
 
+/**
+ * Маскинг чанков (см. PERF_FIX_chunk_masks.md). Подтверждено: fps 28→60.
+ *  true  = flatten-режим (по умолчанию): content маскируется maskRT и ОДИН РАЗ
+ *          (на изменение карва) рендерится в отдельный displayRT; на кадре —
+ *          плоский displaySpr, без per-frame AlphaMaskPipe.
+ *  false = legacy живая маска (per-frame AlphaMaskPipe) — оставлено для отката.
+ * Нюансы v8: маска читает КРАСНЫЙ канал (mask.frag → masky.r), поэтому тоннель
+ * рисуется opaque-чёрным; флэттен идёт через обёртку `_flattenWrapper`, т.к.
+ * render-to-target делает контейнер корнем render-group и его .mask иначе не применяется.
+ */
+const USE_BAKED_TUNNEL_MASK = true
+
 function chunkTopVisualOverlap(row: number): number {
   return row === 0 ? 0 : CHUNK_VISUAL_OVERLAP_PX
 }
@@ -560,6 +572,11 @@ export class TileWorld {
   /** Счётчик не-терминальных лавовых пещер (лимит GameConfig.lava.maxDecorCaves) */
   private _decorLavaCaveCount = 0
   private _caveGfx: PIXI.Graphics = new PIXI.Graphics()
+  /** Переиспользуемая offscreen-обёртка для flatten: делает content НЕ корнем render-group,
+   *  иначе v8 не применяет content.mask при render-to-target (см. PERF_FIX_chunk_masks.md). */
+  private _flattenWrapper: PIXI.Container = new PIXI.Container()
+  /** Чанки, чей maskRT изменился за текущий scratchAt → пересобрать displayRT (дедуп за кадр). */
+  private _flattenDirtyKeys: Set<string> = new Set()
 
   lavaSimulation: LavaSimulation | null = null
   private _lavaViewportW = -1
@@ -837,6 +854,7 @@ export class TileWorld {
         this.brush.beginFill(0x000000).drawPolygon(poly).endFill()
         this.renderer.render({ container: this.brush, target: (chunk as any).maskRT, clear: false })
         if (stats) stats.renderOps++
+        if (USE_BAKED_TUNNEL_MASK) this._flattenDirtyKeys.add(chunkKey)
 
         // Per-chunk lava mask is disabled (lava is rendered via LavaSimulation).
         const grassMaskRT = (chunk as any).grassMaskRT as PIXI.RenderTexture | undefined
@@ -957,6 +975,17 @@ export class TileWorld {
       this._scratchWorldTunnelStamp(wx, wy, rx, ry, stampUx, stampUy, prev, carveGrass)
       prev = { x: wx, y: wy }
     }
+    // baked-режим: пересобрать displayRT всех чанков, чей maskRT изменился за этот кадр.
+    if (USE_BAKED_TUNNEL_MASK && this._flattenDirtyKeys.size > 0) {
+      for (const key of this._flattenDirtyKeys) {
+        const ch = this.chunks.get(key)
+        if (!ch) continue
+        const dRT = (ch as any).displayRT as PIXI.RenderTexture | null | undefined
+        const cont = (ch as any).content as PIXI.Container | null | undefined
+        if (dRT && cont) this._flattenBakedChunk(cont, dRT)
+      }
+      this._flattenDirtyKeys.clear()
+    }
     if (stats) {
       if (this._scratchCallChunks.size > 1) stats.multiChunkCalls++
       stats.timeMs += performance.now() - t0
@@ -1053,7 +1082,12 @@ export class TileWorld {
           lavaContainer ?? null,
           offX,
           offY,
+          (chunk as any).earthRT ?? null,
         )
+        // Flatten-режим: maskRT обновился → пересобрать displayRT этого чанка.
+        const dRT = (chunk as any).displayRT as PIXI.RenderTexture | null | undefined
+        const cont = (chunk as any).content as PIXI.Container | null | undefined
+        if (USE_BAKED_TUNNEL_MASK && dRT && cont) this._flattenBakedChunk(cont, dRT)
         count++
       }
     }
@@ -1276,6 +1310,7 @@ export class TileWorld {
         chunk.gfx.destroy({children:true})
         ;(chunk as any).lavaRT?.destroy(true)
         ;(chunk as any).earthRT?.destroy(true)
+        ;(chunk as any).displayRT?.destroy(true)
         this.chunks.delete(key)
       }
     }
@@ -1429,22 +1464,48 @@ export class TileWorld {
     const lavaContainer: PIXI.Container | null = null
 
     for (const cave of this._pendingCaves) {
-      this._applyCavePathToChunk(cave, col, row, maskRT, lavaRT, lavaContainer, offX, offY)
+      this._applyCavePathToChunk(cave, col, row, maskRT, lavaRT, lavaContainer, offX, offY, earthRT)
     }
-
-    content.mask = maskSpr
-    if (topGrassSpr && grassMaskSpr) topGrassSpr.mask = grassMaskSpr
 
     const container = new PIXI.Container()
     container.name = `chunk(${col},${row})`
     container.x = offX; container.y = offY
-    container.addChild(content)
-    if (topGrassSpr) container.addChild(topGrassSpr)
-    container.addChild(maskSpr)
-    if (grassMaskSpr) container.addChild(grassMaskSpr)
+
+    let displayRT: PIXI.RenderTexture | null = null
+
+    if (USE_BAKED_TUNNEL_MASK) {
+      // Flatten-режим: maskSpr — ребёнок content (самодостаточный маск-юнит),
+      // content маскируется и один раз рендерится в displayRT; на кадре рисуется
+      // плоский displaySpr (батчится, без per-frame AlphaMaskPipe).
+      content.addChild(maskSpr)
+      content.mask = maskSpr
+      content.renderable = false
+      displayRT = PIXI.RenderTexture.create({ width: MASK_W, height: MASK_H })
+      if (this._buildDiagnostics.active) this._buildDiagnostics.renderTexturesCreated++
+      const displaySpr = new PIXI.Sprite(displayRT)
+      displaySpr.name = 'chunkDisplay'
+      displaySpr.x = -CHUNK_VISUAL_OVERLAP_PX
+      displaySpr.y = -CHUNK_VISUAL_OVERLAP_PX
+      container.addChild(content)        // невидимый источник для ре-флэттена
+      container.addChild(displaySpr)
+      if (topGrassSpr) {
+        if (grassMaskSpr) topGrassSpr.mask = grassMaskSpr
+        container.addChild(topGrassSpr)
+      }
+      if (grassMaskSpr) container.addChild(grassMaskSpr)
+      this._flattenBakedChunk(content, displayRT)
+    } else {
+      // Живая маска (legacy): per-frame AlphaMaskPipe. Оставлена для отката.
+      content.mask = maskSpr
+      if (topGrassSpr && grassMaskSpr) topGrassSpr.mask = grassMaskSpr
+      container.addChild(content)
+      if (topGrassSpr) container.addChild(topGrassSpr)
+      container.addChild(maskSpr)
+      if (grassMaskSpr) container.addChild(grassMaskSpr)
+    }
 
     this.chunkContainer.addChild(container)
-    this.chunks.set(key, {gfx:container, col, row, ...{maskRT, lavaRT, grassMaskRT, earthRT, lavaContainer}} as any)
+    this.chunks.set(key, {gfx:container, col, row, ...{maskRT, lavaRT, grassMaskRT, earthRT, displayRT, content, lavaContainer}} as any)
     if (this._buildDiagnostics.active) {
       const elapsed = performance.now() - _diagT0
       this._buildDiagnostics.chunksBuilt++
@@ -1453,13 +1514,38 @@ export class TileWorld {
     }
   }
 
+  /**
+   * Flatten-режим: рендерит замаскированный `content` (земля под maskRT) в `displayRT`
+   * одним проходом. Источники (earthRT+maskRT) ≠ цель (displayRT) → нет RT-feedback.
+   * Сдвиг content на +overlap: его локальная точка (-overlap,-overlap) → (0,0) displayRT.
+   */
+  private _flattenBakedChunk(content: PIXI.Container, displayRT: PIXI.RenderTexture): void {
+    if (!this.renderer) return
+    const parent = content.parent
+    const px = content.x, py = content.y
+    const pr = content.renderable
+    // Кладём content в обёртку → при render он НЕ корень render-group, и его .mask
+    // применяется при обходе (корню v8 собственную маску не накладывает).
+    this._flattenWrapper.addChild(content)
+    content.position.set(CHUNK_VISUAL_OVERLAP_PX, CHUNK_VISUAL_OVERLAP_PX)
+    content.renderable = true
+    this.renderer.render({ container: this._flattenWrapper, target: displayRT, clear: true })
+    content.renderable = pr
+    content.position.set(px, py)
+    // Возвращаем content на место (он renderable=false, z-порядок в чанке не важен).
+    if (parent) parent.addChild(content)
+    else this._flattenWrapper.removeChild(content)
+    if (this._buildDiagnostics.active) this._buildDiagnostics.renderCalls++
+  }
+
   private _applyCavePathToChunk(
     cave: CavePath,
     col: number, row: number,
     maskRT: PIXI.RenderTexture,
     lavaRT: PIXI.RenderTexture | null,
     lavaContainer: PIXI.Container | null,
-    offX: number, offY: number
+    offX: number, offY: number,
+    earthRT: PIXI.RenderTexture | null = null
   ) {
     if (!this.renderer) return
 
@@ -1507,6 +1593,9 @@ export class TileWorld {
 
     if (!hasContent) return
 
+    // Карв в maskRT: opaque-чёрный тоннель. v8 sprite-маска читает КРАСНЫЙ канал
+    // (mask.frag: masky.r) → белое (r=1) = земля, чёрный тоннель (r=0) = дыра.
+    // Отдельная текстура → нет RT-feedback с земляным спрайтом.
     this.renderer.render({ container: g, target: maskRT, clear: false })
     if (this._buildDiagnostics.active) this._buildDiagnostics.renderCalls++
 
@@ -1567,6 +1656,7 @@ export class TileWorld {
       c.gfx.destroy({children:true})
       ;(c as any).lavaRT?.destroy(true)
       ;(c as any).earthRT?.destroy(true)
+      ;(c as any).displayRT?.destroy(true)
     }
     this.chunks.clear()
     for (const rt of this._maskRTPool) rt.destroy(true)
