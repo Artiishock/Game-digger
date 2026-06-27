@@ -1299,6 +1299,7 @@ export class GameRenderer {
   /** Resolves when PixiJS renderer + ticker are ready (app.init completes). */
   ready!:Promise<void>
   get destroyed(): boolean { return this._destroyed }
+  private _roundArtifactsClean = false
   /** Подложка под выкопом (текстура земли / цвет из TileWorld.bgLight). */
   private worldBgLayer:   PIXI.Container
   /** Чанки травы/земли и лава — поверх неба и деревьев. */
@@ -1883,6 +1884,16 @@ export class GameRenderer {
     }
   }
 
+  prepareRoundTransition() {
+    if (this._destroyed || !this.tileWorld) return
+    if (!this._roundArtifactsClean) {
+      this.tileWorld.clearRuntimeDigging()
+      this.tileWorld.setPathWaypoints([], this.surfY)
+      this._roundArtifactsClean = true
+    }
+    this._hideTunnel()
+  }
+
   private _makeIdleWorld() {
     if (this._destroyed) return
     if (this.tileWorld) {
@@ -2409,10 +2420,11 @@ export class GameRenderer {
     } else {
       // Единая сцена: не пересоздаём мир — полный сброс следов копания/пещер между раундами
       // (ранний спин в WIN мог пропустить `_returnToIdle` → только resetScratch недостаточно).
-      this.tileWorld.clearRuntimeDigging()
+      if (!this._roundArtifactsClean) this.tileWorld.clearRuntimeDigging()
       this.tileWorld.resetScratch()
       this.tileWorld.showBg()
     }
+    this._roundArtifactsClean = false
     this._initLavaSimulation()
 
     const _t1 = performance.now() // after tileWorld reset + lava init
@@ -4240,6 +4252,7 @@ export class GameRenderer {
       this.tileWorld.clearRuntimeDigging()
       // В idle не нужен защитный коридор пути.
       this.tileWorld.setPathWaypoints([], this.surfY)
+      this._roundArtifactsClean = true
     }
     this._hideTunnel()
 
@@ -4541,21 +4554,29 @@ export class GameRenderer {
     })
   }
 
-  /** Один кадр на пачку resize-событий; сцена обновляется до resize WebGL, затем синхронный render. */
+  /** Один кадр на пачку resize-событий; ticker отрисует следующий кадр сам. */
   private _applyResize(w: number, h: number): void {
     if (this._destroyed) return
     if (w <= 0 || h <= 0 || !this.app?.renderer) return
 
     const dpr = effectiveDevicePixelRatio()
     const renderer = this.app.renderer as PIXI.Renderer
+    const nextZoom = computeSceneZoom(w, h)
+    const nextW = w / nextZoom
+    const nextH = h / nextZoom
+    const sameCssSize = this._canvas.width === Math.round(w * dpr) && this._canvas.height === Math.round(h * dpr)
+    const sameWorldSize = Math.abs(this.W - nextW) < 1e-6 && Math.abs(this.H - nextH) < 1e-6
+    const sameDpr = Math.abs((renderer.resolution ?? 1) - dpr) <= 1e-6
+    if (sameCssSize && sameWorldSize && sameDpr) return
+
     if (Math.abs((renderer.resolution ?? 1) - dpr) > 1e-6) {
       ;(renderer as any).resolution = dpr
       this._prevScrollSnapScale = NaN
     }
 
-    this._zoom = computeSceneZoom(w, h)
-    this.W = w / this._zoom
-    this.H = h / this._zoom
+    this._zoom = nextZoom
+    this.W = nextW
+    this.H = nextH
     this.charScreenY = this.H * 0.42
     this.app.stage.scale.set(this._zoom)
     this.lavaSimulation?.setViewport(this.W, this.H)
@@ -4577,7 +4598,6 @@ export class GameRenderer {
     this._syncLayerScroll()
 
     renderer.resize(w, h)
-    renderer.render({ container: this.app.stage })
   }
 
   destroy(){

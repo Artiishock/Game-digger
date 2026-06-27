@@ -1422,8 +1422,16 @@ export class TileWorld {
     if (hasEarth) {
       const earthLayer = new PIXI.Container()
       earthLayer.name = 'earthLayer'
-      for (let ly = 0; ly < CHUNK_H; ly++) {
-        for (let lx = 0; lx < CHUNK_W; lx++) {
+      // Важно: не растягиваем baked RT на overlap-зону.
+      // Иначе крайние пиксели чанка пересэмплируются, что даёт двойные линии/дыры на стыках.
+      // Вместо этого печём RT сразу в реальном визуальном размере чанка и подмешиваем
+      // соседние пограничные тайлы, из которых в overlap попадут только нужные 3px полосы.
+      const minTileX = -1
+      const maxTileX = CHUNK_W
+      const minTileY = topOverlap > 0 ? -1 : 0
+      const maxTileY = CHUNK_H
+      for (let ly = minTileY; ly <= maxTileY; ly++) {
+        for (let lx = minTileX; lx <= maxTileX; lx++) {
           const gCol = col * CHUNK_W + lx
           const gRow = row * CHUNK_H + ly
           const vi = this._pickEarthVariant(gCol, gRow)
@@ -1434,14 +1442,18 @@ export class TileWorld {
           cell.name = 'earthCell'
           cell.width = TILE
           cell.height = TILE
-          cell.x = lx * TILE
-          cell.y = ly * TILE
+          cell.x = lx * TILE + CHUNK_VISUAL_OVERLAP_PX
+          cell.y = ly * TILE + topOverlap
+          if (cell.x + TILE <= 0 || cell.x >= MASK_W || cell.y + TILE <= 0 || cell.y >= visualH) {
+            cell.destroy()
+            continue
+          }
           earthLayer.addChild(cell)
         }
       }
       // Big perf win: bake 24 tile sprites into one RT sprite per chunk.
       if (this.renderer) {
-        const baked = this._bakeToRenderTexture(earthLayer, CPW, CPH)
+        const baked = this._bakeToRenderTexture(earthLayer, MASK_W, visualH)
         if (baked) {
           earthRT = baked
           const spr = new PIXI.Sprite(baked)
@@ -1449,8 +1461,6 @@ export class TileWorld {
           spr.name = 'earthBaked'
           spr.x = -CHUNK_VISUAL_OVERLAP_PX
           spr.y = -topOverlap
-          spr.width = CPW + CHUNK_VISUAL_OVERLAP_PX * 2
-          spr.height = visualH
           content.addChild(spr)
           earthLayer.destroy({ children: true })
         } else {

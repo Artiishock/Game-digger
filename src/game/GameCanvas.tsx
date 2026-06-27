@@ -136,6 +136,13 @@ export const GameCanvas: React.FC<Props> = ({ width, height, onReady }) => {
     const speedSnap  = speed
     // Read replayMode at effect time (not as a reactive dep) to decide rAF count.
     const isReplay = useGameStore.getState().replayMode
+    try {
+      rendererRef.current?.prepareRoundTransition()
+    } catch (err) {
+      console.error('[GameCanvas] prepare round transition failed:', err)
+      showBoundaryRef.current(err)
+      return
+    }
 
     const runStart = () => {
       try {
@@ -150,7 +157,7 @@ export const GameCanvas: React.FC<Props> = ({ width, height, onReady }) => {
         }
       } catch (err) {
         console.error('[GameCanvas] startRound failed:', err)
-        showBoundary(err)
+        showBoundaryRef.current(err)
       }
     }
 
@@ -169,7 +176,7 @@ export const GameCanvas: React.FC<Props> = ({ width, height, onReady }) => {
         startRafRef.current = null
       }
     }
-  }, [phase, events, showBoundary]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [phase, events]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Skip lava death cinematic on key / tap по игровому полю (не перехватываем UI — иначе гонки с кнопкой Spin на тач).
   useEffect(() => {

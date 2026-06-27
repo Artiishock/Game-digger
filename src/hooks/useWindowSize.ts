@@ -13,17 +13,28 @@ export function useWindowSize() {
   const [size, setSize] = useState(readVisualSize)
 
   useEffect(() => {
-    const handler = () => setSize(readVisualSize())
+    let raf = 0
+    const handler = () => {
+      if (raf) return
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        const next = readVisualSize()
+        setSize(prev => (
+          prev.width === next.width && prev.height === next.height
+            ? prev
+            : next
+        ))
+      })
+    }
     window.addEventListener('resize', handler)
     window.addEventListener('orientationchange', handler)
     const vv = window.visualViewport
     vv?.addEventListener('resize', handler)
-    vv?.addEventListener('scroll', handler)
     return () => {
+      if (raf) cancelAnimationFrame(raf)
       window.removeEventListener('resize', handler)
       window.removeEventListener('orientationchange', handler)
       vv?.removeEventListener('resize', handler)
-      vv?.removeEventListener('scroll', handler)
     }
   }, [])
 
