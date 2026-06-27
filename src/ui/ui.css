@@ -42,6 +42,78 @@
   --hud-h: 80px;
 }
 
+.ui-error-boundary {
+  position: absolute;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+  color: var(--text);
+  font-family: var(--font-body);
+  background: rgba(0, 0, 0, 0.86);
+}
+
+.ui-error-boundary--app {
+  position: fixed;
+}
+
+.ui-error-boundary--game {
+  background: rgba(12, 6, 3, 0.82);
+}
+
+.ui-error-boundary__content {
+  width: min(420px, 100%);
+  padding: 24px;
+  border: 1px solid var(--border-gold-s);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.ui-error-boundary h1,
+.ui-error-boundary h2 {
+  margin: 0 0 10px;
+  font-family: var(--font-display);
+  font-size: 36px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--gold-light);
+}
+
+.ui-error-boundary p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.ui-error-boundary__actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+
+.ui-error-boundary__actions button {
+  min-width: 112px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-gold-s);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 184, 48, 0.12);
+  color: var(--text);
+  font: 700 14px/1 var(--font-body);
+  cursor: pointer;
+}
+
+.ui-error-boundary__actions button:active {
+  transform: translateY(1px);
+}
+
 /* ── Анимации ─────────────────────────────────────────── */
 @keyframes fadeInScale {
   from {

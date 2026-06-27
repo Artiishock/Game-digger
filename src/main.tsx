@@ -1,6 +1,7 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
+import { AppErrorBoundary } from './app/AppErrorBoundary'
 import { installTickerFpsLogFromUrl } from './dev/tickerFpsLog'
 import { installScratchDebugFromUrl } from './dev/scratchDebug'
 import { installStartRoundDebugFromUrl } from './dev/startRoundDebug'
@@ -40,4 +41,8 @@ if (!root) throw new Error('Root element not found')
 //      the browser may return MAX_FRAGMENT_UNIFORM_VECTORS = 0 from the
 //      stale context, crashing checkMaxIfStatementsInShader.
 // All other React best-practices checks still apply without StrictMode.
-createRoot(root).render(<App />)
+createRoot(root).render(
+  <AppErrorBoundary>
+    <App />
+  </AppErrorBoundary>,
+)

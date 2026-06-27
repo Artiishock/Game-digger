@@ -1286,7 +1286,15 @@ const TREE_IDLE_COPY_STEP_PX = TILE * 24
 export class GameRenderer {
   app:PIXI.Application
   private readonly _canvas: HTMLCanvasElement
-  private readonly _boundTick = (ticker: PIXI.Ticker) => this._tick(ticker)
+  private readonly _onRuntimeError?: (error: unknown) => void
+  private _runtimeErrorReported = false
+  private readonly _boundTick = (ticker: PIXI.Ticker) => {
+    try {
+      this._tick(ticker)
+    } catch (error) {
+      this._handleRuntimeError(error)
+    }
+  }
   /** Resolves when PixiJS renderer + ticker are ready (app.init completes). */
   ready!:Promise<void>
   /** Подложка под выкопом (текстура земли / цвет из TileWorld.bgLight). */
@@ -1497,8 +1505,9 @@ export class GameRenderer {
   private _chunkDebugOverlay: PIXI.Graphics | null = null
   private _chunkDebugEnabled = false
 
-  constructor(canvas:HTMLCanvasElement,w:number,h:number){
+  constructor(canvas:HTMLCanvasElement,w:number,h:number,onRuntimeError?: (error: unknown) => void){
     this._canvas = canvas
+    this._onRuntimeError = onRuntimeError
     // ── Адаптивный zoom по min(W,H): виртуальный мир крупнее экрана → объекты масштабируются ──
     this._zoom = computeSceneZoom(w, h)
     this.W = w / this._zoom   // виртуальная ширина мира (игровая логика работает в этих пикселях)
@@ -1570,8 +1579,8 @@ export class GameRenderer {
     this.camY = this.idleCamY
     this._syncLayerScroll()
     this._buildTunnel()
-    this._loadTextures()
-    void SpineAnimator.load()
+    void this._loadTextures().catch((error) => this._handleRuntimeError(error))
+    void SpineAnimator.load().catch((error) => this._handleRuntimeError(error))
     void SpineAnimator.loadHero().then(() => {
       if (!this.app) return
       const heroSpine = SpineAnimator.createHero(HERO_SPINE_SCALE)
@@ -1579,8 +1588,10 @@ export class GameRenderer {
         this.miner.setHeroSpine(heroSpine)
         SpineAnimator.setHighPriority(heroSpine, true)
       }
+    }).catch((error) => this._handleRuntimeError(error))
+    void SpineAnimator.loadGoldStone().catch((error) => {
+      console.warn('[GameRenderer] gold/stone spine preload failed:', error)
     })
-    SpineAnimator.loadGoldStone()
 
     // ─── Async PixiJS init: renderer + ticker доступны только после этого ──
     this.ready = this.app.init({
@@ -1639,6 +1650,33 @@ export class GameRenderer {
     this.liveWinAmountText.anchor.set(0.5)
     this.liveWinTitleText.position.set(0, 0)
     this.liveWinAmountText.position.set(0, LIVE_WIN_AMOUNT_OFFSET_Y)
+  }
+
+  private _handleRuntimeError(error: unknown): void {
+    if (this._runtimeErrorReported) return
+    this._runtimeErrorReported = true
+    console.error('[GameRenderer] runtime error:', error)
+    try {
+      this.app?.ticker?.remove(this._boundTick)
+      this.app?.ticker?.stop()
+    } catch (cleanupError) {
+      console.error('[GameRenderer] failed to stop ticker after runtime error:', cleanupError)
+    }
+    this._onRuntimeError?.(error)
+  }
+
+  private _runRuntimeCallback(fn: () => void): void {
+    try {
+      fn()
+    } catch (error) {
+      this._handleRuntimeError(error)
+    }
+  }
+
+  private _completeRoundSafely(multiplier: number, won: boolean): void {
+    void gameEngine.onRoundComplete(multiplier, won).catch((error) => {
+      this._handleRuntimeError(error)
+    })
   }
 
   private _updateLiveWinBadge(dt = 0): void {
@@ -1860,7 +1898,7 @@ export class GameRenderer {
       await this._loadTextures()
       if (!this.app) return
       this._syncSurfaceScenery()
-    })
+    }).catch((error) => this._handleRuntimeError(error))
   }
 
   private _initLavaSimulation() {
@@ -2357,9 +2395,9 @@ export class GameRenderer {
       store.setWorldSeed(this.worldSeed)
     }
     if (!this.tileWorld) {
-      TileWorld.loadGrassTex().then(() => {
+      void TileWorld.loadGrassTex().then(() => {
         this.tileWorld?.rebuildTunnelBgFromTextures()
-      })
+      }).catch((error) => this._handleRuntimeError(error))
       this.tileWorld = new TileWorld(this.worldBgLayer, this.worldChunkLayer, this.worldSeed)
       this.tileWorld.renderer = this.app.renderer as PIXI.Renderer
       this.tileWorld.initMasks()
@@ -2910,11 +2948,13 @@ export class GameRenderer {
     if (this._lavaLossTimeoutPending) return
     this._lavaLossTimeoutPending = true
     const cb = () => {
-      this._lavaLossTimeoutPending = false
-      this._lavaLossResultTimerId = null
-      this._pendingLossResultFn = null
-      gameEngine.onRoundComplete(0, false)
-      this._startLavaLossIdleGlideOrIdle()
+      this._runRuntimeCallback(() => {
+        this._lavaLossTimeoutPending = false
+        this._lavaLossResultTimerId = null
+        this._pendingLossResultFn = null
+        this._completeRoundSafely(0, false)
+        this._startLavaLossIdleGlideOrIdle()
+      })
     }
     this._pendingLossResultFn = cb
     this._lavaLossResultTimerId = setTimeout(cb, this._turboActive ? 0 : GameConfig.round.loseDelayMs)
@@ -2937,7 +2977,7 @@ export class GameRenderer {
     this._returnToIdle()
 
     if (needsRoundComplete) {
-      void gameEngine.onRoundComplete(0, false)
+      this._completeRoundSafely(0, false)
     }
     return true
   }
@@ -3608,10 +3648,12 @@ export class GameRenderer {
           this._terminalOutcomeTimerId = null
         }
         const cbLavaCatch = () => {
-          this._terminalOutcomeTimerId = null
-          this._pendingOutcomeFn = null
-          gameEngine.onRoundComplete(0, false)
-          this._returnToIdle()
+          this._runRuntimeCallback(() => {
+            this._terminalOutcomeTimerId = null
+            this._pendingOutcomeFn = null
+            this._completeRoundSafely(0, false)
+            this._returnToIdle()
+          })
         }
         this._pendingOutcomeFn = cbLavaCatch
         this._terminalOutcomeTimerId = setTimeout(cbLavaCatch, this._turboActive ? 0 : GameConfig.round.loseDelayMs)
@@ -3959,20 +4001,24 @@ export class GameRenderer {
       }
       if (won) {
         const cbWin = () => {
-          this._terminalOutcomeTimerId = null
-          this._pendingOutcomeFn = null
-          gameEngine.onRoundComplete(this.multiplier, true)
-          this._returnToIdle()
+          this._runRuntimeCallback(() => {
+            this._terminalOutcomeTimerId = null
+            this._pendingOutcomeFn = null
+            this._completeRoundSafely(this.multiplier, true)
+            this._returnToIdle()
+          })
         }
         this._pendingOutcomeFn = cbWin
         this._terminalOutcomeTimerId = setTimeout(cbWin, this._turboActive ? 0 : GameConfig.round.winDelayMs)
       } else {
         if (!this._tryStartLavaDeathCinematic()) {
           const cbLose = () => {
-            this._terminalOutcomeTimerId = null
-            this._pendingOutcomeFn = null
-            gameEngine.onRoundComplete(0, false)
-            this._returnToIdle()
+            this._runRuntimeCallback(() => {
+              this._terminalOutcomeTimerId = null
+              this._pendingOutcomeFn = null
+              this._completeRoundSafely(0, false)
+              this._returnToIdle()
+            })
           }
           this._pendingOutcomeFn = cbLose
           this._terminalOutcomeTimerId = setTimeout(cbLose, this._turboActive ? 0 : GameConfig.round.loseDelayMs)
@@ -4475,8 +4521,12 @@ export class GameRenderer {
     this._pendingResizeH = h
     if (this._resizeRaf) return
     this._resizeRaf = requestAnimationFrame(() => {
-      this._resizeRaf = 0
-      this._applyResize(this._pendingResizeW, this._pendingResizeH)
+      try {
+        this._resizeRaf = 0
+        this._applyResize(this._pendingResizeW, this._pendingResizeH)
+      } catch (error) {
+        this._handleRuntimeError(error)
+      }
     })
   }
 
