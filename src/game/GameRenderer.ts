@@ -4530,20 +4530,28 @@ export class GameRenderer {
     })
   }
 
-  /** Один кадр на пачку resize-событий; сцена обновляется до resize WebGL, затем синхронный render. */
+  /** Один кадр на пачку resize-событий; ticker отрисует следующий кадр сам. */
   private _applyResize(w: number, h: number): void {
     if (w <= 0 || h <= 0 || !this.app?.renderer) return
 
     const dpr = effectiveDevicePixelRatio()
     const renderer = this.app.renderer as PIXI.Renderer
+    const nextZoom = computeSceneZoom(w, h)
+    const nextW = w / nextZoom
+    const nextH = h / nextZoom
+    const sameCssSize = this._canvas.width === Math.round(w * dpr) && this._canvas.height === Math.round(h * dpr)
+    const sameWorldSize = Math.abs(this.W - nextW) < 1e-6 && Math.abs(this.H - nextH) < 1e-6
+    const sameDpr = Math.abs((renderer.resolution ?? 1) - dpr) <= 1e-6
+    if (sameCssSize && sameWorldSize && sameDpr) return
+
     if (Math.abs((renderer.resolution ?? 1) - dpr) > 1e-6) {
       ;(renderer as any).resolution = dpr
       this._prevScrollSnapScale = NaN
     }
 
-    this._zoom = computeSceneZoom(w, h)
-    this.W = w / this._zoom
-    this.H = h / this._zoom
+    this._zoom = nextZoom
+    this.W = nextW
+    this.H = nextH
     this.charScreenY = this.H * 0.42
     this.app.stage.scale.set(this._zoom)
     this.lavaSimulation?.setViewport(this.W, this.H)
@@ -4565,7 +4573,6 @@ export class GameRenderer {
     this._syncLayerScroll()
 
     renderer.resize(w, h)
-    renderer.render({ container: this.app.stage })
   }
 
   destroy(){

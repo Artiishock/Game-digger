@@ -16,6 +16,8 @@ export const GameCanvas: React.FC<Props> = ({ width, height, onReady }) => {
   const rendererRef = useRef<GameRenderer | null>(null)
   const startRafRef = useRef<number | null>(null)
   const onReadyRef  = useRef(onReady)
+  const showBoundaryRef = useRef(showBoundary)
+  const sizeRef = useRef({ width, height })
 
   const phase  = useGameStore(s => s.phase)
   const events = useGameStore(s => s.events)
@@ -24,6 +26,14 @@ export const GameCanvas: React.FC<Props> = ({ width, height, onReady }) => {
   useEffect(() => {
     onReadyRef.current = onReady
   }, [onReady])
+
+  useEffect(() => {
+    showBoundaryRef.current = showBoundary
+  }, [showBoundary])
+
+  useEffect(() => {
+    sizeRef.current = { width, height }
+  }, [width, height])
 
   // Mount / unmount
   // rAF delay: lets browser paint the canvas and attach a fresh WebGL context
@@ -38,7 +48,8 @@ export const GameCanvas: React.FC<Props> = ({ width, height, onReady }) => {
     const rafId = requestAnimationFrame(() => {
       try {
         if (!canvasRef.current) return
-        renderer = new GameRenderer(canvas, width, height, showBoundary)
+        const { width: initialW, height: initialH } = sizeRef.current
+        renderer = new GameRenderer(canvas, initialW, initialH, (error) => showBoundaryRef.current(error))
         rendererRef.current = renderer
         gameEngine.setRendererInstantFinish(async () => {
           if (!renderer) return
@@ -50,11 +61,11 @@ export const GameCanvas: React.FC<Props> = ({ width, height, onReady }) => {
           })
           .catch(err => {
             console.error('[GameCanvas] renderer init failed:', err)
-            if (!destroyed) showBoundary(err)
+            if (!destroyed) showBoundaryRef.current(err)
           })
       } catch (err) {
         console.error('[GameCanvas] renderer create failed:', err)
-        if (!destroyed) showBoundary(err)
+        if (!destroyed) showBoundaryRef.current(err)
       }
     })
 
@@ -75,7 +86,7 @@ export const GameCanvas: React.FC<Props> = ({ width, height, onReady }) => {
         rendererRef.current = null
       }
     }
-  }, [width, height, showBoundary])
+  }, [])
 
   // Start round when events arrive — deferred one rAF so the browser can paint
   // the BETTING→RUNNING UI transition before startRound() blocks the main thread.
