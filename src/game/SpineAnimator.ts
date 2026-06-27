@@ -1863,7 +1863,7 @@ export class SpineAnimator {
   private static _cacheAtlasTexture(atlasText: string, texture: PIXI.Texture): void {
     for (const raw of atlasText.split('\n')) {
       const line = raw.trim();
-      if (/^[\w.-]+\.png$/i.test(line)) {
+      if (/^[\w.-]+\.(png|webp)$/i.test(line)) {
         if (!Assets.cache.has(line)) Assets.cache.set(line, texture);
       }
     }
@@ -1896,12 +1896,12 @@ export class SpineAnimator {
         load(
           "./animations/Gold/GOLD.atlas.txt",
           "./animations/Gold/GOLD.json",
-          "./animations/Gold/GOLD.png",
+          "./animations/Gold/GOLD.webp",
         ),
         load(
           "./animations/Stone/Stone.atlas.txt",
           "./animations/Stone/Stone.json",
-          "./animations/Stone/Stone.png",
+          "./animations/Stone/Stone.webp",
         ),
       ]);
       this._goldSkeletonData = goldData;
@@ -1936,7 +1936,7 @@ export class SpineAnimator {
 
     try {
       this._heroSkeletonData = await load(
-        "./animations/hero/character_1.atlas",
+        "./animations/hero/character_1.atlas.txt",
         "./animations/hero/character_1.json",
         "./animations/hero/character_1.webp",
       );
@@ -1974,17 +1974,17 @@ export class SpineAnimator {
         load(
           "./animations/coin/props.atlas.txt",
           "./animations/coin/props.json",
-          "./animations/coin/props.png",
+          "./animations/coin/props.webp",
         ),
         load(
           "./animations/bomb/props.atlas.txt",
           "./animations/bomb/props.json",
-          "./animations/bomb/props.png",
+          "./animations/bomb/props.webp",
         ),
         load(
           "./animations/crystal/props.atlas.txt",
           "./animations/crystal/props.json",
-          "./animations/crystal/props.png",
+          "./animations/crystal/props.webp",
         ),
       ]);
 

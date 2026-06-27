@@ -24,7 +24,7 @@ function parseAtlas(text: string): Map<string, FrameInfo> {
   let currentFrame = "";
 
   for (const line of lines) {
-    if (/\.png$/i.test(line)) {
+    if (/\.(png|webp)$/i.test(line)) {
       currentPage = line;
       currentFrame = "";
     } else if (line.startsWith("bounds:") && currentFrame && currentPage) {
@@ -45,6 +45,18 @@ function parseAtlas(text: string): Map<string, FrameInfo> {
   }
 
   return map;
+}
+
+/** Грузит текст атласа лого, пробуя `.atlas.txt` и `.atlas` — имя зависит от настроек упаковщика. */
+async function fetchLogoAtlasText(baseUrl: string): Promise<string> {
+  const stems = ["Full_logo_mono_white.atlas.txt", "Full_logo_mono_white.atlas"];
+  let lastStatus = 0;
+  for (const stem of stems) {
+    const r = await fetch(baseUrl + stem);
+    if (r.ok) return r.text();
+    lastStatus = r.status;
+  }
+  throw new Error(`atlas ${lastStatus}`);
 }
 
 /**
@@ -102,12 +114,7 @@ export const LogoSplashScreen: React.FC<LogoSplashScreenProps> = ({
     (async () => {
       try {
         // 1. Загружаем и парсим atlas
-        const atlasText = await fetch(baseUrl + "Full_logo_mono_white.atlas").then(
-          (r) => {
-            if (!r.ok) throw new Error(`atlas ${r.status}`);
-            return r.text();
-          }
-        );
+        const atlasText = await fetchLogoAtlasText(baseUrl);
         if (cancelled) return;
 
         const frameMap = parseAtlas(atlasText);
