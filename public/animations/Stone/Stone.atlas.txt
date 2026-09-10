@@ -1,0 +1,16 @@
+Stone.webp
+size:1024,1024
+filter:Linear,Linear
+Stone_1
+bounds:737,513,222,251
+rotate:90
+Stone_2
+bounds:738,737,222,251
+Stone_3
+bounds:2,461,253,268
+rotate:90
+Stone_4
+bounds:318,608,380,418
+rotate:90
+dust
+bounds:2,716,314,272

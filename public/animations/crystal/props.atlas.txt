@@ -1,0 +1,5 @@
+props.webp
+size:512,512
+filter:Linear,Linear
+gem
+bounds:2,26,293,269

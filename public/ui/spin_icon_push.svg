@@ -1,0 +1,103 @@
+<svg id="playToStopOnce" width="159" height="159" viewBox="0 0 159 159" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Click works only while Play is visible. After the first click it is disabled. -->
+  <rect id="clickArea" x="0" y="0" width="159" height="159" fill="transparent" pointer-events="all">
+    <set attributeName="pointer-events" begin="clickArea.click" to="none" fill="freeze" />
+  </rect>
+
+  <!-- STOP icon: speed.svg (двойная стрелка >>) вместо красного квадрата. -->
+  <g id="stopIcon" opacity="0" pointer-events="none">
+    <animate
+      attributeName="opacity"
+      begin="clickArea.click+0.06s"
+      dur="0.21s"
+      values="0;0;1"
+      keyTimes="0;0.22;1"
+      calcMode="spline"
+      keySplines="0 0 1 1;0.2 0.8 0.2 1"
+      fill="freeze" />
+
+    <g transform="translate(79.5 79.5)">
+      <!-- Stop rotates slower than it grows and overshoots a little, then returns. -->
+      <animateTransform
+        attributeName="transform"
+        type="rotate"
+        begin="clickArea.click"
+        dur="0.40s"
+        values="-82;4;0"
+        keyTimes="0;0.72;1"
+        calcMode="spline"
+        keySplines="0.16 0.78 0.22 1;0.25 0 0.18 1"
+        additive="sum"
+        fill="freeze" />
+
+      <g>
+        <!-- Stop grows faster than it rotates, with a slight size overshoot. -->
+        <animateTransform
+          attributeName="transform"
+          type="scale"
+          begin="clickArea.click+0.03s"
+          dur="0.23s"
+          values="0.28;1.015;1"
+          keyTimes="0;0.74;1"
+          calcMode="spline"
+          keySplines="0.18 0.86 0.2 1;0.22 0 0.2 1"
+          fill="freeze" />
+
+        <g transform="translate(-59 -59)">
+          <!-- speed.svg (118x118) → scaled to 103x103, positioned at (7.5, 7.5) -->
+          <g transform="translate(7.5 7.5) scale(0.873)">
+            <path d="M60.9539 54.5345C63.4222 57.0032 63.4219 61.0054 60.9534 63.4739L25.6464 98.7802C23.1777 101.249 19.1752 101.249 16.7066 98.7801L7.94654 90.0201C5.47785 87.5514 5.47787 83.5488 7.94659 81.0802L25.5557 63.4714C28.0243 61.0029 28.0245 57.0005 25.556 54.5318L7.94626 36.92C5.47783 34.4513 5.47794 30.449 7.94651 27.9804L16.7066 19.2203C19.1754 16.7515 23.1783 16.7517 25.6469 19.2208L60.9539 54.5345Z" fill="#F1FDFF"/>
+            <path d="M111.522 54.5345C113.99 57.0032 113.99 61.0054 111.521 63.4739L76.2141 98.7802C73.7454 101.249 69.7429 101.249 67.2743 98.7801L58.5142 90.0201C56.0455 87.5514 56.0456 83.5488 58.5143 81.0802L76.1234 63.4714C78.592 61.0029 78.5922 57.0005 76.1237 54.5318L58.5139 36.92C56.0455 34.4513 56.0456 30.449 58.5142 27.9804L67.2743 19.2203C69.7431 16.7515 73.746 16.7517 76.2146 19.2208L111.522 54.5345Z" fill="#F1FDFF"/>
+          </g>
+        </g>
+      </g>
+    </g>
+  </g>
+
+  <!-- PLAY icon: original 159x159 figure. -->
+  <g id="playIcon" opacity="1" pointer-events="none">
+    <animate
+      attributeName="opacity"
+      begin="clickArea.click"
+      dur="0.23s"
+      values="1;1;0"
+      keyTimes="0;0.22;1"
+      calcMode="spline"
+      keySplines="0 0 1 1;0.24 0.78 0.18 1"
+      fill="freeze" />
+
+    <g transform="translate(79.5 79.5)">
+      <!-- Magnet first leans backward, then spins forward. -->
+      <animateTransform
+        attributeName="transform"
+        type="rotate"
+        begin="clickArea.click"
+        dur="0.40s"
+        values="0;-17;360"
+        keyTimes="0;0.11;1"
+        calcMode="spline"
+        keySplines="0.55 0 0.85 0.22;0.16 0.86 0.18 1"
+        additive="sum"
+        fill="freeze" />
+
+      <g>
+        <!-- Magnet shrinks faster than it rotates. -->
+        <animateTransform
+          attributeName="transform"
+          type="scale"
+          begin="clickArea.click"
+          dur="0.21s"
+          values="1;0.32"
+          keyTimes="0;1"
+          calcMode="spline"
+          keySplines="0.22 0.9 0.18 1"
+          fill="freeze" />
+
+        <g transform="translate(-79.5 -79.5)">
+          <path fill-rule="evenodd" clip-rule="evenodd" d="M97.9272 107.369C102.263 108.127 106.967 108.747 112.032 109.222L101.861 129.544C96.791 129.388 91.9191 129.213 87.162 128.867L97.9272 107.369ZM29.5694 56.6737C36.2341 44.2489 44.0725 36.2385 58.421 32.2108C69.8327 29.0074 83.6686 30.7113 94.323 36.4907C97.3913 38.1551 100.232 39.9372 102.899 41.827L90.591 66.0945C78.2568 60.2491 68.8426 62.7133 63.3869 73.6076C56.5475 87.2666 64.0439 97.9722 84.4641 104.222L72.9924 127.131C66.0856 125.859 59.2468 123.86 52.1982 120.615C41.1884 115.546 31.5367 105.488 27.2655 94.4314C21.8949 80.5291 23.6129 69.4536 29.5694 56.6737Z" fill="#F2FDFF" />
+          <path d="M141.065 75.4797L96.8318 78.9099L118.148 37.4908L141.065 75.4797Z" fill="#F2FDFF" />
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>

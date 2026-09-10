@@ -1,0 +1,17 @@
+GOLD.webp
+size:1024,1024
+filter:Linear,Linear
+Gold_1
+bounds:771,408,247,251
+rotate:90
+Gold_2
+bounds:782,771,222,251
+Gold_3
+bounds:289,363,257,268
+rotate:270
+Gold_4
+bounds:411,604,369,418
+glow
+bounds:2,441,182,170
+glow_vfx
+bounds:2,613,407,409

@@ -1,0 +1,8 @@
+props.webp
+size:1024,1024
+filter:Linear,Linear
+bomb Copy
+bounds:483,423,407,347
+rotate:90
+warning
+bounds:2,422,479,408

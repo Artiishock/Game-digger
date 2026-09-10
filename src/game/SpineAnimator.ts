@@ -1,0 +1,2398 @@
+/**
+ * SpineAnimator — загружает скелет DeepRush_Items и раздаёт
+ * анимированные инстансы для монет, золота, алмазов, бомб и камней.
+ *
+ * Использование:
+ *   await SpineAnimator.load()      — вызвать 1 раз при старте
+ *   SpineAnimator.createItem(type)  — контейнер с анимацией (или null если не загружен)
+ *   SpineAnimator.tick(dt)          — в основном тике, dt в секундах
+ *   SpineAnimator.ready             — true если skeleton загружен
+ */
+
+import * as PIXI from "pixi.js";
+import { Assets } from "pixi.js";
+import { Spine, TextureAtlas, SpineTexture, SkeletonJson, AtlasAttachmentLoader } from "@esotericsoftware/spine-pixi-v8";
+import type { EventType } from "../rgs/client";
+import { TILE } from "./Tileworld";
+import { GameConfig } from "./GameConfig";
+
+/** Отключить Spine: пикапы и персонаж — PNG из public/assets */
+const USE_SPINE = true;
+
+// ─── Маппинг EventType → имя анимации ────────────────────────────────────────
+
+const ANIM_MAP: Partial<Record<EventType, string>> = {
+  COIN: "coin_idle",
+  GOLD_TICK: "gold/gold_idle",
+  DIAMOND: "diamond_idle",
+  BOMB: "bomb_idle",
+  STONE_TICK: "rock/rock_idle",
+};
+
+// Анимации персонажа
+export const CHAR_ANIM = {
+  idle: "character_idle",
+  action: "character_action",
+  tornadoShow: "tornado_show",
+  tornadoIdle: "tornado_idle",
+};
+
+// Анимации камня по стадиям
+export const ROCK_ANIM = {
+  idle: "rock/rock_idle",
+  state1: "rock/rock_state1",
+  state2: "rock/rock_state2",
+  action: "rock/rock_action",
+};
+
+// Анимации золота по стадиям
+export const GOLD_ANIM = {
+  idle: "gold/gold_idle",
+  state2: "gold/gold_state2",
+  state3: "gold/gold_state3",
+  action: "gold/gold_action",
+};
+
+// Анимации из отдельных Spine-файлов (animations/Gold/GOLD.json и animations/Stone/Stone.json)
+// Используем только стейты 1, 2 и 4:
+//   stage_01 — дефолтное состояние (idle)
+//   stage_02 — персонаж начинает бурить
+//   stage_04 — персонаж пробурил
+export const GOLD_STAGE = {
+  idle: "stage_01",
+  drill: "stage_02",
+  done: "stage_04",
+};
+
+export const STONE_STAGE = {
+  idle: "stage_01",
+  drill: "stage_02",
+  done: "stage_04",
+};
+
+export const DIRT_ANIM = {
+  show: "dirt_show",
+  idle: "dirt_idle",
+};
+
+export const HERO_ANIM = {
+  idle: "idle",
+  digLoop: "loop_1",
+  digAltLoop: "loop_2",
+  start: "start_2",
+  startAlt: "start_1",
+  die: "die",
+};
+
+// Длительность финальной action-анимации (фиксированная)
+export const BREAK_ACTION_DURATION = 1.0;
+
+// ─── Масштаб: Spine-юниты → пиксели ──────────────────────────────────────────
+// coin в Spine ≈ 480 ед. при scale=1, coin_main.scaleX=0.5 → ~240 ед.
+// Нам нужно ~50px → scale ≈ 0.20
+
+/**
+ * Масштаб пропов читаем из GameConfig.itemScale — единая точка настройки.
+ * Этот объект — прокси-геттер, чтобы изменения подхватывались без перезапуска.
+ */
+const ITEM_SCALE: Partial<Record<EventType, number>> = new Proxy({} as any, {
+  get(_, prop: string) {
+    return GameConfig.itemScale[prop];
+  },
+});
+
+// Компенсация смещения origin-кости в Spine-скелете.
+// coin_main: x=-1368.4 от origin → монета рендерится левее центра контейнера.
+// Прибавляем -offset * scale, чтобы визуал совпал с позицией gfx.
+const ITEM_SPINE_OFFSET: Partial<Record<EventType, { x: number; y: number }>> =
+  {
+    COIN: { x: -1368.4, y: 0 }, // coin_main.x в Spine-единицах
+  };
+
+// ─── SpineAnimator ────────────────────────────────────────────────────────────
+
+// Слоты с дефолтными аттачментами которые должны быть скрыты для каждой анимации.
+// Spine при loop восстанавливает дефолт на 1 кадр — мы принудительно обнуляем их после update().
+// Сгенерировано из DeepRush_Items.json на основе слотов с null в t=0 keyframe.
+const ANIM_NULL_SLOTS: Record<string, string[]> = {
+  coin_idle: [
+    "body",
+    "bomb_body",
+    "bomb_flare_particle1",
+    "bomb_flare_particle2",
+    "bomb_flare_particle3",
+    "bomb_flare_particle4",
+    "bomb_flare_particle5",
+    "bomb_flare_particle6",
+    "bomb_flare_particle7",
+    "bomb_flare_particle8",
+    "bomb_flare_particle9",
+    "bomb_flare_particle10",
+    "bomb_flare_particle11",
+    "bomb_flare_particle12",
+    "bomb_fuse",
+    "bomb_red_light",
+    "bomb_red_light_add",
+    "bomb_star",
+    "bomb_top",
+    "bomb_white_dot",
+    "character_arm_R",
+    "character_arm_R2",
+    "character_body",
+    "character_glasses",
+    "character_hat",
+    "character_head",
+    "character_leg_R",
+    "character_leg_R2",
+    "char_drill_body",
+    "char_drill_nose",
+    "diamond_back_bot1",
+    "diamond_back_bot2",
+    "diamond_back_bot3",
+    "diamond_back_top1",
+    "diamond_back_top2",
+    "diamond_back_top3",
+    "diamond_back_top4",
+    "diamond_back_top5",
+    "diamond_front_bot1",
+    "diamond_front_bot2",
+    "diamond_front_bot3",
+    "diamond_front_top",
+    "diamond_front_top1",
+    "diamond_front_top2",
+    "diamond_front_top3",
+    "diamond_front_top4",
+    "diamond_front_top5",
+    "dirt_body",
+    "dirt_body_rocks",
+    "dirt_body_rocks2",
+    "dirt_rock1",
+    "dirt_rock2",
+    "dirt_rock3",
+    "dirt_rock4",
+    "dirt_rock6",
+    "dirt_rock7",
+    "dirt_rock8",
+    "dirt_rock9",
+    "dirt_rock10",
+    "dirt_rock11",
+    "dirt_rock13",
+    "drill_rocks_L1",
+    "drill_rocks_L2",
+    "drill_rocks_R1",
+    "drill_rocks_R2",
+    "drill_stripe1",
+    "drill_stripe2",
+    "drill_stripe3",
+    "drill_stripe4",
+    "drill_stripe5",
+    "drill_stripe6",
+    "drill_stripe7",
+    "drill_stripe8",
+    "rock_part1",
+    "rock_part2",
+    "rock_part3",
+    "rock_part4",
+    "rock_part5",
+    "rock_part6",
+    "rock_part7",
+    "rock_part8",
+    "rock_part9",
+    "rock_part10",
+    "rock_part11",
+    "rock_part12",
+    "tornado1",
+    "tornado2",
+    "tornado3",
+    "tornado4",
+    "tornado5",
+    "tornado6",
+    "tornado7",
+    "tornado8",
+    "tornado9",
+    "tornado10",
+    "tornado11",
+    "tornado12",
+    "tornado13",
+    "tornado14",
+    "tornado_dot1",
+    "tornado_dot2",
+    "tornado_dot3",
+    "tornado_dot4",
+    "tornado_dot5",
+  ],
+  "gold/gold_idle": [
+    "bomb_body",
+    "bomb_flare_particle1",
+    "bomb_flare_particle2",
+    "bomb_flare_particle3",
+    "bomb_flare_particle4",
+    "bomb_flare_particle5",
+    "bomb_flare_particle6",
+    "bomb_flare_particle7",
+    "bomb_flare_particle8",
+    "bomb_flare_particle9",
+    "bomb_flare_particle10",
+    "bomb_flare_particle11",
+    "bomb_flare_particle12",
+    "bomb_fuse",
+    "bomb_red_light",
+    "bomb_red_light_add",
+    "bomb_star",
+    "bomb_top",
+    "bomb_white_dot",
+    "character_arm_R",
+    "character_arm_R2",
+    "character_body",
+    "character_glasses",
+    "character_hat",
+    "character_head",
+    "character_leg_R",
+    "character_leg_R2",
+    "char_drill_body",
+    "char_drill_nose",
+    "coin_back",
+    "coin_back2",
+    "coin_front",
+    "coin_front2",
+    "diamond_back_bot1",
+    "diamond_back_bot2",
+    "diamond_back_bot3",
+    "diamond_back_top1",
+    "diamond_back_top2",
+    "diamond_back_top3",
+    "diamond_back_top4",
+    "diamond_back_top5",
+    "diamond_front_bot1",
+    "diamond_front_bot2",
+    "diamond_front_bot3",
+    "diamond_front_top",
+    "diamond_front_top1",
+    "diamond_front_top2",
+    "diamond_front_top3",
+    "diamond_front_top4",
+    "diamond_front_top5",
+    "dirt_body",
+    "dirt_body_rocks",
+    "dirt_body_rocks2",
+    "dirt_rock1",
+    "dirt_rock2",
+    "dirt_rock3",
+    "dirt_rock4",
+    "dirt_rock6",
+    "dirt_rock7",
+    "dirt_rock8",
+    "dirt_rock9",
+    "dirt_rock10",
+    "dirt_rock11",
+    "dirt_rock13",
+    "drill_rocks_L1",
+    "drill_rocks_L2",
+    "drill_rocks_R1",
+    "drill_rocks_R2",
+    "drill_stripe1",
+    "drill_stripe2",
+    "drill_stripe3",
+    "drill_stripe4",
+    "drill_stripe5",
+    "drill_stripe6",
+    "drill_stripe7",
+    "drill_stripe8",
+    "rock_part1",
+    "rock_part2",
+    "rock_part3",
+    "rock_part4",
+    "rock_part5",
+    "rock_part6",
+    "rock_part7",
+    "rock_part8",
+    "rock_part9",
+    "rock_part10",
+    "rock_part11",
+    "rock_part12",
+    "side_left",
+    "side_right",
+    "tornado1",
+    "tornado2",
+    "tornado3",
+    "tornado4",
+    "tornado5",
+    "tornado6",
+    "tornado7",
+    "tornado8",
+    "tornado9",
+    "tornado10",
+    "tornado11",
+    "tornado12",
+    "tornado13",
+    "tornado14",
+    "tornado_dot1",
+    "tornado_dot2",
+    "tornado_dot3",
+    "tornado_dot4",
+    "tornado_dot5",
+  ],
+  "gold/gold_state2": [
+    "bomb_body",
+    "bomb_flare_particle1",
+    "bomb_flare_particle2",
+    "bomb_flare_particle3",
+    "bomb_flare_particle4",
+    "bomb_flare_particle5",
+    "bomb_flare_particle6",
+    "bomb_flare_particle7",
+    "bomb_flare_particle8",
+    "bomb_flare_particle9",
+    "bomb_flare_particle10",
+    "bomb_flare_particle11",
+    "bomb_flare_particle12",
+    "bomb_fuse",
+    "bomb_red_light",
+    "bomb_red_light_add",
+    "bomb_star",
+    "bomb_top",
+    "bomb_white_dot",
+    "character_arm_R",
+    "character_arm_R2",
+    "character_body",
+    "character_glasses",
+    "character_hat",
+    "character_head",
+    "character_leg_R",
+    "character_leg_R2",
+    "char_drill_body",
+    "char_drill_nose",
+    "coin_back",
+    "coin_back2",
+    "coin_front",
+    "coin_front2",
+    "diamond_back_bot1",
+    "diamond_back_bot2",
+    "diamond_back_bot3",
+    "diamond_back_top1",
+    "diamond_back_top2",
+    "diamond_back_top3",
+    "diamond_back_top4",
+    "diamond_back_top5",
+    "diamond_front_bot1",
+    "diamond_front_bot2",
+    "diamond_front_bot3",
+    "diamond_front_top",
+    "diamond_front_top1",
+    "diamond_front_top2",
+    "diamond_front_top3",
+    "diamond_front_top4",
+    "diamond_front_top5",
+    "dirt_body",
+    "dirt_body_rocks",
+    "dirt_body_rocks2",
+    "dirt_rock1",
+    "dirt_rock2",
+    "dirt_rock3",
+    "dirt_rock4",
+    "dirt_rock6",
+    "dirt_rock7",
+    "dirt_rock8",
+    "dirt_rock9",
+    "dirt_rock10",
+    "dirt_rock11",
+    "dirt_rock13",
+    "drill_rocks_L1",
+    "drill_rocks_L2",
+    "drill_rocks_R1",
+    "drill_rocks_R2",
+    "drill_stripe1",
+    "drill_stripe2",
+    "drill_stripe3",
+    "drill_stripe4",
+    "drill_stripe5",
+    "drill_stripe6",
+    "drill_stripe7",
+    "drill_stripe8",
+    "rock_part1",
+    "rock_part2",
+    "rock_part3",
+    "rock_part4",
+    "rock_part5",
+    "rock_part6",
+    "rock_part7",
+    "rock_part8",
+    "rock_part9",
+    "rock_part10",
+    "rock_part11",
+    "rock_part12",
+    "side_left",
+    "side_right",
+    "tornado1",
+    "tornado2",
+    "tornado3",
+    "tornado4",
+    "tornado5",
+    "tornado6",
+    "tornado7",
+    "tornado8",
+    "tornado9",
+    "tornado10",
+    "tornado11",
+    "tornado12",
+    "tornado13",
+    "tornado14",
+    "tornado_dot1",
+    "tornado_dot2",
+    "tornado_dot3",
+    "tornado_dot4",
+    "tornado_dot5",
+  ],
+  "gold/gold_state3": [
+    "bomb_body",
+    "bomb_flare_particle1",
+    "bomb_flare_particle2",
+    "bomb_flare_particle3",
+    "bomb_flare_particle4",
+    "bomb_flare_particle5",
+    "bomb_flare_particle6",
+    "bomb_flare_particle7",
+    "bomb_flare_particle8",
+    "bomb_flare_particle9",
+    "bomb_flare_particle10",
+    "bomb_flare_particle11",
+    "bomb_flare_particle12",
+    "bomb_fuse",
+    "bomb_red_light",
+    "bomb_red_light_add",
+    "bomb_star",
+    "bomb_top",
+    "bomb_white_dot",
+    "character_arm_R",
+    "character_arm_R2",
+    "character_body",
+    "character_glasses",
+    "character_hat",
+    "character_head",
+    "character_leg_R",
+    "character_leg_R2",
+    "char_drill_body",
+    "char_drill_nose",
+    "coin_back",
+    "coin_back2",
+    "coin_front",
+    "coin_front2",
+    "diamond_back_bot1",
+    "diamond_back_bot2",
+    "diamond_back_bot3",
+    "diamond_back_top1",
+    "diamond_back_top2",
+    "diamond_back_top3",
+    "diamond_back_top4",
+    "diamond_back_top5",
+    "diamond_front_bot1",
+    "diamond_front_bot2",
+    "diamond_front_bot3",
+    "diamond_front_top",
+    "diamond_front_top1",
+    "diamond_front_top2",
+    "diamond_front_top3",
+    "diamond_front_top4",
+    "diamond_front_top5",
+    "dirt_body",
+    "dirt_body_rocks",
+    "dirt_body_rocks2",
+    "dirt_rock1",
+    "dirt_rock2",
+    "dirt_rock3",
+    "dirt_rock4",
+    "dirt_rock6",
+    "dirt_rock7",
+    "dirt_rock8",
+    "dirt_rock9",
+    "dirt_rock10",
+    "dirt_rock11",
+    "dirt_rock13",
+    "drill_rocks_L1",
+    "drill_rocks_L2",
+    "drill_rocks_R1",
+    "drill_rocks_R2",
+    "drill_stripe1",
+    "drill_stripe2",
+    "drill_stripe3",
+    "drill_stripe4",
+    "drill_stripe5",
+    "drill_stripe6",
+    "drill_stripe7",
+    "drill_stripe8",
+    "side_left",
+    "side_right",
+    "tornado1",
+    "tornado2",
+    "tornado3",
+    "tornado4",
+    "tornado5",
+    "tornado6",
+    "tornado7",
+    "tornado8",
+    "tornado9",
+    "tornado10",
+    "tornado11",
+    "tornado12",
+    "tornado13",
+    "tornado14",
+    "tornado_dot1",
+    "tornado_dot2",
+    "tornado_dot3",
+    "tornado_dot4",
+    "tornado_dot5",
+  ],
+  "gold/gold_action": [
+    "body",
+    "bomb_body",
+    "bomb_flare_particle1",
+    "bomb_flare_particle2",
+    "bomb_flare_particle3",
+    "bomb_flare_particle4",
+    "bomb_flare_particle5",
+    "bomb_flare_particle6",
+    "bomb_flare_particle7",
+    "bomb_flare_particle8",
+    "bomb_flare_particle9",
+    "bomb_flare_particle10",
+    "bomb_flare_particle11",
+    "bomb_flare_particle12",
+    "bomb_fuse",
+    "bomb_red_light",
+    "bomb_red_light_add",
+    "bomb_star",
+    "bomb_top",
+    "bomb_white_dot",
+    "character_arm_R",
+    "character_arm_R2",
+    "character_body",
+    "character_glasses",
+    "character_hat",
+    "character_head",
+    "character_leg_R",
+    "character_leg_R2",
+    "char_drill_body",
+    "char_drill_nose",
+    "coin_back",
+    "coin_back2",
+    "coin_front",
+    "coin_front2",
+    "diamond_back_bot1",
+    "diamond_back_bot2",
+    "diamond_back_bot3",
+    "diamond_back_top1",
+    "diamond_back_top2",
+    "diamond_back_top3",
+    "diamond_back_top4",
+    "diamond_back_top5",
+    "diamond_front_bot1",
+    "diamond_front_bot2",
+    "diamond_front_bot3",
+    "diamond_front_top",
+    "diamond_front_top1",
+    "diamond_front_top2",
+    "diamond_front_top3",
+    "diamond_front_top4",
+    "diamond_front_top5",
+    "dirt_body",
+    "dirt_body_rocks",
+    "dirt_body_rocks2",
+    "dirt_rock1",
+    "dirt_rock2",
+    "dirt_rock3",
+    "dirt_rock4",
+    "dirt_rock6",
+    "dirt_rock7",
+    "dirt_rock8",
+    "dirt_rock9",
+    "dirt_rock10",
+    "dirt_rock11",
+    "dirt_rock13",
+    "drill_rocks_L1",
+    "drill_rocks_L2",
+    "drill_rocks_R1",
+    "drill_rocks_R2",
+    "drill_stripe1",
+    "drill_stripe2",
+    "drill_stripe3",
+    "drill_stripe4",
+    "drill_stripe5",
+    "drill_stripe6",
+    "drill_stripe7",
+    "drill_stripe8",
+    "side_left",
+    "side_right",
+    "tornado1",
+    "tornado2",
+    "tornado3",
+    "tornado4",
+    "tornado5",
+    "tornado6",
+    "tornado7",
+    "tornado8",
+    "tornado9",
+    "tornado10",
+    "tornado11",
+    "tornado12",
+    "tornado13",
+    "tornado14",
+    "tornado_dot1",
+    "tornado_dot2",
+    "tornado_dot3",
+    "tornado_dot4",
+    "tornado_dot5",
+  ],
+  "rock/rock_idle": [
+    "bomb_body",
+    "bomb_flare_particle1",
+    "bomb_flare_particle2",
+    "bomb_flare_particle3",
+    "bomb_flare_particle4",
+    "bomb_flare_particle5",
+    "bomb_flare_particle6",
+    "bomb_flare_particle7",
+    "bomb_flare_particle8",
+    "bomb_flare_particle9",
+    "bomb_flare_particle10",
+    "bomb_flare_particle11",
+    "bomb_flare_particle12",
+    "bomb_fuse",
+    "bomb_red_light",
+    "bomb_red_light_add",
+    "bomb_star",
+    "bomb_top",
+    "bomb_white_dot",
+    "character_arm_R",
+    "character_arm_R2",
+    "character_body",
+    "character_glasses",
+    "character_hat",
+    "character_head",
+    "character_leg_R",
+    "character_leg_R2",
+    "char_drill_body",
+    "char_drill_nose",
+    "coin_back",
+    "coin_back2",
+    "coin_front",
+    "coin_front2",
+    "diamond_back_bot1",
+    "diamond_back_bot2",
+    "diamond_back_bot3",
+    "diamond_back_top1",
+    "diamond_back_top2",
+    "diamond_back_top3",
+    "diamond_back_top4",
+    "diamond_back_top5",
+    "diamond_front_bot1",
+    "diamond_front_bot2",
+    "diamond_front_bot3",
+    "diamond_front_top",
+    "diamond_front_top1",
+    "diamond_front_top2",
+    "diamond_front_top3",
+    "diamond_front_top4",
+    "diamond_front_top5",
+    "dirt_body",
+    "dirt_body_rocks",
+    "dirt_body_rocks2",
+    "dirt_rock1",
+    "dirt_rock2",
+    "dirt_rock3",
+    "dirt_rock4",
+    "dirt_rock6",
+    "dirt_rock7",
+    "dirt_rock8",
+    "dirt_rock9",
+    "dirt_rock10",
+    "dirt_rock11",
+    "dirt_rock13",
+    "drill_rocks_L1",
+    "drill_rocks_L2",
+    "drill_rocks_R1",
+    "drill_rocks_R2",
+    "drill_stripe1",
+    "drill_stripe2",
+    "drill_stripe3",
+    "drill_stripe4",
+    "drill_stripe5",
+    "drill_stripe6",
+    "drill_stripe7",
+    "drill_stripe8",
+    "rock_part1",
+    "rock_part2",
+    "rock_part3",
+    "rock_part4",
+    "rock_part5",
+    "rock_part6",
+    "rock_part7",
+    "rock_part8",
+    "rock_part9",
+    "rock_part10",
+    "rock_part11",
+    "rock_part12",
+    "side_left",
+    "side_right",
+    "tornado1",
+    "tornado2",
+    "tornado3",
+    "tornado4",
+    "tornado5",
+    "tornado6",
+    "tornado7",
+    "tornado8",
+    "tornado9",
+    "tornado10",
+    "tornado11",
+    "tornado12",
+    "tornado13",
+    "tornado14",
+    "tornado_dot1",
+    "tornado_dot2",
+    "tornado_dot3",
+    "tornado_dot4",
+    "tornado_dot5",
+  ],
+  "rock/rock_state1": [
+    "bomb_body",
+    "bomb_flare_particle1",
+    "bomb_flare_particle2",
+    "bomb_flare_particle3",
+    "bomb_flare_particle4",
+    "bomb_flare_particle5",
+    "bomb_flare_particle6",
+    "bomb_flare_particle7",
+    "bomb_flare_particle8",
+    "bomb_flare_particle9",
+    "bomb_flare_particle10",
+    "bomb_flare_particle11",
+    "bomb_flare_particle12",
+    "bomb_fuse",
+    "bomb_red_light",
+    "bomb_red_light_add",
+    "bomb_star",
+    "bomb_top",
+    "bomb_white_dot",
+    "character_arm_R",
+    "character_arm_R2",
+    "character_body",
+    "character_glasses",
+    "character_hat",
+    "character_head",
+    "character_leg_R",
+    "character_leg_R2",
+    "char_drill_body",
+    "char_drill_nose",
+    "coin_back",
+    "coin_back2",
+    "coin_front",
+    "coin_front2",
+    "diamond_back_bot1",
+    "diamond_back_bot2",
+    "diamond_back_bot3",
+    "diamond_back_top1",
+    "diamond_back_top2",
+    "diamond_back_top3",
+    "diamond_back_top4",
+    "diamond_back_top5",
+    "diamond_front_bot1",
+    "diamond_front_bot2",
+    "diamond_front_bot3",
+    "diamond_front_top",
+    "diamond_front_top1",
+    "diamond_front_top2",
+    "diamond_front_top3",
+    "diamond_front_top4",
+    "diamond_front_top5",
+    "dirt_body",
+    "dirt_body_rocks",
+    "dirt_body_rocks2",
+    "dirt_rock1",
+    "dirt_rock2",
+    "dirt_rock3",
+    "dirt_rock4",
+    "dirt_rock6",
+    "dirt_rock7",
+    "dirt_rock8",
+    "dirt_rock9",
+    "dirt_rock10",
+    "dirt_rock11",
+    "dirt_rock13",
+    "drill_rocks_L1",
+    "drill_rocks_L2",
+    "drill_rocks_R1",
+    "drill_rocks_R2",
+    "drill_stripe1",
+    "drill_stripe2",
+    "drill_stripe3",
+    "drill_stripe4",
+    "drill_stripe5",
+    "drill_stripe6",
+    "drill_stripe7",
+    "drill_stripe8",
+    "rock_part1",
+    "rock_part2",
+    "rock_part3",
+    "rock_part4",
+    "rock_part5",
+    "rock_part6",
+    "rock_part7",
+    "rock_part8",
+    "rock_part9",
+    "rock_part10",
+    "rock_part11",
+    "rock_part12",
+    "side_left",
+    "side_right",
+    "tornado1",
+    "tornado2",
+    "tornado3",
+    "tornado4",
+    "tornado5",
+    "tornado6",
+    "tornado7",
+    "tornado8",
+    "tornado9",
+    "tornado10",
+    "tornado11",
+    "tornado12",
+    "tornado13",
+    "tornado14",
+    "tornado_dot1",
+    "tornado_dot2",
+    "tornado_dot3",
+    "tornado_dot4",
+    "tornado_dot5",
+  ],
+  "rock/rock_state2": [
+    "bomb_body",
+    "bomb_flare_particle1",
+    "bomb_flare_particle2",
+    "bomb_flare_particle3",
+    "bomb_flare_particle4",
+    "bomb_flare_particle5",
+    "bomb_flare_particle6",
+    "bomb_flare_particle7",
+    "bomb_flare_particle8",
+    "bomb_flare_particle9",
+    "bomb_flare_particle10",
+    "bomb_flare_particle11",
+    "bomb_flare_particle12",
+    "bomb_fuse",
+    "bomb_red_light",
+    "bomb_red_light_add",
+    "bomb_star",
+    "bomb_top",
+    "bomb_white_dot",
+    "character_arm_R",
+    "character_arm_R2",
+    "character_body",
+    "character_glasses",
+    "character_hat",
+    "character_head",
+    "character_leg_R",
+    "character_leg_R2",
+    "char_drill_body",
+    "char_drill_nose",
+    "coin_back",
+    "coin_back2",
+    "coin_front",
+    "coin_front2",
+    "diamond_back_bot1",
+    "diamond_back_bot2",
+    "diamond_back_bot3",
+    "diamond_back_top1",
+    "diamond_back_top2",
+    "diamond_back_top3",
+    "diamond_back_top4",
+    "diamond_back_top5",
+    "diamond_front_bot1",
+    "diamond_front_bot2",
+    "diamond_front_bot3",
+    "diamond_front_top",
+    "diamond_front_top1",
+    "diamond_front_top2",
+    "diamond_front_top3",
+    "diamond_front_top4",
+    "diamond_front_top5",
+    "dirt_body",
+    "dirt_body_rocks",
+    "dirt_body_rocks2",
+    "dirt_rock1",
+    "dirt_rock2",
+    "dirt_rock3",
+    "dirt_rock4",
+    "dirt_rock6",
+    "dirt_rock7",
+    "dirt_rock8",
+    "dirt_rock9",
+    "dirt_rock10",
+    "dirt_rock11",
+    "dirt_rock13",
+    "drill_rocks_L1",
+    "drill_rocks_L2",
+    "drill_rocks_R1",
+    "drill_rocks_R2",
+    "drill_stripe1",
+    "drill_stripe2",
+    "drill_stripe3",
+    "drill_stripe4",
+    "drill_stripe5",
+    "drill_stripe6",
+    "drill_stripe7",
+    "drill_stripe8",
+    "side_left",
+    "side_right",
+    "tornado1",
+    "tornado2",
+    "tornado3",
+    "tornado4",
+    "tornado5",
+    "tornado6",
+    "tornado7",
+    "tornado8",
+    "tornado9",
+    "tornado10",
+    "tornado11",
+    "tornado12",
+    "tornado13",
+    "tornado14",
+    "tornado_dot1",
+    "tornado_dot2",
+    "tornado_dot3",
+    "tornado_dot4",
+    "tornado_dot5",
+  ],
+  "rock/rock_action": [
+    "bomb_body",
+    "bomb_flare_particle1",
+    "bomb_flare_particle2",
+    "bomb_flare_particle3",
+    "bomb_flare_particle4",
+    "bomb_flare_particle5",
+    "bomb_flare_particle6",
+    "bomb_flare_particle7",
+    "bomb_flare_particle8",
+    "bomb_flare_particle9",
+    "bomb_flare_particle10",
+    "bomb_flare_particle11",
+    "bomb_flare_particle12",
+    "bomb_fuse",
+    "bomb_red_light",
+    "bomb_red_light_add",
+    "bomb_star",
+    "bomb_top",
+    "bomb_white_dot",
+    "character_arm_R",
+    "character_arm_R2",
+    "character_body",
+    "character_glasses",
+    "character_hat",
+    "character_head",
+    "character_leg_R",
+    "character_leg_R2",
+    "char_drill_body",
+    "char_drill_nose",
+    "coin_back",
+    "coin_back2",
+    "coin_front",
+    "coin_front2",
+    "diamond_back_bot1",
+    "diamond_back_bot2",
+    "diamond_back_bot3",
+    "diamond_back_top1",
+    "diamond_back_top2",
+    "diamond_back_top3",
+    "diamond_back_top4",
+    "diamond_back_top5",
+    "diamond_front_bot1",
+    "diamond_front_bot2",
+    "diamond_front_bot3",
+    "diamond_front_top",
+    "diamond_front_top1",
+    "diamond_front_top2",
+    "diamond_front_top3",
+    "diamond_front_top4",
+    "diamond_front_top5",
+    "dirt_body",
+    "dirt_body_rocks",
+    "dirt_body_rocks2",
+    "dirt_rock1",
+    "dirt_rock2",
+    "dirt_rock3",
+    "dirt_rock4",
+    "dirt_rock6",
+    "dirt_rock7",
+    "dirt_rock8",
+    "dirt_rock9",
+    "dirt_rock10",
+    "dirt_rock11",
+    "dirt_rock13",
+    "drill_rocks_L1",
+    "drill_rocks_L2",
+    "drill_rocks_R1",
+    "drill_rocks_R2",
+    "drill_stripe1",
+    "drill_stripe2",
+    "drill_stripe3",
+    "drill_stripe4",
+    "drill_stripe5",
+    "drill_stripe6",
+    "drill_stripe7",
+    "drill_stripe8",
+    "side_left",
+    "side_right",
+    "tornado1",
+    "tornado2",
+    "tornado3",
+    "tornado4",
+    "tornado5",
+    "tornado6",
+    "tornado7",
+    "tornado8",
+    "tornado9",
+    "tornado10",
+    "tornado11",
+    "tornado12",
+    "tornado13",
+    "tornado14",
+    "tornado_dot1",
+    "tornado_dot2",
+    "tornado_dot3",
+    "tornado_dot4",
+    "tornado_dot5",
+  ],
+  diamond_idle: [
+    "body",
+    "bomb_body",
+    "bomb_flare_particle1",
+    "bomb_flare_particle2",
+    "bomb_flare_particle3",
+    "bomb_flare_particle4",
+    "bomb_flare_particle5",
+    "bomb_flare_particle6",
+    "bomb_flare_particle7",
+    "bomb_flare_particle8",
+    "bomb_flare_particle9",
+    "bomb_flare_particle10",
+    "bomb_flare_particle11",
+    "bomb_flare_particle12",
+    "bomb_fuse",
+    "bomb_red_light",
+    "bomb_red_light_add",
+    "bomb_star",
+    "bomb_top",
+    "bomb_white_dot",
+    "character_arm_R",
+    "character_arm_R2",
+    "character_body",
+    "character_glasses",
+    "character_hat",
+    "character_head",
+    "character_leg_R",
+    "character_leg_R2",
+    "char_drill_body",
+    "char_drill_nose",
+    "coin_back",
+    "coin_back2",
+    "coin_front",
+    "coin_front2",
+    "diamond_front_top1",
+    "diamond_front_top2",
+    "diamond_front_top3",
+    "diamond_front_top4",
+    "diamond_front_top5",
+    "dirt_body",
+    "dirt_body_rocks",
+    "dirt_body_rocks2",
+    "dirt_rock1",
+    "dirt_rock2",
+    "dirt_rock3",
+    "dirt_rock4",
+    "dirt_rock6",
+    "dirt_rock7",
+    "dirt_rock8",
+    "dirt_rock9",
+    "dirt_rock10",
+    "dirt_rock11",
+    "dirt_rock13",
+    "drill_rocks_L1",
+    "drill_rocks_L2",
+    "drill_rocks_R1",
+    "drill_rocks_R2",
+    "drill_stripe1",
+    "drill_stripe2",
+    "drill_stripe3",
+    "drill_stripe4",
+    "drill_stripe5",
+    "drill_stripe6",
+    "drill_stripe7",
+    "drill_stripe8",
+    "rock_part1",
+    "rock_part2",
+    "rock_part3",
+    "rock_part4",
+    "rock_part5",
+    "rock_part6",
+    "rock_part7",
+    "rock_part8",
+    "rock_part9",
+    "rock_part10",
+    "rock_part11",
+    "rock_part12",
+    "side_left",
+    "side_right",
+    "tornado1",
+    "tornado2",
+    "tornado3",
+    "tornado4",
+    "tornado5",
+    "tornado6",
+    "tornado7",
+    "tornado8",
+    "tornado9",
+    "tornado10",
+    "tornado11",
+    "tornado12",
+    "tornado13",
+    "tornado14",
+    "tornado_dot1",
+    "tornado_dot2",
+    "tornado_dot3",
+    "tornado_dot4",
+    "tornado_dot5",
+  ],
+  bomb_idle: [
+    "body",
+    "character_arm_R",
+    "character_arm_R2",
+    "character_body",
+    "character_glasses",
+    "character_hat",
+    "character_head",
+    "character_leg_R",
+    "character_leg_R2",
+    "char_drill_body",
+    "char_drill_nose",
+    "coin_back",
+    "coin_back2",
+    "coin_front",
+    "coin_front2",
+    "diamond_back_bot1",
+    "diamond_back_bot2",
+    "diamond_back_bot3",
+    "diamond_back_top1",
+    "diamond_back_top2",
+    "diamond_back_top3",
+    "diamond_back_top4",
+    "diamond_back_top5",
+    "diamond_front_bot1",
+    "diamond_front_bot2",
+    "diamond_front_bot3",
+    "diamond_front_top",
+    "diamond_front_top1",
+    "diamond_front_top2",
+    "diamond_front_top3",
+    "diamond_front_top4",
+    "diamond_front_top5",
+    "dirt_body",
+    "dirt_body_rocks",
+    "dirt_body_rocks2",
+    "dirt_rock1",
+    "dirt_rock2",
+    "dirt_rock3",
+    "dirt_rock4",
+    "dirt_rock6",
+    "dirt_rock7",
+    "dirt_rock8",
+    "dirt_rock9",
+    "dirt_rock10",
+    "dirt_rock11",
+    "dirt_rock13",
+    "drill_rocks_L1",
+    "drill_rocks_L2",
+    "drill_rocks_R1",
+    "drill_rocks_R2",
+    "drill_stripe1",
+    "drill_stripe2",
+    "drill_stripe3",
+    "drill_stripe4",
+    "drill_stripe5",
+    "drill_stripe6",
+    "drill_stripe7",
+    "drill_stripe8",
+    "rock_part1",
+    "rock_part2",
+    "rock_part3",
+    "rock_part4",
+    "rock_part5",
+    "rock_part6",
+    "rock_part7",
+    "rock_part8",
+    "rock_part9",
+    "rock_part10",
+    "rock_part11",
+    "rock_part12",
+    "side_left",
+    "side_right",
+    "tornado1",
+    "tornado2",
+    "tornado3",
+    "tornado4",
+    "tornado5",
+    "tornado6",
+    "tornado7",
+    "tornado8",
+    "tornado9",
+    "tornado10",
+    "tornado11",
+    "tornado12",
+    "tornado13",
+    "tornado14",
+    "tornado_dot1",
+    "tornado_dot2",
+    "tornado_dot3",
+    "tornado_dot4",
+    "tornado_dot5",
+  ],
+  character_idle: [
+    "body",
+    "bomb_body",
+    "bomb_flare_particle1",
+    "bomb_flare_particle2",
+    "bomb_flare_particle3",
+    "bomb_flare_particle4",
+    "bomb_flare_particle5",
+    "bomb_flare_particle6",
+    "bomb_flare_particle7",
+    "bomb_flare_particle8",
+    "bomb_flare_particle9",
+    "bomb_flare_particle10",
+    "bomb_flare_particle11",
+    "bomb_flare_particle12",
+    "bomb_fuse",
+    "bomb_red_light",
+    "bomb_red_light_add",
+    "bomb_star",
+    "bomb_top",
+    "bomb_white_dot",
+    "coin_back",
+    "coin_back2",
+    "coin_front",
+    "coin_front2",
+    "diamond_back_bot1",
+    "diamond_back_bot2",
+    "diamond_back_bot3",
+    "diamond_back_top1",
+    "diamond_back_top2",
+    "diamond_back_top3",
+    "diamond_back_top4",
+    "diamond_back_top5",
+    "diamond_front_bot1",
+    "diamond_front_bot2",
+    "diamond_front_bot3",
+    "diamond_front_top",
+    "diamond_front_top1",
+    "diamond_front_top2",
+    "diamond_front_top3",
+    "diamond_front_top4",
+    "diamond_front_top5",
+    "dirt_body",
+    "dirt_body_rocks",
+    "dirt_body_rocks2",
+    "dirt_rock1",
+    "dirt_rock2",
+    "dirt_rock3",
+    "dirt_rock4",
+    "dirt_rock6",
+    "dirt_rock7",
+    "dirt_rock8",
+    "dirt_rock9",
+    "dirt_rock10",
+    "dirt_rock11",
+    "dirt_rock13",
+    "rock_part1",
+    "rock_part2",
+    "rock_part3",
+    "rock_part4",
+    "rock_part5",
+    "rock_part6",
+    "rock_part7",
+    "rock_part8",
+    "rock_part9",
+    "rock_part10",
+    "rock_part11",
+    "rock_part12",
+    "side_left",
+    "side_right",
+    "tornado1",
+    "tornado2",
+    "tornado3",
+    "tornado4",
+    "tornado5",
+    "tornado6",
+    "tornado7",
+    "tornado8",
+    "tornado9",
+    "tornado10",
+    "tornado11",
+    "tornado12",
+    "tornado13",
+    "tornado14",
+    "tornado_dot1",
+    "tornado_dot2",
+    "tornado_dot3",
+    "tornado_dot4",
+    "tornado_dot5",
+  ],
+  character_action: [
+    "body",
+    "bomb_body",
+    "bomb_flare_particle1",
+    "bomb_flare_particle2",
+    "bomb_flare_particle3",
+    "bomb_flare_particle4",
+    "bomb_flare_particle5",
+    "bomb_flare_particle6",
+    "bomb_flare_particle7",
+    "bomb_flare_particle8",
+    "bomb_flare_particle9",
+    "bomb_flare_particle10",
+    "bomb_flare_particle11",
+    "bomb_flare_particle12",
+    "bomb_fuse",
+    "bomb_red_light",
+    "bomb_red_light_add",
+    "bomb_star",
+    "bomb_top",
+    "bomb_white_dot",
+    "character_arm_R",
+    "character_arm_R2",
+    "character_body",
+    "character_glasses",
+    "character_head",
+    "character_leg_R",
+    "char_drill_body",
+    "coin_back",
+    "coin_back2",
+    "coin_front",
+    "coin_front2",
+    "diamond_back_bot1",
+    "diamond_back_bot2",
+    "diamond_back_bot3",
+    "diamond_back_top1",
+    "diamond_back_top2",
+    "diamond_back_top3",
+    "diamond_back_top4",
+    "diamond_back_top5",
+    "diamond_front_bot1",
+    "diamond_front_bot2",
+    "diamond_front_bot3",
+    "diamond_front_top",
+    "diamond_front_top1",
+    "diamond_front_top2",
+    "diamond_front_top3",
+    "diamond_front_top4",
+    "diamond_front_top5",
+    "dirt_body",
+    "dirt_body_rocks",
+    "dirt_body_rocks2",
+    "dirt_rock1",
+    "dirt_rock2",
+    "dirt_rock3",
+    "dirt_rock4",
+    "dirt_rock6",
+    "dirt_rock7",
+    "dirt_rock8",
+    "dirt_rock9",
+    "dirt_rock10",
+    "dirt_rock11",
+    "dirt_rock13",
+    "rock_part1",
+    "rock_part2",
+    "rock_part3",
+    "rock_part4",
+    "rock_part5",
+    "rock_part6",
+    "rock_part7",
+    "rock_part8",
+    "rock_part9",
+    "rock_part10",
+    "rock_part11",
+    "rock_part12",
+    "side_left",
+    "side_right",
+    "tornado1",
+    "tornado2",
+    "tornado3",
+    "tornado4",
+    "tornado5",
+    "tornado6",
+    "tornado7",
+    "tornado8",
+    "tornado9",
+    "tornado10",
+    "tornado11",
+    "tornado12",
+    "tornado13",
+    "tornado14",
+    "tornado_dot1",
+    "tornado_dot2",
+    "tornado_dot3",
+    "tornado_dot4",
+    "tornado_dot5",
+  ],
+  tornado_idle: [
+    "body",
+    "bomb_body",
+    "bomb_flare_particle1",
+    "bomb_flare_particle2",
+    "bomb_flare_particle3",
+    "bomb_flare_particle4",
+    "bomb_flare_particle5",
+    "bomb_flare_particle6",
+    "bomb_flare_particle7",
+    "bomb_flare_particle8",
+    "bomb_flare_particle9",
+    "bomb_flare_particle10",
+    "bomb_flare_particle11",
+    "bomb_flare_particle12",
+    "bomb_fuse",
+    "bomb_red_light",
+    "bomb_red_light_add",
+    "bomb_star",
+    "bomb_top",
+    "bomb_white_dot",
+    "character_arm_R",
+    "character_arm_R2",
+    "character_body",
+    "character_glasses",
+    "character_hat",
+    "character_head",
+    "character_leg_R",
+    "character_leg_R2",
+    "char_drill_body",
+    "coin_back",
+    "coin_back2",
+    "coin_front",
+    "coin_front2",
+    "diamond_back_bot1",
+    "diamond_back_bot2",
+    "diamond_back_bot3",
+    "diamond_back_top1",
+    "diamond_back_top2",
+    "diamond_back_top3",
+    "diamond_back_top4",
+    "diamond_back_top5",
+    "diamond_front_bot1",
+    "diamond_front_bot2",
+    "diamond_front_bot3",
+    "diamond_front_top",
+    "diamond_front_top1",
+    "diamond_front_top2",
+    "diamond_front_top3",
+    "diamond_front_top4",
+    "diamond_front_top5",
+    "dirt_body",
+    "dirt_body_rocks",
+    "dirt_body_rocks2",
+    "dirt_rock1",
+    "dirt_rock2",
+    "dirt_rock3",
+    "dirt_rock4",
+    "dirt_rock6",
+    "dirt_rock7",
+    "dirt_rock8",
+    "dirt_rock9",
+    "dirt_rock10",
+    "dirt_rock11",
+    "dirt_rock13",
+    "drill_rocks_L2",
+    "drill_rocks_R2",
+    "rock_part1",
+    "rock_part2",
+    "rock_part3",
+    "rock_part4",
+    "rock_part5",
+    "rock_part6",
+    "rock_part7",
+    "rock_part8",
+    "rock_part9",
+    "rock_part10",
+    "rock_part11",
+    "rock_part12",
+    "side_left",
+    "side_right",
+  ],
+  tornado_show: [
+    "body",
+    "bomb_body",
+    "bomb_flare_particle1",
+    "bomb_flare_particle2",
+    "bomb_flare_particle3",
+    "bomb_flare_particle4",
+    "bomb_flare_particle5",
+    "bomb_flare_particle6",
+    "bomb_flare_particle7",
+    "bomb_flare_particle8",
+    "bomb_flare_particle9",
+    "bomb_flare_particle10",
+    "bomb_flare_particle11",
+    "bomb_flare_particle12",
+    "bomb_fuse",
+    "bomb_red_light",
+    "bomb_red_light_add",
+    "bomb_star",
+    "bomb_top",
+    "bomb_white_dot",
+    "character_arm_R",
+    "character_arm_R2",
+    "character_body",
+    "character_glasses",
+    "character_hat",
+    "character_head",
+    "character_leg_R",
+    "character_leg_R2",
+    "char_drill_body",
+    "coin_back",
+    "coin_back2",
+    "coin_front",
+    "coin_front2",
+    "diamond_back_bot1",
+    "diamond_back_bot2",
+    "diamond_back_bot3",
+    "diamond_back_top1",
+    "diamond_back_top2",
+    "diamond_back_top3",
+    "diamond_back_top4",
+    "diamond_back_top5",
+    "diamond_front_bot1",
+    "diamond_front_bot2",
+    "diamond_front_bot3",
+    "diamond_front_top",
+    "diamond_front_top1",
+    "diamond_front_top2",
+    "diamond_front_top3",
+    "diamond_front_top4",
+    "diamond_front_top5",
+    "dirt_body",
+    "dirt_body_rocks",
+    "dirt_body_rocks2",
+    "dirt_rock1",
+    "dirt_rock2",
+    "dirt_rock3",
+    "dirt_rock4",
+    "dirt_rock6",
+    "dirt_rock7",
+    "dirt_rock8",
+    "dirt_rock9",
+    "dirt_rock10",
+    "dirt_rock11",
+    "dirt_rock13",
+    "rock_part1",
+    "rock_part2",
+    "rock_part3",
+    "rock_part4",
+    "rock_part5",
+    "rock_part6",
+    "rock_part7",
+    "rock_part8",
+    "rock_part9",
+    "rock_part10",
+    "rock_part11",
+    "rock_part12",
+    "side_left",
+    "side_right",
+  ],
+  dirt_idle: [
+    "body",
+    "bomb_body",
+    "bomb_flare_particle1",
+    "bomb_flare_particle2",
+    "bomb_flare_particle3",
+    "bomb_flare_particle4",
+    "bomb_flare_particle5",
+    "bomb_flare_particle6",
+    "bomb_flare_particle7",
+    "bomb_flare_particle8",
+    "bomb_flare_particle9",
+    "bomb_flare_particle10",
+    "bomb_flare_particle11",
+    "bomb_flare_particle12",
+    "bomb_fuse",
+    "bomb_red_light",
+    "bomb_red_light_add",
+    "bomb_star",
+    "bomb_top",
+    "bomb_white_dot",
+    "character_arm_R",
+    "character_arm_R2",
+    "character_body",
+    "character_glasses",
+    "character_hat",
+    "character_head",
+    "character_leg_R",
+    "character_leg_R2",
+    "char_drill_body",
+    "char_drill_nose",
+    "coin_back",
+    "coin_back2",
+    "coin_front",
+    "coin_front2",
+    "diamond_back_bot1",
+    "diamond_back_bot2",
+    "diamond_back_bot3",
+    "diamond_back_top1",
+    "diamond_back_top2",
+    "diamond_back_top3",
+    "diamond_back_top4",
+    "diamond_back_top5",
+    "diamond_front_bot1",
+    "diamond_front_bot2",
+    "diamond_front_bot3",
+    "diamond_front_top",
+    "diamond_front_top1",
+    "diamond_front_top2",
+    "diamond_front_top3",
+    "diamond_front_top4",
+    "diamond_front_top5",
+    "drill_rocks_L1",
+    "drill_rocks_L2",
+    "drill_rocks_R1",
+    "drill_rocks_R2",
+    "drill_stripe1",
+    "drill_stripe2",
+    "drill_stripe3",
+    "drill_stripe4",
+    "drill_stripe5",
+    "drill_stripe6",
+    "drill_stripe7",
+    "drill_stripe8",
+    "rock_part1",
+    "rock_part2",
+    "rock_part3",
+    "rock_part4",
+    "rock_part5",
+    "rock_part6",
+    "rock_part7",
+    "rock_part8",
+    "rock_part9",
+    "rock_part10",
+    "rock_part11",
+    "rock_part12",
+    "side_left",
+    "side_right",
+    "tornado1",
+    "tornado2",
+    "tornado3",
+    "tornado4",
+    "tornado5",
+    "tornado6",
+    "tornado7",
+    "tornado8",
+    "tornado9",
+    "tornado10",
+    "tornado11",
+    "tornado12",
+    "tornado13",
+    "tornado14",
+    "tornado_dot1",
+    "tornado_dot2",
+    "tornado_dot3",
+    "tornado_dot4",
+    "tornado_dot5",
+  ],
+  dirt_show: [
+    "body",
+    "bomb_body",
+    "bomb_flare_particle1",
+    "bomb_flare_particle2",
+    "bomb_flare_particle3",
+    "bomb_flare_particle4",
+    "bomb_flare_particle5",
+    "bomb_flare_particle6",
+    "bomb_flare_particle7",
+    "bomb_flare_particle8",
+    "bomb_flare_particle9",
+    "bomb_flare_particle10",
+    "bomb_flare_particle11",
+    "bomb_flare_particle12",
+    "bomb_fuse",
+    "bomb_red_light",
+    "bomb_red_light_add",
+    "bomb_star",
+    "bomb_top",
+    "bomb_white_dot",
+    "character_arm_R",
+    "character_arm_R2",
+    "character_body",
+    "character_glasses",
+    "character_hat",
+    "character_head",
+    "character_leg_R",
+    "character_leg_R2",
+    "char_drill_body",
+    "char_drill_nose",
+    "coin_back",
+    "coin_back2",
+    "coin_front",
+    "coin_front2",
+    "diamond_back_bot1",
+    "diamond_back_bot2",
+    "diamond_back_bot3",
+    "diamond_back_top1",
+    "diamond_back_top2",
+    "diamond_back_top3",
+    "diamond_back_top4",
+    "diamond_back_top5",
+    "diamond_front_bot1",
+    "diamond_front_bot2",
+    "diamond_front_bot3",
+    "diamond_front_top",
+    "diamond_front_top1",
+    "diamond_front_top2",
+    "diamond_front_top3",
+    "diamond_front_top4",
+    "diamond_front_top5",
+    "drill_rocks_L1",
+    "drill_rocks_L2",
+    "drill_rocks_R1",
+    "drill_rocks_R2",
+    "drill_stripe1",
+    "drill_stripe2",
+    "drill_stripe3",
+    "drill_stripe4",
+    "drill_stripe5",
+    "drill_stripe6",
+    "drill_stripe7",
+    "drill_stripe8",
+    "rock_part1",
+    "rock_part2",
+    "rock_part3",
+    "rock_part4",
+    "rock_part5",
+    "rock_part6",
+    "rock_part7",
+    "rock_part8",
+    "rock_part9",
+    "rock_part10",
+    "rock_part11",
+    "rock_part12",
+    "side_left",
+    "side_right",
+    "tornado1",
+    "tornado2",
+    "tornado3",
+    "tornado4",
+    "tornado5",
+    "tornado6",
+    "tornado7",
+    "tornado8",
+    "tornado9",
+    "tornado10",
+    "tornado11",
+    "tornado12",
+    "tornado13",
+    "tornado14",
+    "tornado_dot1",
+    "tornado_dot2",
+    "tornado_dot3",
+    "tornado_dot4",
+    "tornado_dot5",
+  ],
+};
+
+export class SpineAnimator {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private static _skeletonData: any = null;
+  private static _pickupSkeletonData: Partial<Record<EventType, any>> = {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private static _goldSkeletonData: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private static _stoneSkeletonData: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private static _heroSkeletonData: any = null;
+  private static _loading: Promise<boolean> | null = null;
+  private static _goldStoneLoading: Promise<boolean> | null = null;
+  private static _heroLoading: Promise<boolean> | null = null;
+  private static _instances: Spine[] = [];
+  // Spine слоты которые нужно держать null для каждого инстанса (по имени анимации)
+  private static _instanceNullSlots: Map<Spine, any[]> = new Map();
+  private static _coinDebugFrame = 0;
+
+  /** Накопленное время для троттлинга tick() до 30fps: экономит CPU на матрицах костей. */
+  private static _spineAccumDt = 0
+  private static readonly _SPINE_INTERVAL = 1 / 30
+  /** Инстансы с полным 60fps (герой): обновляются каждый кадр, минуя троттл пикапов. */
+  private static _highPriorityInstances: Set<Spine> = new Set()
+
+  // Кеш ссылок на кости/слоты для _applyCoinConstraint — строится один раз при первом вызове
+  private static _coinCache: Map<Spine, {
+    ctrl: any; frontScale: any; backScale: any
+    sideCtrl: any | null; backRotate: any | null
+    slotFront: any | null; slotBack: any | null; slotL: any | null; slotR: any | null
+    coinContainerIndices: number[]
+    sideAtt: any | null
+  }> = new Map();
+
+  // ── Загрузка ────────────────────────────────────────────────────────────────
+
+  static load(): Promise<boolean> {
+    if (!this._loading) this._loading = this._doLoad();
+    return this._loading;
+  }
+
+  /** Загрузить отдельные Spine-скелеты для Gold и Stone */
+  static loadGoldStone(): Promise<boolean> {
+    if (!this._goldStoneLoading)
+      this._goldStoneLoading = this._doLoadGoldStone();
+    return this._goldStoneLoading;
+  }
+
+  /** Загружает отдельный Spine-скелет героя из public/animations/hero. */
+  static loadHero(): Promise<boolean> {
+    if (!this._heroLoading) this._heroLoading = this._doLoadHero();
+    return this._heroLoading;
+  }
+
+  /**
+   * Регистрирует текстуру в кэше PIXI под именем страницы из атласа (basename, напр. "GOLD.png").
+   * Без этого spine-pixi-v8 делает дополнительный запрос по basename относительно корня игры,
+   * который CDN возвращает с 403.
+   */
+  private static _cacheAtlasTexture(atlasText: string, texture: PIXI.Texture): void {
+    for (const raw of atlasText.split('\n')) {
+      const line = raw.trim();
+      if (/^[\w.-]+\.(png|webp)$/i.test(line)) {
+        if (!Assets.cache.has(line)) Assets.cache.set(line, texture);
+      }
+    }
+  }
+
+  private static async _doLoadGoldStone(): Promise<boolean> {
+    const load = async (atlasUrl: string, jsonUrl: string, pngUrl: string) => {
+      const [atlasText, spineJson, texture] = await Promise.all([
+        fetch(atlasUrl).then((r) => {
+          if (!r.ok) throw new Error(`${atlasUrl} (${r.status})`);
+          return r.text();
+        }),
+        fetch(jsonUrl).then((r) => {
+          if (!r.ok) throw new Error(`${jsonUrl} (${r.status})`);
+          return r.json();
+        }),
+        Assets.load<PIXI.Texture>(pngUrl),
+      ]);
+      // Регистрируем текстуру под basename атласа до создания TextureAtlas,
+      // чтобы spine-pixi не делал повторный запрос по короткому имени → 403
+      this._cacheAtlasTexture(atlasText, texture);
+      const atlas = new TextureAtlas(atlasText);
+      for (const page of atlas.pages) page.setTexture(SpineTexture.from(texture.source));
+      const skelJson = new SkeletonJson(new AtlasAttachmentLoader(atlas));
+      skelJson.scale = 1;
+      return skelJson.readSkeletonData(spineJson);
+    };
+    try {
+      const [goldData, stoneData] = await Promise.all([
+        load(
+          "./animations/Gold/GOLD.atlas.txt",
+          "./animations/Gold/GOLD.json",
+          "./animations/Gold/GOLD.webp",
+        ),
+        load(
+          "./animations/Stone/Stone.atlas.txt",
+          "./animations/Stone/Stone.json",
+          "./animations/Stone/Stone.webp",
+        ),
+      ]);
+      this._goldSkeletonData = goldData;
+      this._stoneSkeletonData = stoneData;
+      return true;
+    } catch (e) {
+      console.warn("[SpineAnimator] loadGoldStone failed:", e);
+      return false;
+    }
+  }
+
+  private static async _doLoadHero(): Promise<boolean> {
+    const load = async (atlasUrl: string, jsonUrl: string, pngUrl: string) => {
+      const [atlasText, spineJson, texture] = await Promise.all([
+        fetch(atlasUrl).then((r) => {
+          if (!r.ok) throw new Error(`${atlasUrl} (${r.status})`);
+          return r.text();
+        }),
+        fetch(jsonUrl).then((r) => {
+          if (!r.ok) throw new Error(`${jsonUrl} (${r.status})`);
+          return r.json();
+        }),
+        Assets.load<PIXI.Texture>(pngUrl),
+      ]);
+      this._cacheAtlasTexture(atlasText, texture);
+      const atlas = new TextureAtlas(atlasText);
+      for (const page of atlas.pages) page.setTexture(SpineTexture.from(texture.source));
+      const skelJson = new SkeletonJson(new AtlasAttachmentLoader(atlas));
+      skelJson.scale = 1;
+      return skelJson.readSkeletonData(spineJson);
+    };
+
+    try {
+      this._heroSkeletonData = await load(
+        "./animations/hero/character_1.atlas.txt",
+        "./animations/hero/character_1.json",
+        "./animations/hero/character_1.webp",
+      );
+      return true;
+    } catch (e) {
+      console.warn("[SpineAnimator] loadHero failed:", e);
+      return false;
+    }
+  }
+
+  private static async _doLoad(): Promise<boolean> {
+    const load = async (atlasUrl: string, jsonUrl: string, pngUrl: string) => {
+      const [atlasText, spineJson, texture] = await Promise.all([
+        fetch(atlasUrl).then((r) => {
+          if (!r.ok) throw new Error(`${atlasUrl} (${r.status})`);
+          return r.text();
+        }),
+        fetch(jsonUrl).then((r) => {
+          if (!r.ok) throw new Error(`${jsonUrl} (${r.status})`);
+          return r.json();
+        }),
+        Assets.load<PIXI.Texture>(pngUrl),
+      ]);
+
+      this._cacheAtlasTexture(atlasText, texture);
+      const atlas = new TextureAtlas(atlasText);
+      for (const page of atlas.pages) page.setTexture(SpineTexture.from(texture.source));
+      const skelJson = new SkeletonJson(new AtlasAttachmentLoader(atlas));
+      skelJson.scale = 1;
+      return skelJson.readSkeletonData(spineJson);
+    };
+
+    try {
+      const [coinData, bombData, diamondData] = await Promise.all([
+        load(
+          "./animations/coin/props.atlas.txt",
+          "./animations/coin/props.json",
+          "./animations/coin/props.webp",
+        ),
+        load(
+          "./animations/bomb/props.atlas.txt",
+          "./animations/bomb/props.json",
+          "./animations/bomb/props.webp",
+        ),
+        load(
+          "./animations/crystal/props.atlas.txt",
+          "./animations/crystal/props.json",
+          "./animations/crystal/props.webp",
+        ),
+      ]);
+
+      this._pickupSkeletonData.COIN = coinData;
+      this._pickupSkeletonData.BOMB = bombData;
+      this._pickupSkeletonData.DIAMOND = diamondData;
+
+      return true;
+    } catch (e) {
+      console.warn("[SpineAnimator] Failed to load pickup Spine:", e);
+      return false;
+    }
+  }
+
+  // ── Фабрики ──────────────────────────────────────────────────────────────────
+
+  /** Создать анимированный Spine-спрайт для пикапа */
+  static createItem(type: EventType): Spine | null {
+    if (!USE_SPINE) return null;
+    if (type === "GOLD_TICK") return this.createGold();
+    if (type === "STONE_TICK") return this.createStone();
+    const animName = ANIM_MAP[type];
+    if (!animName) return null;
+
+    const scale = ITEM_SCALE[type] ?? 0.2;
+
+    if (type === "COIN" || type === "BOMB" || type === "DIAMOND") {
+      const data = this._pickupSkeletonData[type];
+      if (!data) return null;
+      return this._makeFromData(data, "animation", scale);
+    }
+
+    const spine = this._make(animName, scale);
+    if (spine) {
+      const off = ITEM_SPINE_OFFSET[type];
+      if (off) {
+        spine.x = -off.x * scale;
+        spine.y = -off.y * scale;
+      }
+    }
+    return spine;
+  }
+
+  /** Создать Spine-спрайт золота из animations/Gold/GOLD.json */
+  static createGold(scale = 0.45): Spine | null {
+    if (!USE_SPINE || !this._goldSkeletonData) return null;
+    return this._makeFromData(this._goldSkeletonData, GOLD_STAGE.idle, scale);
+  }
+
+  /** Создать Spine-спрайт камня из animations/Stone/Stone.json */
+  static createStone(scale = 0.45): Spine | null {
+    if (!USE_SPINE || !this._stoneSkeletonData) return null;
+    return this._makeFromData(this._stoneSkeletonData, STONE_STAGE.idle, scale);
+  }
+
+  /** Создать Spine-персонажа (character_idle / character_action) */
+  static createCharacter(scale = 0.3): Spine | null {
+    if (!USE_SPINE) return null;
+    return this._make(CHAR_ANIM.idle, scale);
+  }
+
+  /** Создать Spine-персонажа из отдельного hero-скелета. */
+  static createHero(scale = 0.3): Spine | null {
+    if (!USE_SPINE || !this._heroSkeletonData) return null;
+    return this._makeFromData(this._heroSkeletonData, HERO_ANIM.idle, scale);
+  }
+
+  /** Создать эффект грязи в точке входа (dirt_show → dirt_idle) */
+  static createDirt(scale = 0.3): Spine | null {
+    if (!USE_SPINE) return null;
+    return this._make(DIRT_ANIM.show, scale);
+  }
+
+  /** Тикнуть один конкретный инстанс напрямую (для персонажа) */
+  static tickOne(inst: Spine | null, dt: number): void {
+    if (!inst || (inst as any).destroyed) return;
+    try {
+      inst.update(dt);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // ── Управление анимацией ────────────────────────────────────────────────────
+
+  static setAnimation(inst: Spine | null, animName: string, loop = true): void {
+    if (!inst || (inst as any).destroyed) return;
+    try {
+      const cur = (inst.state as any).tracks?.[0];
+      if (cur?.animation?.name === animName) return;
+      if (inst.skeleton.data.findAnimation(animName)) {
+        inst.state.setAnimation(0, animName, loop);
+        this._refreshNullSlots(inst, animName);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /** Запустить анимацию на произвольном треке (для слоёв, напр. грязь на track 1) */
+  static setAnimationOnTrack(
+    inst: Spine | null,
+    track: number,
+    animName: string,
+    loop = true,
+  ): void {
+    if (!inst || (inst as any).destroyed) return;
+    try {
+      const cur = (inst.state as any).tracks?.[track];
+      if (cur?.animation?.name === animName) return;
+      if (inst.skeleton.data.findAnimation(animName)) {
+        inst.state.setAnimation(track, animName, loop);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  static setAnimationSyncedTo(
+    inst: Spine | null,
+    animName: string,
+    totalSeconds: number,
+  ): void {
+    if (!inst || (inst as any).destroyed) return;
+    try {
+      const anim = inst.skeleton.data.findAnimation(animName);
+      if (!anim) return;
+      const animDuration = anim.duration;
+      const timeScale =
+        animDuration > 0 ? animDuration / Math.max(totalSeconds, 0.1) : 1;
+      inst.state.setAnimation(0, animName, true);
+      const track = (inst.state as any).tracks?.[0];
+      if (track) track.timeScale = timeScale;
+      this._refreshNullSlots(inst, animName);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private static _refreshNullSlots(inst: Spine, animName: string): void {
+    const slotNames = ANIM_NULL_SLOTS[animName];
+    if (slotNames) {
+      const slotObjects = slotNames
+        .map((name) => inst.skeleton.findSlot(name))
+        .filter(Boolean);
+      this._instanceNullSlots.set(inst, slotObjects);
+    } else {
+      this._instanceNullSlots.delete(inst);
+    }
+  }
+
+  /** Удалить из пула тиков */
+  static remove(inst: Spine | null): void {
+    if (!inst) return;
+    const arr = this._instances;
+    const i = arr.indexOf(inst);
+    if (i >= 0) { arr[i] = arr[arr.length - 1]!; arr.pop(); }
+    this._instanceNullSlots.delete(inst);
+    this._coinCache.delete(inst);
+    this._highPriorityInstances.delete(inst);
+  }
+
+  /** Пометить инстанс как высокоприоритетный (true = 60fps, false = 30fps). Герой — true. */
+  static setHighPriority(inst: Spine | null, hp: boolean): void {
+    if (!inst) return
+    if (hp) this._highPriorityInstances.add(inst)
+    else this._highPriorityInstances.delete(inst)
+  }
+
+  /** Тикать все инстансы. Герой (highPriority) — 60fps каждый кадр; пикапы — 30fps через накопление. */
+  static tick(dt: number): void {
+    // Герой и idle — полный 60fps
+    for (const inst of this._highPriorityInstances) {
+      if (!inst || (inst as any).destroyed || (inst as any).sleeping) continue
+      try { inst.update(dt) } catch { /* ignore */ }
+    }
+
+    // Пикапы — throttle до 30fps
+    this._spineAccumDt += dt
+    if (this._spineAccumDt < this._SPINE_INTERVAL) return
+    const spineDt = this._spineAccumDt
+    this._spineAccumDt = 0
+
+    const arr = this._instances;
+    let i = arr.length;
+    while (i-- > 0) {
+      const inst = arr[i]!;
+      if (!inst || (inst as any).destroyed) {
+        arr[i] = arr[arr.length - 1]!; arr.pop();
+        this._instanceNullSlots.delete(inst);
+        this._coinCache.delete(inst);
+        continue;
+      }
+      if ((inst as any).sleeping) continue;
+      if (this._highPriorityInstances.has(inst)) continue;
+      try {
+        inst.update(spineDt);
+
+        // Принудительно обнуляем слоты чужих объектов которые Spine восстанавливает при loop
+        const nullSlots = this._instanceNullSlots.get(inst);
+        if (nullSlots) {
+          for (const slot of nullSlots) slot.attachment = null;
+        }
+
+        // Эмулируем Transform Constraint "coin_scale_CTRL" который pixi-spine не поддерживает:
+        // coin_scale_control.scaleY → применяется к coin_front_scale и coin_back_scale
+        const curAnim = (inst.state as any).tracks?.[0]?.animation?.name ?? "";
+        if (curAnim === "coin_idle" || curAnim === "coin_action") {
+          this._applyCoinConstraint(inst);
+        }
+
+        // pixi-spine не применяет slot color (rgba timeline) к slotContainers.
+        // Применяем вручную — нужно для dust/glow_vfx в Gold и Stone stage_02.
+        if (curAnim === "stage_02" || curAnim === "stage_04") {
+          this._applySlotColors(inst);
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  /**
+   * Эмулирует Transform Constraints которые pixi-spine не поддерживает:
+   *   coin_scale_CTRL — coin_scale_control.scaleY → coin_front_scale + coin_back_scale
+   *   coin_side_CTRL  — coin_side_control.scaleY  → coin_back_rotate
+   *
+   * Физика сжатия: coin_front_scale имеет rotation=90° в coin_main.
+   * Из-за этого scaleY сжимает монету ГОРИЗОНТАЛЬНО (вращение вокруг вертикальной оси):
+   *   world_x = f(FSY * ly)  — меняется с FSY
+   *   world_y = f(lx)        — НЕ зависит от FSY
+   *
+   * Проблема coin_side: mesh весит на костях [31]/[33] через squish-chain.
+   * При FSY=0.01 горизонтальный размер меша → ~1px → ребро невидимо.
+   *
+   * Решение: SIDE_SCALE = 0.15 — порог смены фазы:
+   *   • FSY монетных костей никогда не опускается ниже SIDE_SCALE
+   *   • Ребро появляется при sy < SIDE_SCALE с FSY = SIDE_SCALE
+   *   • Переход бесшовный: монета сжата до 15% → ребро с теми же 15% → seamless
+   */
+  private static readonly SIDE_SCALE = 0.15;
+
+  /**
+   * Применяет slot.color.a (rgba timeline) к PIXI slotContainers.
+   * pixi-spine не делает это автоматически — нужно для dust/glow_vfx в Gold/Stone.
+   */
+  private static _applySlotColors(inst: Spine): void {
+    try {
+      const skel = inst.skeleton;
+      const containers = (inst as any).slotContainers as
+        | PIXI.Container[]
+        | undefined;
+      if (!containers) return;
+      for (let i = 0; i < skel.slots.length; i++) {
+        const slot = skel.slots[i];
+        if (!slot || !containers[i]) continue;
+        const alpha = (slot as any).color?.a ?? 1;
+        containers[i].alpha = alpha;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private static _buildCoinCache(inst: Spine): void {
+    const skel = inst.skeleton;
+    const ctrl = skel.findBone("coin_scale_control");
+    const frontScale = skel.findBone("coin_front_scale");
+    const backScale = skel.findBone("coin_back_scale");
+    if (!ctrl || !frontScale || !backScale) return;
+    const coinSlotNameSet = new Set(["coin_front","coin_back","coin_front2","coin_back2","side_left","side_right"]);
+    const coinContainerIndices: number[] = [];
+    for (let i = 0; i < skel.slots.length; i++) {
+      if (coinSlotNameSet.has(skel.slots[i]!.data.name)) coinContainerIndices.push(i);
+    }
+    const skin = skel.data.defaultSkin;
+    const sideLeftIdx = (skel.data as any).findSlot?.("side_left")?.index ?? -1;
+    const sideAtt = (skin && sideLeftIdx >= 0) ? (skin as any).getAttachment(sideLeftIdx, "coin_side") : null;
+    this._coinCache.set(inst, {
+      ctrl, frontScale, backScale,
+      sideCtrl:   skel.findBone("coin_side_control"),
+      backRotate: skel.findBone("coin_back_rotate"),
+      slotFront:  skel.findSlot("coin_front"),
+      slotBack:   skel.findSlot("coin_back"),
+      slotL:      skel.findSlot("side_left"),
+      slotR:      skel.findSlot("side_right"),
+      coinContainerIndices,
+      sideAtt,
+    });
+  }
+
+  private static _applyCoinConstraint(inst: Spine): void {
+    try {
+      let cache = this._coinCache.get(inst);
+      if (!cache) { this._buildCoinCache(inst); cache = this._coinCache.get(inst); }
+      if (!cache) return;
+
+      const { ctrl, frontScale, backScale, sideCtrl, backRotate,
+              slotFront, slotBack, slotL, slotR, coinContainerIndices, sideAtt } = cache;
+
+      const sy = (ctrl as any).scaleY as number;
+      const showSide = sy < SpineAnimator.SIDE_SCALE;
+
+      (frontScale as any).scaleY = showSide ? SpineAnimator.SIDE_SCALE : sy;
+      (backScale as any).scaleY  = showSide ? SpineAnimator.SIDE_SCALE : sy;
+
+      if (sideCtrl && backRotate)
+        (backRotate as any).scaleY = (sideCtrl as any).scaleY;
+
+      (inst.skeleton as any).updateWorldTransform();
+
+      if (showSide) {
+        if (slotFront) (slotFront as any).attachment = null;
+        if (slotBack)  (slotBack  as any).attachment = null;
+        if (slotL) (slotL as any).attachment = sideAtt ?? null;
+        if (slotR) (slotR as any).attachment = sideAtt ?? null;
+      } else {
+        if (slotL) (slotL as any).attachment = null;
+        if (slotR) (slotR as any).attachment = null;
+      }
+
+      const containers = (inst as any).slotContainers as PIXI.Container[] | undefined;
+      if (containers) {
+        for (const i of coinContainerIndices) {
+          if (containers[i]) containers[i].alpha = 1.0;
+        }
+      }
+    } catch (e) {
+      console.warn("[SpineAnimator] _applyCoinConstraint error:", e);
+    }
+  }
+
+  static get ready(): boolean {
+    return !!this._skeletonData;
+  }
+  static get goldStoneReady(): boolean {
+    return !!(this._goldSkeletonData && this._stoneSkeletonData);
+  }
+  static get heroReady(): boolean {
+    return !!this._heroSkeletonData;
+  }
+
+  // ── Внутреннее ───────────────────────────────────────────────────────────────
+
+  /**
+   * Создать Spine из отдельного скелета (Gold/Stone) — без ANIM_NULL_SLOTS,
+   * т.к. в этих файлах нет лишних слотов чужих объектов.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private static _makeFromData(
+    skelData: any,
+    animName: string,
+    scale: number,
+  ): Spine | null {
+    try {
+      const spine = new Spine(skelData);
+      if (spine.skeleton.data.findAnimation(animName)) {
+        spine.state.setAnimation(0, animName, true);
+      }
+      spine.scale.set(scale);
+      spine.autoUpdate = false;
+      spine.update(0);
+      this._instances.push(spine);
+      return spine;
+    } catch (e) {
+      console.warn("[SpineAnimator] _makeFromData failed:", animName, e);
+      return null;
+    }
+  }
+
+  private static _make(animName: string, scale: number): Spine | null {
+    if (!this._skeletonData) return null;
+    try {
+      const spine = new Spine(this._skeletonData);
+      if (spine.skeleton.data.findAnimation(animName)) {
+        spine.state.setAnimation(0, animName, true);
+      }
+      spine.scale.set(scale);
+      spine.autoUpdate = false; // ручное управление через tick()
+
+      // Кэшируем объекты слотов которые нужно держать null для этой анимации
+      const slotNames = ANIM_NULL_SLOTS[animName];
+      if (slotNames) {
+        const slotObjects = slotNames
+          .map((name) => spine.skeleton.findSlot(name))
+          .filter(Boolean);
+        this._instanceNullSlots.set(spine, slotObjects);
+      }
+
+      // Применяем первый кадр и сразу обнуляем слоты
+      spine.update(0);
+      const nullSlots = this._instanceNullSlots.get(spine);
+      if (nullSlots) for (const slot of nullSlots) slot.attachment = null;
+
+      this._instances.push(spine);
+      return spine;
+    } catch (e) {
+      console.warn("[SpineAnimator] _make failed:", animName, e);
+      return null;
+    }
+  }
+}
+
+/** Хитбокс пикапа в пикселях на основе масштаба */
+export function getSpineItemSize(type: EventType): { w: number; h: number } {
+  if (!USE_SPINE) return { w: 0, h: 0 };
+  const s = ITEM_SCALE[type] ?? 0.2;
+  // Spine-радиус ≈ 240 ед. → * scale = размер в пикселях
+  const px = 240 * s * 0.5;
+  return { w: Math.max(px, TILE * 0.8), h: Math.max(px, TILE * 0.8) };
+}

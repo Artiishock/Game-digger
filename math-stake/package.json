@@ -1,0 +1,11 @@
+{
+  "name": "deep-rush-math",
+  "version": "1.0.0",
+  "description": "Deep Rush — Stake Engine math book (server-side)",
+  "main": "index.js",
+  "engines": { "node": ">=18" },
+  "license": "UNLICENSED",
+  "scripts": {
+    "test": "node test.js"
+  }
+}

@@ -1,0 +1,7 @@
+props.webp
+size:512,512
+filter:Linear,Linear
+Star_fx
+bounds:328,295,84,117
+coin
+bounds:2,76,333,336
